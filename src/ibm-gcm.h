@@ -1433,6 +1433,25 @@ static void gradients_ibm (scalar * f, vector * g)
 }
 
 
+static inline double vertex_average (Point point, scalar s)
+{
+#if dimension == 2
+    return (4.*s[] + 
+	        2.*(s[0,1] + s[0,-1] + s[1,0] + s[-1,0]) +
+    	    s[-1,-1] + s[1,-1] + s[1,1] + s[-1,1])/16.;
+#else
+    return (8.*s[] +
+	        4.*(s[-1] + s[1] + s[0,1] + s[0,-1] + s[0,0,1] + s[0,0,-1]) +
+	        2.*(s[-1,1] + s[-1,0,1] + s[-1,0,-1] + s[-1,-1] + 
+    		s[0,1,1] + s[0,1,-1] + s[0,-1,1] + s[0,-1,-1] +
+	    	s[1,1] + s[1,0,1] + s[1,-1] + s[1,0,-1]) +
+	        s[1,-1,1] + s[-1,1,1] + s[-1,1,-1] + s[1,1,1] +
+    	    s[1,1,-1] + s[-1,-1,-1] + s[1,-1,-1] + s[-1,-1,1])/64.;
+#endif
+}
+
+
+
 #if 0 // this seems to not have any major effect
 #define face_condition(ibmf, ibm)						\
   (ibmf.x[i,j] > 0.5 && ibmf.y[i,j + (j < 0)] && ibmf.y[i-1,j + (j < 0)] &&	\
