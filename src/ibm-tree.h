@@ -411,6 +411,7 @@ static void refine_metric_injection_x (Point point, scalar s)
         v.x[] = val;
 }
 
+#if 0
 foreach_dimension()
 static void restriction_metric_x (Point point, scalar s)
 {
@@ -418,7 +419,7 @@ static void restriction_metric_x (Point point, scalar s)
     double val = on_interface(ibm)? 1.: ibm[];
     v.x[] = val;
 }
-
+#endif
 
 static inline void face_average_metric (Point point, vector v)
 {
