@@ -28,8 +28,9 @@ static void relax_diffusion (scalar * a, scalar * b, int l, void * data)
             foreach_dimension()
                 a += mu.x[1] * s[1] + mu.x[] * s[-1];
             if (ibm[] > 0.5)
-                u.x[] = (dt * a + r.x[] * sq(Delta)) /
-                        (sq(Delta) * (rho[] + lambda.x) + avgmu);
+                u.x[] = cm[]*(dt * a + r.x[] * sq(Delta)) /
+                        (sq(Delta) * (rho[] + lambda.x) + avgmu); // why does multiplying cm[] here
+                                                                  // help with stokes flow test cases?
             else if (ibm[] <= 0.5)
                 u.x[] = 0;  //du = 0, since we dont want to change the imposed ghost cell velocity
         }
