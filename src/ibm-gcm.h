@@ -1403,6 +1403,36 @@ static inline double bilinear_ibm (Point point, scalar s)
 #endif // MULTIGRID
 
 
+
+static void gradients_ibm (scalar * f, vector * g)
+{
+  assert (list_len(f) == vectors_len(g));
+  foreach() {
+    scalar s; vector v;
+    for (s,v in f,g) {
+      if (s.gradient)
+	foreach_dimension() {
+#if IBM
+      if (!ibmf.x[] || !ibmf.x[1])
+        v.x[] = 0.;
+      else
+#endif
+	    v.x[] = s.gradient (s[-1], s[], s[1])/Delta;
+	}
+      else // centered
+	foreach_dimension() {
+#if IBM
+      if (!ibmf.x[] || !ibmf.x[1])
+        v.x[] = 0.;
+      else
+#endif
+	    v.x[] = (s[1] - s[-1])/(2.*Delta);
+	}
+    }
+  }
+}
+
+
 #if 0 // this seems to not have any major effect
 #define face_condition(ibmf, ibm)						\
   (ibmf.x[i,j] > 0.5 && ibmf.y[i,j + (j < 0)] && ibmf.y[i-1,j + (j < 0)] &&	\

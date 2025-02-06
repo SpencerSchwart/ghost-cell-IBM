@@ -28,7 +28,7 @@ for viscosity. */
 #include "timestep.h"
 #include "my-bcg.h"
 #if EMBED
-# include "my-viscosity-embed.h"
+# include "viscosity-embed.h"
 #elif IBM
 # include "my-viscosity-gcm.h"
 #else
@@ -182,9 +182,10 @@ event defaults (i = 0)
   }
   for (scalar s in {p, pf})
     s.embed_gradient = pressure_embed_gradient;
-#elif IBM 
+#elif IBM
+  uf.x.refine = refine_face;
   foreach_dimension() {
-    uf.x.refine = refine_ibm_face_x;
+    //uf.x.refine = refine_ibm_face_x;
     uf.x.prolongation = refine_ibm_face_x;
   }
   for (scalar s in {p, pf, u, g}) {

@@ -24,12 +24,15 @@ void tracer_fluxes (scalar f,
 /*
 ###### GRADIENTS MUST BE CHANGED ######
 */
+#if IBM
+  gradients_ibm ({f}, {g});
+#else
   gradients ({f}, {g});
+#endif
 
   /**
   For each face, the flux is composed of two parts... */
 
-  coord indicator = {1,2};
   foreach_face() {
 
     /**
@@ -37,9 +40,9 @@ void tracer_fluxes (scalar f,
     strictly be `dt*(uf.x[i] + uf.x[i+1])/((fm.x[] +
     fm.x[i+1])*Delta)` but this causes trouble with boundary
     conditions (when using narrow '1 ghost cell' stencils)). */
+
 #if IBM
-    double metric = fm.x[]? 1: 0;
-    double un = metric*dt*uf.x[]/(fm.x[]*Delta + SEPS), s = sign(un);
+    double un = (fm.x[]? 1: 0)*dt*uf.x[]/(fm.x[]*Delta + SEPS), s = sign(un);
 #else
     double un = dt*uf.x[]/(fm.x[]*Delta + SEPS), s = sign(un);
 #endif
@@ -65,15 +68,7 @@ void tracer_fluxes (scalar f,
     }
     #endif
     flux.x[] = f2*uf.x[];
-#if 0
-    //if (on_interface (ibm))
-        fprintf (stderr, "%g %g %g %g %g %g %d f2=%g un=%g g.x[i]=%g u.x[i]=%g uf.x[]=%g fm[i]=%g fm[i,1]=%g flux=%g\n",
-                          indicator.x, x, y, ibm[], fm.x[], fm.y[],
-                          level, f2, un, g.x[i], f[i], uf.x[], fm.y[i], fm.y[i,1], flux.x[]);
-#endif
   }
-
-
 }
 
 /**
@@ -99,35 +94,15 @@ void advection (scalar * tracers, face vector u, double dt,
   scalar f, source;
   for (f,source in tracers,src) {
     face vector flux[];
-    #if 0
-    foreach_dimension() {
-      flux.x.refine = flux.x.prolongation = refine_ibm_face_x;
-      flux.x.restriction = restriction_ibm_linear;
-    }
-    restriction({flux});
-    #endif
     tracer_fluxes (f, u, flux, dt, source);
-    //boundary({flux});
-    //coord indicator = {1,2};
 #if !EMBED
     foreach()
       foreach_dimension() {
-        // note f[] is u.x[] or u.y[]
 #if IBM
-#if 0
-        if (on_interface(ibm))
-            fprintf(stderr, "before %g %g %g %g ibmF.x%g ibmF.y=%g %d u=%g\n", 
-                              indicator.x, x, y,ibm[], fm.x[], fm.y[], level, f[]);
-#endif                              
         f[] += cm[]*dt*(flux.x[] - flux.x[1])/(Delta*cm[]+SEPS);
 
         if (fabs(f[]) > LIMIT)
             fprintf(stderr, "WARNING in bcg.h: f[] = %g in (%g, %g) exceeds %g\n", f[], x, y, LIMIT);
-#if 0       
-        if (on_interface(ibm))
-            fprintf(stderr, "after %g %g %g %g ibmF.x%g ibmF.y=%g %d u=%g f[]=%g f[1]=%g fm[1]=%g\n", 
-                              indicator.x, x, y,ibm[], fm.x[], fm.y[], level, f[], flux.x[], flux.x[1], fm.x[1]);
-#endif
 #else
         f[] += dt*(flux.x[] - flux.x[1])/(Delta*cm[]);
 #endif // IBM

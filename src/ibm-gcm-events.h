@@ -181,7 +181,7 @@ event acceleration (i++)
            foreach_dimension() {
                u.x[] = 2 * uibm_x(x,y,z) - imageVelocity.x;
            }
-           if (ibm[] <= 0.5) { // is pressure b.c. necessary here?
+           if (ibm[] <= 0.) { // is pressure b.c. necessary here?
                p[] = image_pressure (point, p, imagePoint);
                pf[] = image_pressure (point, pf, imagePoint);
            }
@@ -257,7 +257,7 @@ event end_timestep (i++)
            coord boundaryIntercept = boundary_int (point, interFrag, fluidCell, ibm);
            coord imagePoint = image_point (boundaryIntercept, ghostCell);
     
-           if (ibm[] <= 0.5) {
+           if (ibm[] <= 0.) {
                p[] = image_pressure (point, p, imagePoint);
                pf[] = image_pressure (point, pf, imagePoint);
            }
