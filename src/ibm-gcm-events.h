@@ -173,12 +173,12 @@ event acceleration (i++)
            coord fluidCell, ghostCell = {x,y,z};
 
            closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell);
-           coord boundaryIntercept = boundary_int (point, interFrag, fluidCell, ibm);
-           coord imagePoint = image_point (boundaryIntercept, ghostCell);
+           coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
+           coord imagePoint = image_point (boundaryInt, ghostCell);
     
            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints);
            foreach_dimension() {
-               u.x[] = 2 * uibm_x(x,y,z) - imageVelocity.x;
+               u.x[] = 2 * uibm_x(boundaryInt.x, boundaryInt.y, boundaryInt.z) - imageVelocity.x;
            }
            if (ibm[] <= 0.) { // is pressure b.c. necessary here?
                p[] = image_pressure (point, p, imagePoint);
@@ -253,8 +253,8 @@ event end_timestep (i++)
            coord fluidCell, ghostCell = {x,y,z};
 
            closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell);
-           coord boundaryIntercept = boundary_int (point, interFrag, fluidCell, ibm);
-           coord imagePoint = image_point (boundaryIntercept, ghostCell);
+           coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
+           coord imagePoint = image_point (boundaryInt, ghostCell);
     
            if (ibm[] <= 0.) {
                p[] = image_pressure (point, p, imagePoint);
@@ -280,12 +280,12 @@ event end_timestep (i++)
            coord fluidCell, ghostCell = {x,y,z};
 
            closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell);
-           coord boundaryIntercept = boundary_int (point, interFrag, fluidCell, ibm);
-           coord imagePoint = image_point (boundaryIntercept, ghostCell);
+           coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
+           coord imagePoint = image_point (boundaryInt, ghostCell);
     
            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints);
            foreach_dimension() {
-               u.x[] = 2 * uibm_x(x,y,z) - imageVelocity.x;
+               u.x[] = 2 * uibm_x(boundaryInt.x, boundaryInt.y, boundaryInt.z) - imageVelocity.x;
            }
        }
        else if (ibm[] == 0) {
