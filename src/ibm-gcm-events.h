@@ -177,8 +177,9 @@ event acceleration (i++)
            coord imagePoint = image_point (boundaryInt, ghostCell);
     
            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints);
+           double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
            foreach_dimension() {
-               u.x[] = 2 * uibm_x(boundaryInt.x, boundaryInt.y, boundaryInt.z) - imageVelocity.x;
+               u.x[] = 2 * uibm_x(bix, biy, biz) - imageVelocity.x;
            }
            if (ibm[] <= 0.) { // is pressure b.c. necessary here?
                p[] = image_pressure (point, p, imagePoint);
@@ -284,8 +285,9 @@ event end_timestep (i++)
            coord imagePoint = image_point (boundaryInt, ghostCell);
     
            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints);
+           double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
            foreach_dimension() {
-               u.x[] = 2 * uibm_x(boundaryInt.x, boundaryInt.y, boundaryInt.z) - imageVelocity.x;
+               u.x[] = 2 * uibm_x(bix, biy, biz) - imageVelocity.x;
            }
        }
        else if (ibm[] == 0) {

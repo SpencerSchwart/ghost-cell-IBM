@@ -348,6 +348,7 @@ TODO: 3D implementation
 
 bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL)
 {
+#if TREE
     // Look at directly adjacent neighbors (4 in 2D)
     for (int d = 0; d < dimension; d++) {
 	    for (int k = -1; k <= 1; k += 2) {
@@ -368,6 +369,7 @@ bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL)
             }
         }
     }
+#endif
     return false;
 }
 
@@ -489,11 +491,12 @@ void fluid_only (Point point, int xx, int yy, int zz, int i, int j, int k,
         pTemp->y = midPoints.y[off_x,off_y,off_z];
         pTemp->z = midPoints.z[off_x,off_y,off_z];
 
+        double mpx = pTemp->x, mpy = pTemp->y, mpz = pTemp->z;
         foreach_dimension() {
             if (bOffset_X == off_x) {
                 pTemp->x += bOffset_X * Delta;
             }
-            velocity->x = uibm_x(x,y,z);
+            velocity->x = uibm_x(mpx, mpy, mpz);
         }
     }
 }
@@ -1154,7 +1157,8 @@ coord ghost_fluxes (Point point, scalar ibm, face vector ibmf, face vector uf)
                        uf.x[rightIndex,yindex] * ibmf.x[rightIndex,yindex] +
                       -uf.y[xindex,yindex] * ibmf.y[xindex,yindex] +
                        uf.y[xindex,topIndex] * ibmf.y[xindex,topIndex] -
-                       uibm_x(x,y,z) * nOutward.x * area - uibm_y(x,y,z) * nOutward.y * area;
+                       uibm_x(midPoint.x,midPoint.y,midPoint.z) * nOutward.x * area - 
+                       uibm_y(midPoint.x,midPoint.y,midPoint.z) * nOutward.y * area;
     // veloFlux /= Delta;
 
     double weightSum = leftWeight + rightWeight + bottomWeight + topWeight + SEPS;
@@ -1291,15 +1295,19 @@ double dirichlet_gradient (Point point, scalar s, scalar ibm,
 static inline
 coord ibm_gradient (Point point, vector u, coord p, coord n)
 {
-  coord dudn;
-  foreach_dimension() {
-    double vb = uibm_x(x,y,z);
-    double val;
-    dudn.x = dirichlet_gradient (point, u.x, ibm, n, p, vb, &val);
-    if (dudn.x == nodata)
-      dudn.x = 0.;
-  }
-  return dudn;
+    coord cellCenter = {x,y,z}, midPoint, dudn;
+    foreach_dimension() {
+        midPoint.x = cellCenter.x + p.x*Delta;
+     }
+    double px = midPoint.x, py = midPoint.y, pz = midPoint.z;
+    foreach_dimension() {
+        double vb = uibm_x(px,py,pz);
+        double val;
+        dudn.x = dirichlet_gradient (point, u.x, ibm, n, p, vb, &val);
+        if (dudn.x == nodata)
+          dudn.x = 0.;
+    }
+    return dudn;
 }
 
 double ibm_vorticity (Point point, vector u, coord p, coord n)
@@ -1377,7 +1385,7 @@ This is used in the multigrid solver, and is found to significantly improve
 convergence of the pressure solver.
 */
 
-#if 1
+#if TREE
 static inline double bilinear_ibm (Point point, scalar s)
 {
     if (!coarse(ibm) || !coarse(ibm,child.x)) {
@@ -1483,9 +1491,9 @@ ibmCells = 0 if ghost or solid cell and 1 if fluid cell.
 ibmFaces = 0 if it borders two solid cells and 1 if it borders two fluid cells
            or 1 fluid cell and 1 solid/ghost cell.
 */
-
+#if TREE
 #include "ibm-tree.h"
-
+#endif
 event metric (i = 0)
 {
     if (is_constant (fm.x)) {
@@ -1507,6 +1515,7 @@ event metric (i = 0)
         ibm0[] = 1.;
     }
 
+#if TREE
     // set prolongation and refining functions
     ibmCells.refine = ibm_fraction_refine;
     ibmCells.prolongation = fraction_refine;
@@ -1519,6 +1528,7 @@ event metric (i = 0)
         ibmf.x.prolongation = ibm_face_fraction_refine_x;
         //ibmFaces.x.restriction = restriction_face_metric;
     }
+#endif
     restriction ({ibm, ibmf, ibmFaces, ibmCells});
 
     boundary(all);

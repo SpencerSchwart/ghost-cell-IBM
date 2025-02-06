@@ -508,19 +508,22 @@ mgstats project (face vector uf, scalar p,
 
   foreach() {
     divg[] = 0.;
-    foreach_dimension() {
 #if IBM
-      divg[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
-      if (on_interface(ibm)) {
-        coord midPoint, n;
-        double area = ibm_geometry (point, &midPoint, &n);
-        divg[] -= uibm_x(x,y,z) * n.x * area;
-      }
+    if (on_interface(ibm)) {
+      coord midPoint, n;
+      double area = ibm_geometry (point, &midPoint, &n);
+      double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
+      foreach_dimension()
+          divg[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
       // divg[] += virtual_merge_x (point, ibm, ibmf, uf);
+    }
+    foreach_dimension() {
+      divg[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
+    }
 #else
+    foreach_dimension()
       divg[] += uf.x[1] - uf.x[];
 #endif // IBM
-    }
     divg[] /= dt*Delta;
 
     if (fabs(divg[]) > LIMIT)
