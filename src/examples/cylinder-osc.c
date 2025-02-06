@@ -49,11 +49,8 @@ int main() {
   run();
 }
 
-coord vc;
-
 event init (t = 0) {
   xc.y = -A*cos(2*M_PI*freq*t);
-  vc.y = A*2*M_PI*freq*sin(2*M_PI*freq*(t)); // + dt or not?
   solid (ibm, ibmf, sq(x - ci.x - xc.x) + sq(y - ci.y - xc.y) - sq(D/2));
   refine (ibm[] < 1 && ibm[] > 0 && level < maxlevel);
 
@@ -66,7 +63,6 @@ event init (t = 0) {
 #if 1
 event moving_cylinder (i++) {
   xc.y = -A*cos(2*M_PI*freq*(t));
-  vc.y = A*2*M_PI*freq*sin(2*M_PI*freq*(t)); // + dt or not?
   solid (ibm, ibmf, sq(x - ci.x - xc.x) + sq(y - ci.y - xc.y) - sq(D/2));
 }
 #endif
@@ -78,23 +74,10 @@ event properties (i++) {
    boundary ((scalar *) {muv});
 }
 
-double avgCD = 0, avgCL = 0;
-int count = 0;
-scalar e[];
-vector eu[];
-scalar p0[];
-vector u0[];
-
 event logfile (i++, t <= t_end){
 
   double solidCells = 0, sgCells = 0;
   foreach(reduction(+:solidCells), reduction(+:sgCells)) {
-    e[] = p[] - p0[];
-    foreach_dimension() {
-        eu.x[] = u.x[] - u0.x[];
-        u0.x[] = u.x[];
-    }
-    p0[] = p[];
     if (ibm[] == 0)
         solidCells += sq(Delta);
     if (ibm[] <= 0.5)
@@ -106,16 +89,11 @@ event logfile (i++, t <= t_end){
 
   ibm_force (p, u, mu, &Fp, &Fmu);
   double CD = (Fp.x + Fmu.x)/(0.5*sq(U0)*(D));
-  avgCD += t > tf_start? CD: 0;
   double CL = (Fp.y + Fmu.y)/(0.5*sq(U0)*(D));
-  avgCL += t > tf_start? CL: 0;
-  count += t > tf_start? 1:0;
 
   fprintf (stderr, "%d %g %d %d %d %d %d %d %d %g %g %g %g %g %g %g %g\n",
            i, t, Re, mgpf.i, mgpf.nrelax, mgp.i, mgp.nrelax, mgu.i, mgu.nrelax, 
            CD, CL, Fp.x, Fmu.x, xc.y, vc.y, solidCells, sgCells);
-
-
 }
 
 event profile1 (t += 195.51) {
