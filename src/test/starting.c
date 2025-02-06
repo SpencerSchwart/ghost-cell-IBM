@@ -52,8 +52,8 @@ u.n[right] = neumann(0);
 p[right] = dirichlet(0);
 pf[right] = dirichlet(0);
 
-u_ibm_dirichlet_x (0);
-u_ibm_dirichlet_y (0);
+u_x_ibm_dirichlet (0);
+u_y_ibm_dirichlet (0);
 
 /**
 Command line arguments can be used to change the default

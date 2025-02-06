@@ -35,8 +35,8 @@ u.n[bottom] = neumann (0);
 p[bottom] = neumann (0);
 pf[bottom] = neumann (0);
 
-u_ibm_dirichlet_x(x*x + y*y > 1? 0: 0)
-u_ibm_dirichlet_y(x*x + y*y > 1? 0: 0)
+u_x_ibm_dirichlet (x*x + y*y > 1? 0: 0)
+u_y_ibm_dirichlet (x*x + y*y > 1? 0: 0)
 
 int main() {
   size(L0);

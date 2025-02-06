@@ -55,13 +55,13 @@ static inline double uibm_y (double x, double y, double z);
 static inline double uibm_z (double x, double y, double z);
 #endif
 
-#define u_ibm_dirichlet_x(expr) \
+#define u_x_ibm_dirichlet(expr) \
     static inline double uibm_x (double x, double y, double z) {return expr;} \
 
-#define u_ibm_dirichlet_y(expr) \
+#define u_y_ibm_dirichlet(expr) \
     static inline double uibm_y (double x, double y, double z) {return expr;} \
 
-#define u_ibm_dirichlet_z(expr) \
+#define u_z_ibm_dirichlet(expr) \
     static inline double uibm_z (double x, double y, double z) {return expr;} \
 
 

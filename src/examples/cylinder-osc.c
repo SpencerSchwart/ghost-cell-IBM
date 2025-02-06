@@ -34,8 +34,8 @@ pf[right]  = dirichlet (0);
 u.n[top]   = neumann (0);
 u.n[bottom] = neumann (0);
 
-u_ibm_dirichlet_x (0)
-u_ibm_dirichlet_y (A*2*M_PI*freq*sin(2*M_PI*freq*(t)))
+u_x_ibm_dirichlet (0)
+u_y_ibm_dirichlet (A*2*M_PI*freq*sin(2*M_PI*freq*(t)))
 
 int main() {
   size(L0);
