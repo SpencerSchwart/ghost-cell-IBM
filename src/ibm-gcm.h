@@ -42,8 +42,8 @@ void fill_fragment (double c, coord n, fragment * frag)
 
 /*
 These functions and macros below are used to mimic Basilisk's way of specifying
-boundary condtions, e.g., u.t[embed] = dirichlet(0). Fow now, we only allow a
-dirichlet b.c.
+boundary condtions, e.g., u.t[embed] = dirichlet(0). For now, we only allow a
+dirichlet b.c for velocity.
 
 TODO: allow neumann b.c (navier-slip b.c?)
 TODO: make other macros for p, pf, f, etc.
