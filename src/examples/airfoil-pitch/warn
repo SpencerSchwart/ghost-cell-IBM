@@ -1,0 +1,17 @@
+./../ibm-gcm.h: In function ‘_stencil_borders_boundary’:
+./../ibm-gcm.h:355:24: warning: variable ‘j’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h:355:17: warning: variable ‘i’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h: In function ‘fluid_only’:
+./../ibm-gcm.h:488:41: warning: unused variable ‘off_z’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘image_velocity’:
+./../ibm-gcm.h:529:9: warning: unused variable ‘k’ [-Wunused-variable]
+./../ibm-gcm.h:518:10: warning: unused variable ‘border’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘image_pressure’:
+./../ibm-gcm.h:739:37: warning: unused variable ‘zz’ [-Wunused-variable]
+./../ibm-gcm.h:737:9: warning: unused variable ‘k’ [-Wunused-variable]
+At top level:
+./../ibm-gcm.h:1034:1: warning: ‘_stencil_ibm_geometry’ defined but not used [-Wunused-function]
+./../ibm-gcm.h:484:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
+ast/init_solver.h: In function ‘ibm_gradient’:
+./../ibm-gcm.h:1302:46: warning: ‘midPoint.z’ is used uninitialized [-Wuninitialized]
+./../ibm-gcm.h:1298:33: note: ‘midPoint’ declared here
