@@ -110,13 +110,8 @@ event init (t = 0) {
   boundary((scalar *){u});
 }
 
-vector upitch[];
 event moving_airfoil (i++)
 {
-  foreach() {
-    upitch.x[] = angular_rot * ((y - ci.y));
-    upitch.y[] = -angular_rot * ((x - ci.x));
-  }
   double pitchAngle = pitch_angle;
   airfoil_shape(ibm, ibmf, pitchAngle);   
 }

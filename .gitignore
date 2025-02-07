@@ -1,0 +1,8 @@
+*.s
+*.deps
+*.html
+*.err
+gdb*
+plots
+plots.py
+*.swp
