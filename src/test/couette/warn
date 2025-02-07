@@ -1,0 +1,16 @@
+./../ibm-gcm.h: In function ‘_stencil_borders_boundary’:
+./../ibm-gcm.h:355:24: warning: variable ‘j’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h:355:17: warning: variable ‘i’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h: In function ‘fluid_only’:
+./../ibm-gcm.h:488:41: warning: unused variable ‘off_z’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘image_velocity’:
+./../ibm-gcm.h:528:9: warning: unused variable ‘k’ [-Wunused-variable]
+./../ibm-gcm.h:517:10: warning: unused variable ‘border’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘image_pressure’:
+./../ibm-gcm.h:738:37: warning: unused variable ‘zz’ [-Wunused-variable]
+./../ibm-gcm.h:736:9: warning: unused variable ‘k’ [-Wunused-variable]
+At top level:
+./../ibm-tree.h:415:13: warning: ‘restriction_metric_y’ defined but not used [-Wunused-function]
+./../ibm-tree.h:415:13: warning: ‘restriction_metric_x’ defined but not used [-Wunused-function]
+./../ibm-gcm.h:1033:1: warning: ‘_stencil_ibm_geometry’ defined but not used [-Wunused-function]
+./../ibm-gcm.h:484:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
