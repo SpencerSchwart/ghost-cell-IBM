@@ -21,7 +21,7 @@ event vof (i++)
     }
 
     foreach_face() {
-        if (is_ghost_cell (point, ibm) || ibm[] > 0.5)
+       if (is_ghost_cell (point, ibm) || ibm[] > 0.5)
         //if (ibm[] > 0.5 || ibm[-1] > 0.5)
             ibmFaces.x[] = 1;
         else // solid sell

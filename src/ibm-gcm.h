@@ -36,7 +36,7 @@ void fill_fragment (double c, coord n, fragment * frag)
 #define distance(a,b) sqrt(sq(a) + sq(b))
 #define distance3D(a,b,c) sqrt(sq(a) + sq(b) + sq(c))
 #define on_interface(a) (a[] > 0. && a[] < 1.)
-#define is_mostly_solid(a) (a[] > 0. && a[] <= 0.5)
+#define is_mostly_solid(a, i) (a[i] > 0. && a[i] <= 0.5)
 #define is_fresh_cell(a0, a) (a0[] <= 0.5 && a[] > 0.5)
 
 
@@ -1027,7 +1027,7 @@ function from fractions.h, |n.x| + |n.y| = 1. Here, n is normalized using the ve
 magnitude, i.e. sqrt( sq(n.x) + sq(n.y) ) = 1.
 
 Note area must be multiplied by the cell length (or area in 3D) to get in terms of
-phyiscal "units".
+phyiscal "units". Also, the midpoint, p, is in the cell's local coordinate system.
 */
 
 static inline
@@ -1120,8 +1120,8 @@ TODO: what if ghost cell has two fluid cell neighbors in one direction
 
 coord ghost_fluxes (Point point, scalar ibm, face vector ibmf, face vector uf)
 {
-    int xindex = is_mostly_solid (ibm)? 0: borders_ghost_x (point, ibm);
-    int yindex = is_mostly_solid (ibm)? 0: borders_ghost_y (point, ibm);
+    int xindex = is_mostly_solid (ibm, 0)? 0: borders_ghost_x (point, ibm);
+    int yindex = is_mostly_solid (ibm, 0)? 0: borders_ghost_y (point, ibm);
 #if 0
     fprintf (stderr, "### New Cell ###\n");
     fprintf (stderr, "|| xindex=%d yindex=%d\n", xindex, yindex);
