@@ -422,7 +422,7 @@ static inline void face_max_metric (Point point, vector v)
       v.x[] =  max(max(fine(v.x,0,0,0), fine(v.x,0,1,0)),
 	               max(fine(v.x,0,0,1), fine(v.x,0,1,1)));
       v.x[1] = max(max(fine(v.x,2,0,0), fine(v.x,2,1,0)),
-                   max(fine(v.x,2,0,1), fine(v.x,2,1,1));
+                   max(fine(v.x,2,0,1), fine(v.x,2,1,1)));
     #endif
   }
 }
