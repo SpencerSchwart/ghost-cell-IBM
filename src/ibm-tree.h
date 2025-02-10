@@ -411,30 +411,18 @@ static void refine_metric_injection_x (Point point, scalar s)
         v.x[] = val;
 }
 
-#if 0
-foreach_dimension()
-static void restriction_metric_x (Point point, scalar s)
-{
-    vector v = s.v;
-    double val = on_interface(ibm)? 1.: ibm[];
-    v.x[] = val;
-}
-#endif
 
-static inline void face_average_metric (Point point, vector v)
+static inline void face_max_metric (Point point, vector v)
 {
   foreach_dimension() {
-    #if dimension == 1
-      v.x[] = fine(v.x,0);
-      v.x[1] = fine(v.x,2);
-    #elif dimension == 2
-      v.x[] = fine(v.x,0,0);//(fine(v.x,0,0) + fine(v.x,0,1))/2.;
-      v.x[1] = fine(v.x,2,0);//(fine(v.x,2,0) + fine(v.x,2,1))/2.;
+    #if dimension == 2
+      v.x[] = max(fine(v.x,0,0), fine(v.x,0,1));
+      v.x[1] = max(fine(v.x,2,0), fine(v.x,2,1));
     #else // dimension == 3
-      v.x[] = (fine(v.x,0,0,0) + fine(v.x,0,1,0) +
-	       fine(v.x,0,0,1) + fine(v.x,0,1,1))/4.;
-      v.x[1] = (fine(v.x,2,0,0) + fine(v.x,2,1,0) +
-		fine(v.x,2,0,1) + fine(v.x,2,1,1))/4.;
+      v.x[] =  max(max(fine(v.x,0,0,0), fine(v.x,0,1,0)),
+	               max(fine(v.x,0,0,1), fine(v.x,0,1,1)));
+      v.x[1] = max(max(fine(v.x,2,0,0), fine(v.x,2,1,0)),
+                   max(fine(v.x,2,0,1), fine(v.x,2,1,1));
     #endif
   }
 }
@@ -443,8 +431,4 @@ static inline void restriction_face_metric (Point point, scalar s)
 {
   face_average_metric (point, s.v);
 }
-
-
-
-
 
