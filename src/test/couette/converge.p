@@ -25,10 +25,10 @@ set key top right font ",12"
 set title "max error" font ',14'
 #set title "average error" font ',14'
 
-plot 'log' u 1:4 pt 6 ps 2t 'ibm max', exp(f(log(x))) t ftitle(a,b) lw 2, \
+plot 'log-ibm' u 1:4 pt 6 ps 2 t 'ibm max', exp(f(log(x))) t ftitle(a,b) lw 2, \
      'log-embed' u 1:4 pt 6 ps 2 t 'embed max', exp(f3(log(x))) t ftitle(c,d) lw 2
 
-#plot 'log' u 1:2 pt 6 ps 2t 'ibm average', exp(f2(log(x))) t ftitle(a2,b2) lw 2, \
+#plot 'log-ibm' u 1:2 pt 6 ps 2 t 'ibm average', exp(f2(log(x))) t ftitle(a2,b2) lw 2, \
 #     'log-embed' u 1:2 pt 6 ps 2 t 'embed average', exp(f4(log(x))) t ftitle(c2,d2) lw 2
 
 
