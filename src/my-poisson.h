@@ -302,15 +302,8 @@ static void relax (scalar * al, scalar * bl, int l, void * data)
   foreach_level_or_leaf (l) {
     double n = - sq(Delta)*b[], d = - lambda[]*sq(Delta);
     foreach_dimension() {
-#if IBM
-      n += ibmf.x[1]*alpha.x[1]*a[1]/(fm.x[1] + SEPS) + ibmf.x[]*alpha.x[]*a[-1] / (fm.x[] + SEPS);
-      d += ibmf.x[1]*alpha.x[1] / (fm.x[1] + SEPS) + ibmf.x[]*alpha.x[] / (fm.x[] + SEPS);
-      //n += ibmf.x[1]*a[1] + ibmf.x[]*a[-1];
-      //d += ibmf.x[1] + ibmf.x[];
-#else
       n += alpha.x[1]*a[1] + alpha.x[]*a[-1];
       d += alpha.x[1] + alpha.x[];
-#endif // IBM
     }
 #if EMBED
     if (p->embed_flux) {
@@ -369,20 +362,14 @@ static double residual (scalar * al, scalar * bl, scalar * resl, void * data)
   /* conservative coarse/fine discretisation (2nd order) */
   face vector g[];
   foreach_face() {
-#if IBM
-    // g.x[] = ibmf.x[] * alpha.x[] * face_gradient_x (a, 0);
-    g.x[] = ibmf.x[] * alpha.x[] * face_gradient_x (a, 0) / (fm.x[] + SEPS);
+    g.x[] = alpha.x[] * face_gradient_x (a,0);
     if (fabs(g.x[]) > LIMIT)
         fprintf(stderr, "WARNING in res: g[] = %g in (%g, %g) exceeds %g\n", g.x[], x, y, LIMIT);
-#else
-    g.x[] = alpha.x[] * face_gradient_x (a,0);
-#endif // IBM
   }
   foreach (reduction(max:maxres), nowarning) {
     res[] = b[] - lambda[]*a[];
     foreach_dimension()
       res[] -= (g.x[1] - g.x[])/Delta;
-    // res[] *= cm[];
 #if EMBED
     if (p->embed_flux) {
       double c, e = p->embed_flux (point, a, alpha, &c);
@@ -549,15 +536,14 @@ mgstats project (face vector uf, scalar p,
   And compute $\mathbf{u}_f^{n+1}$ using $\mathbf{u}_f$ and $p$. */
 
   foreach_face() {
-#if 1
-    double metric = !ibmf.x[]? 0: alpha.x[];
+#if IBM
+    double metric = !ibmf.x[]? 0: alpha.x[] / ibmf.x[];
     uf.x[] -= dt*metric*face_gradient_x (p, 0);
-
-    if (fabs(uf.x[]) > LIMIT)
-        fprintf(stderr, "WARNING in proj: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
 #else
     uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
 #endif
+    if (fabs(uf.x[]) > LIMIT)
+        fprintf(stderr, "WARNING in proj: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
   }
 
   return mgp;

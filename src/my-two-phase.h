@@ -14,7 +14,7 @@ method. The volume fraction in fluid 1 is $f=1$ and $f=0$ in fluid
 
 scalar f[], * interfaces = {f};
 
-#include "two-phase-generic.h"
+#include "my-two-phase-generic.h"
 
 /**
 ## See also

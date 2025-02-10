@@ -151,8 +151,13 @@ event defaults (i = 0)
   solid factors). */
 
   if (alpha.x.i == unityf.x.i) {
+#if IBM
+    alpha = ibmf;
+    rho = ibm;
+#else
     alpha = fm;
     rho = cm;
+#endif
   }
   else if (!is_constant(alpha.x)) {
     face vector alphav = alpha;
