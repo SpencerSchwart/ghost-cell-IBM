@@ -29,7 +29,7 @@ static void relax_diffusion (scalar * a, scalar * b, int l, void * data)
                 a += mu.x[1] * s[1] + mu.x[] * s[-1];
 //            if (ibm[] > 0.5)
                 u.x[] = cm[]*(dt * a + r.x[] * sq(Delta)) /
-                        (sq(Delta) * (rho[] + lambda.x) + avgmu); // why does multiplying cm[] here
+                        (sq(Delta) * ((rho[]/(ibm[] + SEPS)) + lambda.x) + avgmu); // why does multiplying cm[] here
                                                                   // help with stokes flow test cases?
 //            else if (ibm[] <= 0.5)
 //                u.x[] = 0;  //du = 0, since we dont want to change the imposed ghost cell velocity
@@ -59,7 +59,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
             double a = 0.;
             foreach_dimension()
                 a += g.x[] - g.x[1];
-            res.x[] = r.x[] - (rho[] + lambda.x) * u.x[] - dt * a /Delta;
+            res.x[] = r.x[] - ((rho[]/(ibm[] + SEPS)) + lambda.x) * u.x[] - dt * a /Delta;
 
             if (ibm[] <= 0.5)
                 res.x[] = 0;
@@ -83,7 +83,7 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
 
     foreach()
         foreach_dimension()
-            r.x[] = rho[] * u.x[];
+            r.x[] = (rho[]/(ibm[] + SEPS)) * u.x[];
 
     restriction ({mu, rho});
     struct Viscosity p = { mu, rho, dt };

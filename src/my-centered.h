@@ -450,8 +450,7 @@ void centered_gradient (scalar p, vector g)
   face vector gf[];
   foreach_face() {
 #if IBM
-    gf.x[] = ibmf.x[]*a.x[] - ibmf.x[]*alpha.x[]*(p[] - p[-1])/(Delta*fm.x[]+SEPS);
-    //gf.x[] = ibmf.x[]*a.x[] - ibmf.x[]*(p[] - p[-1])/Delta;
+    gf.x[] = ibmf.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta; // should fm*a or ibmf*a?
 #else
     gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta;
 #endif
