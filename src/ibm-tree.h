@@ -429,6 +429,6 @@ static inline void face_max_metric (Point point, vector v)
   
 static inline void restriction_face_metric (Point point, scalar s)
 {
-  face_average_metric (point, s.v);
+  face_max_metric (point, s.v);
 }
 

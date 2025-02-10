@@ -1526,7 +1526,7 @@ event metric (i = 0)
     foreach_dimension() {
         ibmFaces.x.prolongation = refine_metric_injection_x;
         ibmf.x.prolongation = ibm_face_fraction_refine_x;
-        //ibmFaces.x.restriction = restriction_face_metric;
+        ibmFaces.x.restriction = restriction_face_metric;
     }
 #endif
     restriction ({ibm, ibmf, ibmFaces, ibmCells});
