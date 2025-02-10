@@ -46,7 +46,7 @@ TODO: 3D implementation
 TODO: better verify if its working well
 */
 
-#if 0
+#ifdef MOVING
 scalar fresh[];
 event advection_term (i++)
 {
@@ -84,19 +84,20 @@ event advection_term (i++)
     foreach() {
         if (is_fresh_cell(ibm0, ibm)) {
             fragment interFrag;
-            coord freshCell = {x,y}, boundaryIntercept, n;
+            coord freshCell = {x,y}, boundaryInt, n;
             fresh[] = 1;
-            ibm_geometry (point, &boundaryIntercept, &n);
+            ibm_geometry (point, &boundaryInt, &n);
             foreach_dimension()
-                boundaryIntercept.x = freshCell.x + boundaryIntercept.x * Delta;
-            coord imagePoint = fresh_image_point (boundaryIntercept, freshCell);
+                boundaryInt.x = freshCell.x + boundaryInt.x * Delta;
+            coord imagePoint = fresh_image_point (boundaryInt, freshCell);
             coord imageVelocity = image_velocity (point, u, imagePoint, midPoints);
 #if 1
             p[] = image_pressure (point, p, imagePoint);
             pf[] = image_pressure (point, pf, imagePoint);
 #endif
+           double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
             foreach_dimension() {
-                u.x[] = (imageVelocity.x + uibm_x(x,y)) / 2;
+                u.x[] = (imageVelocity.x + uibm_x(bix,biy,biz)) / 2;
             }
         }
         else if (is_ghost_cell(point, ibm)) {
