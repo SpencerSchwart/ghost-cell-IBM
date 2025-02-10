@@ -12,7 +12,7 @@ to compute interface properties. */
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
 #include "../my-two-phase.h"
-//#include "tension.h"
+#include "../my-tension.h"
 #include "curvature.h"
 
 /**

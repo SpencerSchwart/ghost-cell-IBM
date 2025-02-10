@@ -72,24 +72,6 @@
 2.71173 3.54672
 2.75173 3.56086
 2.79173 3.57445
-2.83173 3.58771
-2.87173 3.60052
-2.91173 3.61282
-2.95173 3.6248
-2.99173 3.63642
-3.03173 3.64758
-3.07173 3.65836
-3.11173 3.6689
-3.15173 3.67907
-3.19173 3.68886
-3.23173 3.69831
-3.27173 3.70754
-3.31173 3.71647
-3.35173 3.72508
-3.39173 3.73337
-3.43173 3.74141
-3.47173 3.74925
-3.51173 3.75684
-./../my-poisson.h:318:error: [Thread debugging using libthread_db enabled]
-./../my-poisson.h:318:error: Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
-./../my-poisson.h:318:error: Program received signal SIGINT, Interrupt.
+./../ibm-gcm.h:404:error: [Thread debugging using libthread_db enabled]
+./../ibm-gcm.h:404:error: Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+./../ibm-gcm.h:404:error: Program received signal SIGINT, Interrupt.
