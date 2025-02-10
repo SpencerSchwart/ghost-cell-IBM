@@ -1,7 +1,7 @@
 #include "../ibm-gcm.h"
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
-//#include "navier-stokes/double-projection.h"
+// #include "navier-stokes/double-projection.h" // why does this not work?
 #include "view.h"
 
 #define L0 29.257
@@ -11,13 +11,13 @@
 const int maxlevel = LEVEL;
 const int minlevel = maxlevel - 5;
 int Re;
-double U0 =  1.; // inlet velocity
-double t_end = 200;
-double tf_start = 100;
+const double U0 =  1.; // inlet velocity
+const double t_end = 200;
+const double tf_start = 100;
 coord ci = {L0/4, L0/2}; // initial coordinates of cylinder
 coord xc = {0, 0};
 const double A = 0.2*D;
-double freq = 0.156;
+const double freq = 0.156;
 
 face vector muv[];
 
@@ -41,8 +41,7 @@ int main() {
   size(L0);
   init_grid (1 << (LEVEL - 2));
   mu = muv;
-  TOLERANCE = 1.e-7; 
-  // DT = 0.004;
+  TOLERANCE = 1.e-5; 
   CFL = 0.5;
 
   Re = 185;
@@ -60,18 +59,15 @@ event init (t = 0) {
   }
 }
 
-#if 1
 event moving_cylinder (i++) {
   xc.y = -A*cos(2*M_PI*freq*(t));
   solid (ibm, ibmf, sq(x - ci.x - xc.x) + sq(y - ci.y - xc.y) - sq(D/2));
 }
-#endif
-
 
 event properties (i++) {
   foreach_face()
     muv.x[] = fm.x[]*(U0)*(D)/(Re);
-   boundary ((scalar *) {muv});
+  boundary ((scalar *) {muv});
 }
 
 event logfile (i++, t <= t_end){
@@ -91,9 +87,11 @@ event logfile (i++, t <= t_end){
   double CD = (Fp.x + Fmu.x)/(0.5*sq(U0)*(D));
   double CL = (Fp.y + Fmu.y)/(0.5*sq(U0)*(D));
 
+  double vy = uibm_y (0,0,0);
+
   fprintf (stderr, "%d %g %d %d %d %d %d %d %d %g %g %g %g %g %g %g %g\n",
            i, t, Re, mgpf.i, mgpf.nrelax, mgp.i, mgp.nrelax, mgu.i, mgu.nrelax, 
-           CD, CL, Fp.x, Fmu.x, xc.y, vc.y, solidCells, sgCells);
+           CD, CL, Fp.x, Fmu.x, xc.y, vy, solidCells, sgCells);
 }
 
 event profile1 (t += 195.51) {
@@ -169,13 +167,11 @@ event profile2 (t += 197.12) {
 event adapt (i++) {
   scalar ibmsf[]; 
   foreach() {
-    ibmsf[] = (4.*ibm[] + 
-	    2.*(ibm[0,1] + ibm[0,-1] + ibm[1,0] + ibm[-1,0]) +
-	    ibm[-1,-1] + ibm[1,-1] + ibm[1,1] + ibm[-1,1])/16.;
+    ibmsf[] = vertex_average (point, ibm);
   }
   adapt_wavelet ({ibmsf,u}, (double[]){1.e-15,3e-4,3e-4},
 		 maxlevel = LEVEL, minlevel = minlevel);
-  //event ("vof");
+  event ("vof");
 }
 
 
