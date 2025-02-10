@@ -1,5 +1,5 @@
 # General Information
-This repo implements a ghost cell immersed boundary method (IBM) for the opensource computational fluid dynamics (CFD) software [Basilisk](http://basilisk.fr).
+This repo implements a ghost cell immersed boundary method (IBM) for the opensource computational fluid dynamics (CFD) software [Basilisk](http://basilisk.fr). Note this is still a very much work in progress method with updates being made on a regular basis.
 
 # Method
 ## Cell Metrics
