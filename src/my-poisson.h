@@ -502,7 +502,7 @@ mgstats project (face vector uf, scalar p,
       double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
       foreach_dimension()
           divg[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
-      // divg[] += virtual_merge_x (point, ibm, ibmf, uf);
+          //divg[] += virtual_merge_x (point, ibm, ibmf, uf);
     }
     foreach_dimension() {
       divg[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
