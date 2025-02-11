@@ -1385,7 +1385,7 @@ This is used in the multigrid solver, and is found to significantly improve
 convergence of the pressure solver.
 */
 
-#if TREE
+#if MULTIGRID
 static inline double bilinear_ibm (Point point, scalar s)
 {
     if (!coarse(ibm) || !coarse(ibm,child.x)) {
