@@ -537,7 +537,7 @@ mgstats project (face vector uf, scalar p,
   And compute $\mathbf{u}_f^{n+1}$ using $\mathbf{u}_f$ and $p$. */
 
   foreach_face() {
-#if IBM
+#if IBM // is this correct? should uf be multiplied by ibmf?
     double metric = !ibmf.x[]? 0: alpha.x[] / ibmf.x[];
     uf.x[] -= dt*metric*face_gradient_x (p, 0);
 #else
