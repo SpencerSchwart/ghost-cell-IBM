@@ -125,7 +125,7 @@ void pressure_embed_gradient (Point point, scalar p, coord * g)
 }
 #endif // TREE && EMBED
 
-#if IBM
+#if TREE && IBM
 void pressure_ibm_gradient (Point point, scalar p, coord * g)
 {
   foreach_dimension()
