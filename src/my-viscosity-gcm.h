@@ -42,7 +42,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
     double dt = p->dt;
     vector u = vector(a[0]), r = vector(b[0]), res = vector(resl[0]);
     double maxres = 0.;
-
+#if TREE
     foreach_dimension() {
         scalar s = u.x;
         face vector g[];
@@ -64,6 +64,22 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
                 maxres = fabs (res.x[]);
         }
     }
+#else
+    foreach (reduction(max:maxres), nowarning) {
+        foreach_dimension() {
+            scalar s = u.x;
+            double a = 0.;
+            foreach_dimension()
+                a += mu.x[0]*face_gradient_x (s, 0) - mu.x[1]*face_gradient_x (s, 1);
+            res.x[] = r.x[] - (rho[]/(ibm[] + SEPS) + lambda.x) * u.x[] - dt * a / Delta;
+
+            if (ibm[] <= 0.5)
+                res.x[] = 0;
+
+            if (fabs (res.x[]) > maxres)
+                maxres = fabs (res.x[]);
+    }
+#endif
     return maxres;
 }
 
