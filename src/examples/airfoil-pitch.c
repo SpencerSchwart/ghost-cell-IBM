@@ -8,18 +8,18 @@
 #define CHORD_LENGTH 1
 #define L0 20.
 #define Re (10000.)
-#define LEVEL 13
+#define LEVEL 15
 #define MIN_LEVEL 7
 
 const double U0 =  1.0; // inlet velocity
 const double rr = 1.1019*sq(MAX_THICKNESS); // Radius of leading edge
 const double trailingOffset = 0.98;
 const double theta_p = 0*pi/180; // initial A.O.A = 0 degrees
-const double pitchStartTime = 1.2;
+const double pitchStartTime = 0.2;
 const double rotationRate = 0.6;
-const double t_end = 2.8;
+const double t_end = 2.;
 
-coord ci = {5, 10}; // initial coordinates of airfoil
+coord ci = {L0/4., L0/2.}; // initial coordinates of airfoil
 coord cr = {0.25*(CHORD_LENGTH), 0.}; // center of rotation in airfoil coordinate system
 
 #define angular_rot (t < pitchStartTime? 0: \
@@ -58,8 +58,8 @@ void airfoil_shape (scalar c, face vector f, double theta, vertex scalar phii = 
   double chord = CHORD_LENGTH;
   
   foreach_vertex() {
-    double XX = cr.x + (x - ci.x)*cos (theta) - (y - ci.y)*sin (theta);
-    double YY = cr.y + (x - ci.x)*sin (theta) + (y - ci.y)*cos (theta);
+    double XX = (cr.x + (x - ci.x)*cos (theta) - (y - ci.y)*sin (theta)) / chord;
+    double YY = (cr.y + (x - ci.x)*sin (theta) + (y - ci.y)*cos (theta)) / chord;
     
     if (XX < 0) { // leading edge cap
       phi[] = sq(XX - rr) + sq(YY) - sq(rr);
@@ -83,9 +83,9 @@ void airfoil_shape (scalar c, face vector f, double theta, vertex scalar phii = 
 
 int main(){
   size(L0);
-  init_grid (1 << (LEVEL - 2));
+  init_grid (1 << (MIN_LEVEL));
   mu = muv;
-  TOLERANCE = 1.e-4 [*];
+  TOLERANCE = 1.e-5 [*];
 
   run();
 }
@@ -93,13 +93,15 @@ int main(){
 
 event init (t = 0) {
   // initial mesh refinement
-  
+  scalar ibmsf[];
   astats ss;
   int ic = 0;
   do {
     ic++;
     airfoil_shape (ibm, ibmf, theta_p);
-    ss = adapt_wavelet ({ibm}, (double[]) {1.e-30},
+    foreach()
+      ibmsf[] = vertex_average(point, ibm);
+    ss = adapt_wavelet ({ibmsf}, (double[]) {1.e-30},
 			maxlevel = LEVEL, minlevel = MIN_LEVEL);
   } while ((ss.nf || ss.nc) && ic < 100);
   
@@ -125,7 +127,6 @@ event properties (i++) {
 }
 
 scalar pid[];
-scalar omega[];
 event logfile (i++; t <= t_end) {
 
   coord Fp, Fmu;
@@ -133,7 +134,6 @@ event logfile (i++; t <= t_end) {
   double CD = (Fp.x + Fmu.x)/(0.5*sq(U0)*(CHORD_LENGTH));
   double CL = (Fp.y + Fmu.y)/(0.5*sq(U0)*(CHORD_LENGTH));
 
-  vorticity (u , omega);
   foreach()
     pid[] = pid();
  
@@ -143,16 +143,19 @@ event logfile (i++; t <= t_end) {
   
 }
 
-event screenshot (t += 0.5; t <= 15) {
+event screenshot (t = {0, 1.4831, 1.8}) {
+  scalar omega[];
+  vorticity (u , omega);
+
   char name[80];
-  sprintf (name, "piso-%g.png", t);
+  sprintf (name, "pres-%g.png", t);
   FILE * fp1 = fopen (name, "w");
   view (fov = 2, camera = "front", 
         tx = -0.25, ty = -0.5, bg = {1,1,1},
-	width = 3200, height = 3200);
+	width = 3000, height = 3000);
   clear();
   draw_vof ("ibm", "ibmf", filled = -1, lw = 3);
-  isoline ("p", n = 120, min = -1, max = 1);
+  squares ("omega", map = cool_warm, min = -100, max = 100);
   save (fp = fp1);
   fclose (fp1);
 }

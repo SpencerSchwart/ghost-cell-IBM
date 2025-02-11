@@ -42,7 +42,7 @@ int main() {
   init_grid (1 << (LEVEL - 2));
   mu = muv;
   TOLERANCE = 1.e-5; 
-  CFL = 0.5;
+  CFL = 0.8;
 
   Re = 185;
   run();
@@ -70,6 +70,8 @@ event properties (i++) {
   boundary ((scalar *) {muv});
 }
 
+scalar e[]; // pressure field diff. between timesteps
+scalar p0[];
 event logfile (i++, t <= t_end){
 
   double solidCells = 0, sgCells = 0;
@@ -78,6 +80,8 @@ event logfile (i++, t <= t_end){
         solidCells += sq(Delta);
     if (ibm[] <= 0.5)
         sgCells += sq(Delta);
+    e[] = p[] - p0[];
+    p0[] = p[];
   }
 
   coord Fp;

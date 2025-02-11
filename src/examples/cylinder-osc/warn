@@ -10,7 +10,7 @@
 ./../ibm-gcm.h:739:37: warning: unused variable ‘zz’ [-Wunused-variable]
 ./../ibm-gcm.h:737:9: warning: unused variable ‘k’ [-Wunused-variable]
 cylinder-osc.c: In function ‘profile2’:
-cylinder-osc.c:140:14: warning: unused variable ‘area’ [-Wunused-variable]
+cylinder-osc.c:144:14: warning: unused variable ‘area’ [-Wunused-variable]
 At top level:
 ./../ibm-gcm.h:1034:1: warning: ‘_stencil_ibm_geometry’ defined but not used [-Wunused-function]
 ./../ibm-gcm.h:484:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
