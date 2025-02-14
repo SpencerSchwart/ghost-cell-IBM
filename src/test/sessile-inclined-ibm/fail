@@ -1,0 +1,4 @@
+64 15 2.4625 0.0183 56.18
+./../my-poisson.h:318:error: [Thread debugging using libthread_db enabled]
+./../my-poisson.h:318:error: Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+./../my-poisson.h:318:error: Program received signal SIGINT, Interrupt.
