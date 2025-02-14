@@ -1,14 +1,11 @@
 ./../ibm-gcm.h: In function ‘_stencil_borders_boundary’:
-./../ibm-gcm.h:354:24: warning: variable ‘j’ set but not used [-Wunused-but-set-variable]
-./../ibm-gcm.h:354:17: warning: variable ‘i’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h:355:24: warning: variable ‘j’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h:355:17: warning: variable ‘i’ set but not used [-Wunused-but-set-variable]
 ./../ibm-gcm.h: In function ‘image_velocity’:
-./../ibm-gcm.h:515:10: warning: unused variable ‘border’ [-Wunused-variable]
+./../ibm-gcm.h:518:10: warning: unused variable ‘border’ [-Wunused-variable]
 sphere.c: At top level:
 sphere.c:49:71: warning: ISO C does not allow extra ‘;’ outside of a function [-Wpedantic]
 sphere.c:50:71: warning: ISO C does not allow extra ‘;’ outside of a function [-Wpedantic]
 sphere.c:51:71: warning: ISO C does not allow extra ‘;’ outside of a function [-Wpedantic]
-./../ibm-tree.h:415:13: warning: ‘restriction_metric_z’ defined but not used [-Wunused-function]
-./../ibm-tree.h:415:13: warning: ‘restriction_metric_y’ defined but not used [-Wunused-function]
-./../ibm-tree.h:415:13: warning: ‘restriction_metric_x’ defined but not used [-Wunused-function]
-./../ibm-gcm.h:1031:1: warning: ‘_stencil_ibm_geometry’ defined but not used [-Wunused-function]
-./../ibm-gcm.h:482:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
+./../ibm-gcm.h:1034:1: warning: ‘_stencil_ibm_geometry’ defined but not used [-Wunused-function]
+./../ibm-gcm.h:484:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
