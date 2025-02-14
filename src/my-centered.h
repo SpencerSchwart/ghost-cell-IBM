@@ -28,9 +28,10 @@ for viscosity. */
 #include "timestep.h"
 #include "my-bcg.h"
 #if EMBED
-# include "viscosity-embed.h"
+#include "viscosity-embed.h"
 #elif IBM
-# include "my-viscosity-gcm.h"
+#include "my-viscosity-gcm.h"
+//#include "my-viscosity-ccm.h"
 #else
 #include "viscosity.h"
 #endif // EMBED

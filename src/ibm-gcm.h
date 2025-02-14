@@ -1459,6 +1459,46 @@ static inline double vertex_average (Point point, scalar s)
 }
 
 
+int local_to_global (Point point, coord p, double* ax, double* ay, double* az)
+{
+    *ax = x + p.x * Delta;
+    *ay=  y + p.y * Delta;
+    *az = z + p.z * Delta;
+
+    return 0;
+}
+
+
+foreach_dimension()
+double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
+{
+    *val = 0.;
+    if (ibm[] >= 1. || ibm[] <= 0.)
+        return 0.;
+
+    coord n, midPoint;
+    double area = ibm_geometry (point, &n, &midPoint);
+
+    double mpx, mpy, mpz;
+    local_to_global(point, midPoint, &mpx, &mpy, &mpz);
+
+    double bc = uibm_x(mpx, mpy, mpz);
+    
+    double coef = 0.;
+    double grad = dirichlet_gradient (point, s, ibm, n, midPoint, bc, &coef);
+
+    double mua = 0., fa = 0.;
+    foreach_dimension() {
+        mua += mu.x[] + mu.x[1];
+        fa += fm.x[] + fm.x[1];
+    }
+
+    *val = - mua/(fa + SEPS)*grad*area/Delta;
+    return - mua/(fa + SEPS)*coef*area/Delta;
+}
+
+
+
 
 #if 0 // this seems to not have any major effect
 #define face_condition(ibmf, ibm)						\
