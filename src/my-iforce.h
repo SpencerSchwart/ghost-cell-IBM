@@ -1,3 +1,4 @@
+//#include "contact-ibm.h"
 /**
 # Interfacial forces
 
@@ -84,7 +85,12 @@ event acceleration (i++)
   \phi\mathbf{n}\delta_s/\rho \approx \alpha\phi\nabla f
   $$ 
   */
-
+#if 0
+  scalar f0[];
+  foreach()
+    f0[] = f[];
+  impose_contact_angle(f, ibm);
+#endif
   face vector ia = a;
   foreach_face()
     for (scalar f in list)
@@ -112,7 +118,10 @@ event acceleration (i++)
 	ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
 #endif
       }
-
+#if 0
+  foreach()
+    f[] = f0[];
+#endif
   /**
   On trees, we need to restore the prolongation values for the
   volume fraction field. */

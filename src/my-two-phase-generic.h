@@ -91,7 +91,7 @@ event properties (i++)
 #endif
     if (mu1 || mu2) {
       face vector muv = mu;
-      muv.x[] = fm.x[]*mu(ff);
+      muv.x[] = fm.x[]*mu(ff); // should fm be ibmf here?
     }
   }
   

@@ -1520,6 +1520,216 @@ static inline double ibm_face_gradient_x (Point point, scalar a, int i)
 }
 #endif
 
+
+/*
+###### TWO PHASE FUNCTIONS ######
+*/
+/*
+boundary_points is used to find the intersecting points of the fluid interface
+within the area being advected.
+*/
+
+int boundary_points_x (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
+{
+    int i = 0;
+    // check on x faces first
+    double dx = rhs.x - lhs.x;
+    if (fabs(dx) < 1e-10)
+        return 0;
+
+    for (double xint = rhs.x; xint >= lhs.x; xint -= dx) {
+        double yint = (alphaf - nf.x*xint)/nf.y;
+        if (fabs(yint) <= 0.5) {
+            bp[i].x = xint;
+            bp[i].y = yint;
+            ++i;
+        }
+    }
+    
+
+    // then check y faces
+    for (double yint = -0.5; yint <= 0.5; yint += 1.) {
+        double xint = (alphaf - nf.y*yint)/nf.x;
+        if (xint <= rhs.x && xint >= lhs.x) {
+            bp[i].x = xint;
+            bp[i].y = yint;
+            ++i;
+        }
+    }
+#if 0
+    // sort points in ascending order for x
+    if (bptemp[0].x < bptemp[1].x && i == 2) {
+        bp[0] = bptemp[0];
+        bp[1] = bptemp[1];
+    }
+    else if (i == 2) {
+        bp[0] = bptemp[1];
+        bp[1] = bptemp[0];
+    }
+    else if (i == 1)
+        bp[0] = bptemp[0]; // interface only intersects vertex
+#endif
+    return i;
+}
+
+
+/*
+this function checks to see if the two interfaces intersect each other. If they
+do, and it is within the bounds of the region, the coordinates is stored in pi.
+It also returns 1 or 0 based on if the lines intersect each other or not.
+*/
+
+int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
+                         coord lhs, coord rhs, coord * pint)
+{
+    coord pt;
+    pt.x = (alphas/ns.y - alphaf/nf.y) /
+                  ((ns.x/ns.y) - (nf.x/nf.y));
+
+    pt.y = (alphaf/nf.y) - (nf.x*pt.x)/nf.y;
+
+    foreach_dimension() {
+        if (pt.x < lhs.x || pt.x > rhs.x) {
+            return 0;
+        }
+    }
+
+    *pint = pt;
+    return 1;
+}
+
+
+/*
+this function checks to see if a given point, pc, is inside the region
+containing only real fluid and not inside the immersed boundary.
+
+Note: ns is the inward pointing normal for the solid boundary while
+      nf is the outward pointing normal for the fluid boundary.
+
+returns
+    + if inside, - if outisde, and 0 if the points is on the interface
+
+TODO: show derivation
+*/
+
+inline double region_check (coord pc, coord nf, double alphaf, coord ns, double alphas)
+{
+    double fluid = alphaf - nf.x*pc.x - nf.y*pc.y;
+    double solid = alphas - ns.x*pc.x - ns.y*pc.y;
+
+    return difference(fluid,-solid); //- because solid has inward pointing normal
+    //return intersection(fluid,solid); // these options are equivalent
+    //return min(fluid,solid);
+}
+
+
+/*
+sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
+clockwise order.
+*/
+
+void sort_clockwise (int nump, coord cf[nump])
+{
+    double xsum = 0, ysum = 0;
+    for (int i = 0; i < nump; ++i) {
+        xsum += cf[i].x;
+        ysum += cf[i].y;
+    }
+    coord pc = {xsum/nump, ysum/nump}; // center coordinate
+    
+}
+
+
+/*
+polygon_area calculates the area of the real fluid part of a cell.
+*/
+
+double polygon_area (coord nf, double alphaf, coord ns, double alphas, 
+                  coord lhs, coord rhs)
+{
+    // 1. find the intersection points, pf & ps, of the fluid and solid interface
+    //    with the enclosed region
+    coord pf[2], ps[2];
+    int numpf = boundary_points_x(nf, alphaf, lhs, rhs, pf);
+    int numps = boundary_points_x(ns, alphas, lhs, rhs, ps);
+    
+    // 2. find the intersecting point of the two interfaces (if there is one)
+    coord pint = {nodata,nodata,nodata};
+    int numpi = interface_intersect (nf, alphaf, ns, alphas, lhs, rhs, &pint);
+
+    // 3. get the other points enclosing the region being advected
+    coord lhst = {lhs.x,0.5}, rhsb = {rhs.x,-0.5}; // only x direction compatible for now!!!
+
+    // 4. find which points create the polygon defining the real fluid region
+    coord poly[9];
+    poly[0] = pf[0], poly[1] = pf[1], poly[2] = ps[0], poly[3] = ps[1], poly[4] = pint;
+    poly[5] = lhs, poly[6] = rhs, poly[7] = lhst, poly[8]= rhsb;
+
+    int nump = 0; // # of real points
+    for (int i = 0; i < 9; ++i) {
+        double placement = region_check(poly[i], nf, alphaf, ns, alphas);
+        if ((placement >= 0 || fabs(placement) < 1e-10) && poly[i].x != nodata) {
+            nump++;
+        }
+        else {
+            poly[i].x = nodata, poly[i].y = nodata;
+        }
+    }
+    coord cf[nump]; // holds real points
+    int count = 0;
+    for (int i = 0; i < 9; ++i) {
+        if (poly[i].x != nodata && count < nump) {
+            cf[count] = poly[i];
+            count++;
+        }
+    }
+    
+    // 5. sort the points in counter-clockwise order
+    if (nump > 0)
+        sort_clockwise (nump, cf);
+
+    // 6. use the shoelace formula to find the area
+
+
+#if 0
+    fprintf(stderr, "|| pf1=(%g,%g) pf2(%g,%g) ps1=(%g,%g) ps2=(%g,%g) pint=(%g,%g)\n",
+                        pf[0].x, pf[0].y, pf[1].x, pf[1].y, ps[0].x, ps[0].y, ps[1].x, ps[1].y,
+                        pint.x, pint.y);
+
+    fprintf(stderr, "|| lhs=(%g,%g) rhs=(%g,%g) lhst=(%g,%g) rhsb=(%g,%g)\n",
+                        lhs.x, lhs.y, rhs.x, rhs.y, lhst.x, lhst.y, rhsb.x, rhsb.y);
+                        
+    fprintf(stderr, "|| nf=(%g,%g) alphaf=%g ns=(%g,%g) alphas=%g %d %d %d\n",
+                        nf.x, nf.y, alphaf, ns.x, ns.y, alphas, numpf, numps, numpi);
+
+    for (int i = 0; i < nump; ++i) {
+        fprintf(stderr, "cf[%d] = (%g,%g)\n",
+                         i, cf[i].x, cf[i].y);
+    }
+#endif
+
+    return 1;
+}
+
+/*
+immmersed_fraction returns the area of f[] neglecting the portion inside of the
+immersed interface ibm.
+
+the coords lhs and rhs are boundary coordinates enclosing the portion of f[] being
+advected or included in the flux not considering the immersed boundary.
+*/
+
+double immersed_fraction (coord nf, double alphaf, coord ns, double alphas, 
+                          coord lhs, coord rhs)
+{
+    // get f[] w/o considering immersed boundary
+    //double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
+
+    double area = polygon_area(nf, alphaf, ns, alphas, lhs, rhs);
+    return area;
+}
+
+
 /*
 The metric event is used to set the metric fields, fm and cm, to the ibmFaces and
 ibmCells field, respectively. It is also used to specifiy the prolongation and

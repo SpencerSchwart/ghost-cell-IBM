@@ -78,7 +78,13 @@ $\phi=\sigma\kappa$. */
 
 event acceleration (i++)
 {
-  
+#if 0
+  scalar f0[];
+  foreach() 
+    f0[] = f[];
+
+  impose_contact_angle (f, ibm);
+#endif
   /**
   We check for all VOF interfaces for which $\sigma$ is non-zero. */
 
@@ -98,4 +104,8 @@ event acceleration (i++)
 	f.phi = phi;
       }
     }
+#if 0
+    foreach()
+        f[] = f0[];
+#endif
 }

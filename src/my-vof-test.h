@@ -1,108 +1,16 @@
 #include "fractions.h"
-(const) scalar contact_angle;
 
-#if 0
-static inline coord normal_contact (coord ns, coord nf, double angle)
-{
-    coord n;
-    if (- ns.x * nf.y + ns.y * nf.x > 0) { // 2D cross product
-        n.x = - ns.x * cos(angle) + ns.y * sin(angle);
-        n.y = - ns.x * sin(angle) - ns.y * cos(angle);
-    }
-    else {
-        n.x = - ns.x * cos(angle) - ns.y * sin(angle);
-        n.y =   ns.x * sin(angle) - ns.y * cos(angle);
-    }
-    return n;
-}
-
-
-/*
-This function extends the normal reconstruction() function in fractions.h by
-taking into account the contact angle on immersed boundaries. Given a volume fraction
-field, f, it fills fields n and alpha with the each cells normal and intercept, resp.
-*/
-
-void reconstruction_contact (scalar f, vector n, scalar alpha)
-{
-    reconstruction (f, n, alpha);
-
-    foreach() {
-        if (on_interface(ibm) && on_interface(f)) {
-            coord ns = facet_normal (point, ibm, ibmf);
-            normalize (&ns);
-            coord nf, nfnorm;
-
-            foreach_dimension() 
-                nf.x = n.x[];
-            //normalize(&nfnorm);
-            coord nc = normal_contact (ns, nf, contact_angle[]);
-            
-            double mag = fabs(nc.x) + fabs(nc.y);
-            nc.x /= mag, nc.y /= mag;
-
-            foreach_dimension()
-                n.x[] = nc.x;
-            alpha[] = line_alpha (f[], nc);
-        }
-    }
-
-    boundary ({n, alpha});
-}
-#endif
-
-/**
-# Volume-Of-Fluid advection
-
-We want to approximate the solution of the advection equations
-$$
-\partial_tc_i + \mathbf{u}_f\cdot\nabla c_i = 0
-$$
-where $c_i$ are volume fraction fields describing sharp interfaces.
-
-This can be done using a conservative, non-diffusive geometric VOF
-scheme.
-
-We also add the option to transport diffusive tracers (aka "VOF
-concentrations") confined to one side of the interface i.e. solve the
-equations
-$$
-\partial_tt_{i,j} + \nabla\cdot(\mathbf{u}_ft_{i,j}) = 0
-$$
-with $t_{i,j} = c_if_j$ (or $t_{i,j} = (1 - c_i)f_j$) and $f_j$ is a
-volumetric tracer concentration (see [Lopez-Herrera et al, 2015](#lopez2015)).
-
-The list of tracers associated with the volume fraction is stored in
-the *tracers* attribute. For each tracer, the "side" of the interface
-(i.e. either $c$ or $1 - c$) is controlled by the *inverse*
-attribute). */
 
 attribute {
   scalar * tracers, c;
   bool inverse;
 }
 
-/**
-We will need basic functions for volume fraction computations. */
-
-
-
-/**
-The list of volume fraction fields `interfaces`, will be provided by
-the user.
-
-The face velocity field `uf` will be defined by a solver as well
-as the timestep. */
 
 extern scalar * interfaces;
 extern face vector uf;
 extern double dt;
 
-/**
-The gradient of a VOF-concentration `t` is computed using a standard
-three-point scheme if we are far enough from the interface (as
-controlled by *cmin*), otherwise a two-point scheme biased away from
-the interface is used. */
 
 foreach_dimension()
 static double vof_concentration_gradient_x (Point point, scalar c, scalar t)
@@ -128,9 +36,6 @@ static double vof_concentration_gradient_x (Point point, scalar c, scalar t)
   return 0.;
 }
 
-/**
-On trees, VOF concentrations need to be refined properly i.e. using
-volume-fraction-weighted linear interpolation of the concentration. */
 
 #if TREE
 static void vof_concentration_refine (Point point, scalar s)
@@ -153,9 +58,6 @@ static void vof_concentration_refine (Point point, scalar s)
   }
 }
 
-/**
-On trees, we need to setup the appropriate prolongation and
-refinement functions for the volume fraction fields. */
 
 event defaults (i = 0)
 {
@@ -173,9 +75,6 @@ event defaults (i = 0)
 }
 #endif // TREE
 
-/**
-Boundary conditions for VOF-advected tracers usually depend on
-boundary conditions for the VOF field. */
 
 event defaults (i = 0)
 {
@@ -186,40 +85,21 @@ event defaults (i = 0)
   }
 }
 
-/**
-We need to make sure that the CFL is smaller than 0.5 to ensure
-stability of the VOF scheme. */
 
 event stability (i++) {
   if (CFL > 0.5)
     CFL = 0.5;
 }
 
-/**
-## One-dimensional advection
-
-The simplest way to implement a multi-dimensional VOF advection scheme
-is to use dimension-splitting i.e. advect the field along each
-dimension successively using a one-dimensional scheme.
-
-We implement the one-dimensional scheme along the x-dimension and use
-the [foreach_dimension()](/Basilisk C#foreach_dimension) operator to
-automatically derive the corresponding functions along the other
-dimensions. */
+coord indicator = {0,1};
 
 foreach_dimension()
 static void sweep_x (scalar c, scalar cc, scalar * tcl)
 {
-  vector n[];
-  scalar alpha[], flux[];
+  vector n[], ns[];
+  scalar alpha[], alphas[], flux[];
   double cfl = 0.;
 
-  /**
-  If we are also transporting tracers associated with $c$, we need to
-  compute their gradient i.e. $\partial_xf_j = \partial_x(t_j/c)$ or
-  $\partial_xf_j = \partial_x(t_j/(1 - c))$ (for higher-order
-  upwinding) and we need to store the computed fluxes. We first
-  allocate the corresponding lists. */
 
   scalar * tracers = c.tracers, * gfl = NULL, * tfluxl = NULL;
   if (tracers) {
@@ -229,8 +109,6 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
       tfluxl = list_append (tfluxl, flux);
     }
 
-    /**
-    The gradient is computed using the "interface-biased" scheme above. */
 
     foreach() {
       scalar t, gf;
@@ -239,20 +117,12 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
     }
   }
   
-  /**
-  We reconstruct the interface normal $\mathbf{n}$ and the intercept
-  $\alpha$ for each cell. Then we go through each (vertical) face of
-  the grid. */
-
-  //reconstruction_contact (c, n, alpha);
+  // 1. Find n and alpha for f[] and ibm[]
   reconstruction (c, n, alpha);
-  //reconstruction_contact_vof (c, n, alpha);
-  foreach_face(x, reduction (max:cfl)) {
+  reconstruction (ibm, ns, alphas);
 
-    /**
-    To compute the volume fraction flux, we check the sign of the velocity
-    component normal to the face and compute the index `i` of the
-    corresponding *upwind* cell (either 0 or -1). */
+
+  foreach_face(x, reduction (max:cfl)) {
 
 #if IBM
     double un = fm.x[]*uf.x[]*dt/(Delta*fm.x[] + SEPS), s = sign(un);
@@ -272,33 +142,36 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
     if (un*fm.x[]*s/(cm[] + SEPS) > cfl)
       cfl = un*fm.x[]*s/(cm[] + SEPS);
 
-    /**
-    If we assume that `un` is negative i.e. `s` is -1 and `i` is 0, the
-    volume fraction flux through the face of the cell is given by the dark
-    area in the figure below. The corresponding volume fraction can be
-    computed using the `rectangle_fraction()` function.
-    
-    ![Volume fraction flux](figures/flux.svg)
-    
-    When the upwind cell is entirely full or empty we can avoid this
-    computation. */
-
     double cf = (c[i] <= 0. || c[i] >= 1.) ? c[i] :
       rectangle_fraction ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
 			  (coord){-0.5, -0.5, -0.5},
 			  (coord){s*un - 0.5, 0.5, 0.5});
-    
+
+#if 0
+    double cf = (c[i] <= 0. || c[i] >= 1.) ? c[i] : (ibm[i] <= 0. || ibm[] >= 1.)?
+      rectangle_fraction ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
+			  (coord){-0.5, -0.5, -0.5},
+			  (coord){s*un - 0.5, 0.5, 0.5}):
+      immersed_fraction_x ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
+                         (coord){-s*ns.x[i], ns.y[i], ns.z[i]}, alphas[i],
+                         (coord){-0.5, -0.5, -0.5},
+                         (coord){s*un - 0.5, 0.5, 0.5});
+#endif
+
+    if (ibm[i] > 0 && ibm[i] < 1 && c[i] > 0 && c[i] < 1) {
+      fprintf(stderr, "\n### %g ibm[i] = %g f[i]=%g###\n", indicator.x, ibm[i], c[i]);
+      double area = immersed_fraction ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
+                         (coord){-s*ns.x[i], ns.y[i], ns.z[i]}, alphas[i],
+                         (coord){-0.5, -0.5, -0.5},
+                         (coord){s*un - 0.5, 0.5, 0.5});
+    }
+
     /**
     Once we have the upwind volume fraction *cf*, the volume fraction
     flux through the face is simply: */
 
     flux[] = cf*uf.x[];
 
-    /**
-    If we are transporting tracers, we compute their flux using the
-    upwind volume fraction *cf* and a tracer value upwinded using the
-    Bell--Collela--Glaz scheme and the gradient computed above. */
-    
     scalar t, gf, tflux;
     for (t,gf,tflux in tracers,gfl,tfluxl) {
       double cf1 = cf, ci = c[i];
@@ -322,23 +195,6 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
 	     "src/vof.h:%d: warning: CFL must be <= 0.5 for VOF (cfl - 0.5 = %g)\n", 
 	     __LINE__, cfl - 0.5), fflush (ferr);
 
-  /**
-  Once we have computed the fluxes on all faces, we can update the
-  volume fraction field according to the one-dimensional advection
-  equation
-  $$
-  \partial_tc = -\nabla_x\cdot(\mathbf{u}_f c) + c\nabla_x\cdot\mathbf{u}_f
-  $$
-  The first term is computed using the fluxes. The second term -- which is
-  non-zero for the one-dimensional velocity field -- is approximated using
-  a centered volume fraction field `cc` which will be defined below. 
-
-  For tracers, the corresponding one-dimensional update is
-  $$
-  \partial_tt_j = -\nabla_x\cdot(\mathbf{u}_f t_j) + t_j\nabla_x\cdot\mathbf{u}_f
-  $$
-  The compressive second-term can be removed by defining the
-  NO_1D_COMPRESSION macro. */
 
 #if !EMBED && !IBM
   foreach() {
@@ -354,12 +210,6 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
 #endif // !NO_1D_COMPRESSION
   }
 #elif EMBED
-  /**
-  When dealing with embedded boundaries, we simply ignore the fraction
-  occupied by the solid. This is a simple approximation which has the
-  advantage of ensuring boundedness of the volume fraction and
-  conservation of the total tracer mass (if it is computed also
-  ignoring the volume occupied by the solid in partial cells). */
   
   foreach()
     if (cs[] > 0.) {
