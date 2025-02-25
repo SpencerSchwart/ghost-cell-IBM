@@ -11,6 +11,7 @@ set ytics font ",10"
 
 set object 1 circle at 0,0.575 size 0.5 fillcolor rgb "black"
 
-plot [-1:1][-.2:1.8] 'ibm/shape-120' w l t "ibm", \
-    'embed/shape-120' w l t "embed"
-        
+plot [-1:1][-.2:1.8] 'ibm/shape-30' w l t "ibm", \
+    'embed/shape-30' w l t "embed", \
+        '../shape-30' w l t "new ibm"
+

@@ -21,9 +21,12 @@ set term pop
 #include "../ibm-gcm.h"
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
+#include "../contact-ibm.h"
 #include "../my-two-phase.h"
 #include "../my-tension.h"
-#include "../contact-ibm.h"
+//#include "../contact-ibm.h"
+
+face vector acc[];
 
 double theta0;
 
@@ -55,9 +58,9 @@ int main()
   }
 }
 
+double init_volume = 0;
 event init (t = 0)
 {
-
   /**
   We define the inclined wall and the initial (half)-circular
   interface. */
@@ -68,11 +71,19 @@ event init (t = 0)
   boundary ({phi});
   fractions (phi, ibm, ibmf);
   fraction (f, - (sq(x - 0) + sq(y - 1.) - sq(0.25)));
+
+  init_volume = 0;
+  foreach() {
+    init_volume += f[]*dv();
+    //init_volume += f[]*(ibm[] != 0)*sq(Delta);
+  }
 }
+
 
 event logfile (i++; t <= 20)
 {
-
+  foreach_face()
+    acc.x[] = a.x[];
   /**
   If the curvature is almost constant, we stop the computation
   (convergence has been reached). */
@@ -111,7 +122,10 @@ double equivalent_contact_angle (double R, double V)
   
 event end (t = end)
 {
-
+  double final_volume = 0;
+  foreach()
+    final_volume += f[]*dv();
+    //final_volume += f[]*(ibm[] != 0)*sq(Delta);
   /**
   At the end, we output the equilibrium shape. */
   
@@ -131,8 +145,8 @@ event end (t = end)
     
   stats s = statsf (kappa);
   double R = s.volume/s.sum, V = statsf(f).sum;
-  fprintf (stderr, "%d %g %.5g %.3g %.4g\n", N, theta0, R/sqrt(V/pi), s.stddev,
-	   equivalent_contact_angle (R, V)*180./pi);
+  fprintf (stderr, "%d %g %.5g %.3g %.4g %g %g\n", N, theta0, R/sqrt(V/pi), s.stddev,
+	   equivalent_contact_angle (R, V)*180./pi, init_volume, final_volume);
 }
 
 /**

@@ -10,6 +10,12 @@ drop-cylinder-ibm.c:26:10: warning: extra tokens at end of #undef directive
 ./../ibm-gcm.h: In function ‘image_pressure’:
 ./../ibm-gcm.h:739:37: warning: unused variable ‘zz’ [-Wunused-variable]
 ./../ibm-gcm.h:737:9: warning: unused variable ‘k’ [-Wunused-variable]
+./../my-vof.h: In function ‘reconstruction_contact’:
+./../my-vof.h:34:23: warning: unused variable ‘nfnorm’ [-Wunused-variable]
+./../my-vof.h:34:23: warning: unused variable ‘nfnorm’ [-Wunused-variable]
+./../contact-ibm.h: In function ‘contact’:
+./../contact-ibm.h:137:31: warning: variable ‘nstemp’ set but not used [-Wunused-but-set-variable]
+./../contact-ibm.h:137:23: warning: variable ‘nftemp’ set but not used [-Wunused-but-set-variable]
 At top level:
 ./../ibm-gcm.h:1034:1: warning: ‘_stencil_ibm_geometry’ defined but not used [-Wunused-function]
 ./../ibm-gcm.h:484:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
