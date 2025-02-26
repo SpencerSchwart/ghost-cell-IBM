@@ -1495,7 +1495,7 @@ boundary_points is used to find the intersecting points of the fluid interface
 within the area being advected.
 */
 
-int boundary_points_x (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
+int boundary_points (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
 {
     int i = 0;
     // check on x faces first
@@ -1511,7 +1511,6 @@ int boundary_points_x (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2
             ++i;
         }
     }
-    
 
     // then check y faces
     for (double yint = -0.5; yint <= 0.5; yint += 1.) {
@@ -1667,14 +1666,13 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
     // 1. find the intersection points, pf & ps, of the fluid and solid interface
     //    with the enclosed region
     coord pf[2], ps[2];
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 2; ++i)
         foreach_dimension() {
             pf[i].x = nodata;
             ps[i].x = nodata;
         }
-    }
-    int numpf = boundary_points_x(nf, alphaf, lhs, rhs, pf);
-    int numps = boundary_points_x(ns, alphas, lhs, rhs, ps);
+    int numpf = boundary_points(nf, alphaf, lhs, rhs, pf);
+    int numps = boundary_points(ns, alphas, lhs, rhs, ps);
     
     // 2. find the intersecting point of the two interfaces (if there is one)
     coord pint = {nodata,nodata,nodata};
@@ -1710,23 +1708,7 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
             count++;
         }
     }
-#if 0
-    fprintf(stderr, "|| pf1=(%g,%g) pf2(%g,%g) ps1=(%g,%g) ps2=(%g,%g) pint=(%g,%g)\n",
-                        pf[0].x, pf[0].y, pf[1].x, pf[1].y, ps[0].x, ps[0].y, ps[1].x, ps[1].y,
-                        pint.x, pint.y);
 
-    fprintf(stderr, "|| lhs=(%g,%g) rhs=(%g,%g) lhst=(%g,%g) rhsb=(%g,%g)\n",
-                        lhs.x, lhs.y, rhs.x, rhs.y, lhst.x, lhst.y, rhsb.x, rhsb.y);
-                        
-    fprintf(stderr, "|| nf=(%g,%g) alphaf=%g ns=(%g,%g) alphas=%g %d %d %d\n",
-                        nf.x, nf.y, alphaf, ns.x, ns.y, alphas, numpf, numps, numpi);
-
-    for (int i = 0; i < nump; ++i) {
-        fprintf(stderr, "cf[%d] = (%g,%g)\n",
-                         i, cf[i].x, cf[i].y);
-    }
-
-#endif
     // 5. sort the real points in clockwise order
     if (lhs.x == rhs.x)
         return 0;
@@ -1737,16 +1719,6 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
     coord rect[4] = {lhs,rhsb,rhs,lhst};
     double areaTotal = polygon_area (4, rect);
 
-#if 0
-    fprintf (stderr, "AFTER SORTING\n");
-    for (int i = 0; i < nump; ++i) {
-        fprintf(stderr, "cf[%d] = (%g,%g)\n",
-                         i, cf[i].x, cf[i].y);
-    }
-    // get f[] w/o considering immersed boundary
-    double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
-    fprintf (stderr, "area = %g  areaTotal = %g areaf=%g f0=%g\n", area, areaTotal, area/areaTotal, f0);
-#endif
     return area/areaTotal;
 
 }
