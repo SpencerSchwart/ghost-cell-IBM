@@ -158,7 +158,7 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
                          (coord){s*un - 0.5, 0.5, 0.5});
 #endif
 
-    if (ibm[i] > 0 && ibm[i] < 1 && c[i] > 0 && c[i] < 1) {
+    if (ibm[i] > 0 && ibm[i] < 1 && c[i] > 0 && c[i] < 1 && indicator.x == 0) {
       fprintf(stderr, "\n### %g ibm[i] = %g f[i]=%g###\n", indicator.x, ibm[i], c[i]);
       double area = immersed_fraction ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
                          (coord){-s*ns.x[i], ns.y[i], ns.z[i]}, alphas[i],

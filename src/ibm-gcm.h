@@ -1612,7 +1612,7 @@ returns
 TODO: show derivation
 */
 
-inline double region_check (coord pc, coord nf, double alphaf, coord ns, double alphas)
+double region_check (coord pc, coord nf, double alphaf, coord ns, double alphas)
 {
     double fluid = alphaf - nf.x*pc.x - nf.y*pc.y;
     double solid = alphas - ns.x*pc.x - ns.y*pc.y;
@@ -1624,8 +1624,42 @@ inline double region_check (coord pc, coord nf, double alphaf, coord ns, double 
 
 
 /*
+This function uses cross products to determine the orientation of two points w.r.t
+a given center coordinate.
+
+is_begin will return
+    true is a behind b in a clockwise order,
+    false if a is in front of b, i.e. a is already in clockwise order with b.
+
+in degenerate cases where a and b lay along the same line (a x b = 0) we return
+true if a is further from the center than b.
+*/
+
+bool is_behind (coord a, coord b, coord center)
+{
+    // calculate cross product of a and b w.r.t the center
+    double det = (a.x - center.x)*(b.y - center.y) - (a.y - center.y)*(b.x - center.x);
+
+    if (det > 0)
+        return false;
+    if (det < 0)
+        return true;
+
+    // a and b lay along the same line, so det = 0. Instead, we check to see
+    // if a is further from the center than b.
+    double dista = sq(a.x - center.x) + sq(a.y - center.y);
+    double distb = sq(b.x - center.x) + sq(b.y - center.y);
+
+    return dista > distb;
+}
+
+
+
+/*
 sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
 clockwise order.
+
+TODO: add way to avoid a infinite loop in the while loop
 */
 
 void sort_clockwise (int nump, coord cf[nump])
@@ -1635,8 +1669,21 @@ void sort_clockwise (int nump, coord cf[nump])
         xsum += cf[i].x;
         ysum += cf[i].y;
     }
-    coord pc = {xsum/nump, ysum/nump}; // center coordinate
+    coord pc = {xsum/nump, ysum/nump}; // center coordinate is average of all points
     
+    bool sorted = false;
+    while (!sorted) {
+        sorted = true;
+        for (int i = 0; i < nump; ++i) {
+            int next = i + 1 < nump? i + 1: 0; // we loop around the list of coords
+            if (is_behind(cf[i],cf[next],pc)) {
+                coord tempcf = cf[i];
+                cf[i] = cf[next];
+                cf[next] = tempcf;
+                sorted = false;
+            }
+        }
+    }
 }
 
 
@@ -1650,6 +1697,12 @@ double polygon_area (coord nf, double alphaf, coord ns, double alphas,
     // 1. find the intersection points, pf & ps, of the fluid and solid interface
     //    with the enclosed region
     coord pf[2], ps[2];
+    for (int i = 0; i < 2; ++i) {
+        foreach_dimension() {
+            pf[i].x = nodata;
+            ps[i].x = nodata;
+        }
+    }
     int numpf = boundary_points_x(nf, alphaf, lhs, rhs, pf);
     int numps = boundary_points_x(ns, alphas, lhs, rhs, ps);
     
@@ -1668,13 +1721,17 @@ double polygon_area (coord nf, double alphaf, coord ns, double alphas,
     int nump = 0; // # of real points
     for (int i = 0; i < 9; ++i) {
         double placement = region_check(poly[i], nf, alphaf, ns, alphas);
-        if ((placement >= 0 || fabs(placement) < 1e-10) && poly[i].x != nodata) {
+        if ((placement >= 0 || fabs(placement) < 1e-10) && poly[i].x != nodata) { // should be < nodata?
             nump++;
         }
         else {
             poly[i].x = nodata, poly[i].y = nodata;
         }
     }
+
+    if (nump == 0)
+        return 0;
+
     coord cf[nump]; // holds real points
     int count = 0;
     for (int i = 0; i < 9; ++i) {
@@ -1683,14 +1740,6 @@ double polygon_area (coord nf, double alphaf, coord ns, double alphas,
             count++;
         }
     }
-    
-    // 5. sort the points in counter-clockwise order
-    if (nump > 0)
-        sort_clockwise (nump, cf);
-
-    // 6. use the shoelace formula to find the area
-
-
 #if 0
     fprintf(stderr, "|| pf1=(%g,%g) pf2(%g,%g) ps1=(%g,%g) ps2=(%g,%g) pint=(%g,%g)\n",
                         pf[0].x, pf[0].y, pf[1].x, pf[1].y, ps[0].x, ps[0].y, ps[1].x, ps[1].y,
@@ -1706,7 +1755,24 @@ double polygon_area (coord nf, double alphaf, coord ns, double alphas,
         fprintf(stderr, "cf[%d] = (%g,%g)\n",
                          i, cf[i].x, cf[i].y);
     }
+
 #endif
+    // 5. sort the points in clockwise order
+    if (lhs.x == rhs.x)
+        return 0;
+    sort_clockwise (nump, cf);
+
+#if 1
+    fprintf (stderr, "AFTER SORTING\n");
+    for (int i = 0; i < nump; ++i) {
+        fprintf(stderr, "cf[%d] = (%g,%g)\n",
+                         i, cf[i].x, cf[i].y);
+    }
+
+#endif
+
+    // 6. use the shoelace formula to find the area
+
 
     return 1;
 }
