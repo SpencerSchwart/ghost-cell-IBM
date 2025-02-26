@@ -142,6 +142,9 @@ bool fluid_neighbor (Point point, scalar ibm)
 /*
 is_ghost_cell returns true if the given cell shares a face with a fluid cell,
 ibm > 0.5, and the volume fraction is less than or equal to 0.5.
+
+TODO: add check to make sure ghost cells, particularly ghost cells w/ different
+      levels of refinement, dont overlap with each other.
 */
 
 bool is_ghost_cell (Point point, scalar ibm)
@@ -750,22 +753,6 @@ double image_pressure (Point point, scalar p, coord imagePoint)
     pressure[7] = p[xx,yy+j,zz+k];
 #endif
 
-#if 0
-    if (ibm[] == 0) {
-    fprintf (stderr, "\n###### NEW CELL %g %g %g ######\n", x, y, ibm[]);
-    fprintf (stderr, "xx=%d yy=%d i=%d j=%d\n", xx, yy, i, j);
-
-    fprintf (stderr, "### Printing Neighbors ###\n");
-    for(int ii = -1; ii <= 1; ii++) {
-        for (int jj = -1; jj <= 1; jj++) {    
-            fprintf (stderr,"|| %d %d x=%g y=%g ibm=%g p=%g\n",
-                     ii, jj, x + ii*Delta, y + jj*Delta, ibm[ii,jj],
-                     p[ii,jj]);
-        }
-    }
-    }
-#endif
-
     coord p0 = {imageCell.x, imageCell.y, imageCell.z};
     coord p1 = {imageCell.x + i*Delta, imageCell.y, imageCell.z};
     coord p2 = {imageCell.x + i*Delta, imageCell.y + j*Delta, imageCell.z};
@@ -803,20 +790,6 @@ double image_pressure (Point point, scalar p, coord imagePoint)
     double coeff[8];
 #endif
 
-#if 0
-    if (ibm[] == 0) {
-    fprintf (stderr, "##### BEFORE GAUSSIAN ELIMINATION #####\n");
-    for (int mm = 0; mm < 4; mm++) {
-        fprintf (stderr, "matrix[%d] = {", mm);
-        for (int nn = 0; nn < 5; nn++) {
-            fprintf (stderr, "%g, ", vanderPressure[mm][nn]);
-        }
-        fprintf (stderr, "}, \n");
-    }
-    }
-#endif
-
-
     gauss_elim (m, n, vanderPressure, coeff);
 
 #if dimension == 2
@@ -833,14 +806,6 @@ double image_pressure (Point point, scalar p, coord imagePoint)
                            coeff[5] * imagePoint.y +
                            coeff[6] * imagePoint.z +
                            coeff[7];
-#endif
-
-#if 0
-    if (ibm[] == 0) {
-    fprintf (stderr, "Interpolated p = %g @(%g,%g) in (%g,%g)\n", 
-                      temp_pressure, imagePoint.x, imagePoint.y,
-                      imageCell.x, imageCell.y);
-    }
 #endif
 
     return temp_pressure;
@@ -1608,8 +1573,6 @@ Note: ns is the inward pointing normal for the solid boundary while
 
 returns
     + if inside, - if outisde, and 0 if the points is on the interface
-
-TODO: show derivation
 */
 
 double region_check (coord pc, coord nf, double alphaf, coord ns, double alphas)
@@ -1772,7 +1735,7 @@ double polygon_area (coord nf, double alphaf, coord ns, double alphas,
 #endif
 
     // 6. use the shoelace formula to find the area
-
+    
 
     return 1;
 }
