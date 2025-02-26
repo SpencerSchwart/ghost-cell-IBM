@@ -1714,7 +1714,7 @@ double polygon_area (coord nf, double alphaf, coord ns, double alphas,
         return 0;
     sort_clockwise (nump, cf);
 
-#if 1
+#if 0
     fprintf (stderr, "AFTER SORTING\n");
     for (int i = 0; i < nump; ++i) {
         fprintf(stderr, "cf[%d] = (%g,%g)\n",
