@@ -1725,7 +1725,8 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
 
 /*
 This function calculates the fraction of a rectangle (defined by lhs and rhs)
-which lies inside the interface neglecting the portion inside of the immersed boundary.
+which lies inside the liquid interface neglecting the portion inside of the 
+immersed boundary.
 
 lhs and rhs are the bottom left and top right (resp.) coordinates defining the
 region being advected by the split VOF advection scheme (see sweep_x in vof.h)
