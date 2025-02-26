@@ -10,14 +10,16 @@ sessile-ibm.c:1:10: warning: extra tokens at end of #undef directive
 ./../ibm-gcm.h: In function ‘image_pressure’:
 ./../ibm-gcm.h:739:37: warning: unused variable ‘zz’ [-Wunused-variable]
 ./../ibm-gcm.h:737:9: warning: unused variable ‘k’ [-Wunused-variable]
-./../ibm-gcm.h: In function ‘boundary_points_x’:
-./../ibm-gcm.h:1534:11: warning: variable ‘bptemp’ set but not used [-Wunused-but-set-variable]
-./../ibm-gcm.h: In function ‘polygon_area’:
-./../ibm-gcm.h:1642:31: warning: unused variable ‘rhsb’ [-Wunused-variable]
-./../ibm-gcm.h:1642:11: warning: unused variable ‘lhst’ [-Wunused-variable]
-./../ibm-gcm.h:1639:9: warning: unused variable ‘numpi’ [-Wunused-variable]
-./../ibm-gcm.h:1635:9: warning: unused variable ‘numps’ [-Wunused-variable]
-./../ibm-gcm.h:1634:9: warning: unused variable ‘numpf’ [-Wunused-variable]
+./../my-vof-test.h: In function ‘sweep_x’:
+./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
+./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
+./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
+./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
+./../my-vof-test.h: In function ‘sweep_y’:
+./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
+./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
+./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
+./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
 ./../contact-ibm.h: In function ‘contact’:
 ./../contact-ibm.h:191:31: warning: variable ‘nstemp’ set but not used [-Wunused-but-set-variable]
 ./../contact-ibm.h:191:23: warning: variable ‘nftemp’ set but not used [-Wunused-but-set-variable]

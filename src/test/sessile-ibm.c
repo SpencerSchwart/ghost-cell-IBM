@@ -39,7 +39,7 @@ int main()
   /**
   We vary the contact_angle. */
 
-  for (theta0 = 15; theta0 <= 165; theta0 += 15) {
+  for (theta0 = 135; theta0 <= 165; theta0 += 15) {
     const scalar c[] = theta0*pi/180.;
     contact_angle = c;
     run();
