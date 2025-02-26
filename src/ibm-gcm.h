@@ -1640,10 +1640,28 @@ void sort_clockwise (int nump, coord cf[nump])
 
 
 /*
-polygon_area calculates the area of the real fluid part of a cell.
+polygon_area calculates the area enclosed by a list of points (in cw order) using
+the shoelace formula.
 */
 
-double polygon_area (coord nf, double alphaf, coord ns, double alphas, 
+double polygon_area (int nump, coord cf[nump])
+{
+    double area = 0;
+    bool finished = false;
+    for (int i = 0; i < nump; ++i) {
+        int next = i + 1 < nump? i + 1: 0; // to close the shape
+        area += cf[i].x*cf[next].y - cf[next].x*cf[i].y;
+    }
+
+    return fabs(area)/2;
+}
+
+
+/*
+immersed_area calculates the area of the real fluid part of a cell.
+*/
+
+double immersed_area (coord nf, double alphaf, coord ns, double alphas, 
                   coord lhs, coord rhs)
 {
     // 1. find the intersection points, pf & ps, of the fluid and solid interface
@@ -1714,19 +1732,19 @@ double polygon_area (coord nf, double alphaf, coord ns, double alphas,
         return 0;
     sort_clockwise (nump, cf);
 
+    // 6. use the shoelace formula to find the area
+    double area = polygon_area (nump, cf);
+
 #if 0
     fprintf (stderr, "AFTER SORTING\n");
     for (int i = 0; i < nump; ++i) {
         fprintf(stderr, "cf[%d] = (%g,%g)\n",
                          i, cf[i].x, cf[i].y);
     }
-
+    fprintf (stderr, "area = %g\n", area);
 #endif
+    return area;
 
-    // 6. use the shoelace formula to find the area
-    
-
-    return 1;
 }
 
 /*
@@ -1743,7 +1761,7 @@ double immersed_fraction (coord nf, double alphaf, coord ns, double alphas,
     // get f[] w/o considering immersed boundary
     //double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
 
-    double area = polygon_area(nf, alphaf, ns, alphas, lhs, rhs);
+    double area = immersed_area(nf, alphaf, ns, alphas, lhs, rhs);
     return area;
 }
 
