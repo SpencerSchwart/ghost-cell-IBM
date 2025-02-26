@@ -1465,7 +1465,7 @@ double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
 
 
 
-#if 0 // this seems to not have any major effect
+#if 0 // this seems to not have any major effect, despite its use in embed
 #define face_condition(ibmf, ibm)						\
   (ibmf.x[i,j] > 0.5 && ibmf.y[i,j + (j < 0)] && ibmf.y[i-1,j + (j < 0)] &&	\
    ibm[i,j] && ibm[i-1,j])
@@ -1489,6 +1489,7 @@ static inline double ibm_face_gradient_x (Point point, scalar a, int i)
 /*
 ###### TWO PHASE FUNCTIONS ######
 */
+
 /*
 boundary_points is used to find the intersecting points of the fluid interface
 within the area being advected.
@@ -1521,19 +1522,7 @@ int boundary_points_x (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2
             ++i;
         }
     }
-#if 0
-    // sort points in ascending order for x
-    if (bptemp[0].x < bptemp[1].x && i == 2) {
-        bp[0] = bptemp[0];
-        bp[1] = bptemp[1];
-    }
-    else if (i == 2) {
-        bp[0] = bptemp[1];
-        bp[1] = bptemp[0];
-    }
-    else if (i == 1)
-        bp[0] = bptemp[0]; // interface only intersects vertex
-#endif
+
     return i;
 }
 
