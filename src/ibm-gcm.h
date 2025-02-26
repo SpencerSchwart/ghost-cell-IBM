@@ -1681,7 +1681,7 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
     int numpi = interface_intersect (nf, alphaf, ns, alphas, lhs, rhs, &pint);
 
     // 3. get the other points enclosing the region being advected
-    coord lhst = {lhs.x,0.5}, rhsb = {rhs.x,-0.5}; // only x direction compatible for now!!!
+    coord lhst = {lhs.x,0.5}, rhsb = {rhs.x,-0.5}; 
 
     // 4. find which points create the polygon defining the real fluid region
     coord poly[9];
@@ -1699,7 +1699,7 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
         }
     }
 
-    if (nump == 0)
+    if (nump == 0) // we don't do anything if the region has no interface fragments
         return 0;
 
     coord cf[nump]; // holds real points
@@ -1727,13 +1727,15 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
     }
 
 #endif
-    // 5. sort the points in clockwise order
+    // 5. sort the real points in clockwise order
     if (lhs.x == rhs.x)
         return 0;
     sort_clockwise (nump, cf);
 
     // 6. use the shoelace formula to find the area
     double area = polygon_area (nump, cf);
+    coord rect[4] = {lhs,rhsb,rhs,lhst};
+    double areaTotal = polygon_area (4, rect);
 
 #if 0
     fprintf (stderr, "AFTER SORTING\n");
@@ -1741,9 +1743,11 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
         fprintf(stderr, "cf[%d] = (%g,%g)\n",
                          i, cf[i].x, cf[i].y);
     }
-    fprintf (stderr, "area = %g\n", area);
+    // get f[] w/o considering immersed boundary
+    double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
+    fprintf (stderr, "area = %g  areaTotal = %g areaf=%g f0=%g\n", area, areaTotal, area/areaTotal, f0);
 #endif
-    return area;
+    return area/areaTotal;
 
 }
 
@@ -1758,9 +1762,6 @@ advected or included in the flux not considering the immersed boundary.
 double immersed_fraction (coord nf, double alphaf, coord ns, double alphas, 
                           coord lhs, coord rhs)
 {
-    // get f[] w/o considering immersed boundary
-    //double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
-
     double area = immersed_area(nf, alphaf, ns, alphas, lhs, rhs);
     return area;
 }
