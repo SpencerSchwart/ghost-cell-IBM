@@ -1609,7 +1609,7 @@ bool is_behind (coord a, coord b, coord center)
 
 /*
 sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
-clockwise order.
+clockwise order (or counter-clockwise if y-advection).
 
 TODO: add way to avoid a infinite loop in the while loop
 */
@@ -1640,8 +1640,8 @@ void sort_clockwise (int nump, coord cf[nump])
 
 
 /*
-polygon_area calculates the area enclosed by a list of points (in cw order) using
-the shoelace formula.
+polygon_area calculates the area enclosed by a list of points (in cw or ccw order)
+using the shoelace formula.
 */
 
 double polygon_area (int nump, coord cf[nump])
@@ -1752,11 +1752,11 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
 }
 
 /*
-immmersed_fraction returns the area of f[] neglecting the portion inside of the
-immersed interface ibm.
+This function calculates the fraction of a rectangle (defined by lhs and rhs)
+which lies inside the interface neglecting the portion inside of the immersed boundary.
 
-the coords lhs and rhs are boundary coordinates enclosing the portion of f[] being
-advected or included in the flux not considering the immersed boundary.
+lhs and rhs are the bottom left and top right (resp.) coordinates defining the
+region being advected by the split VOF advection scheme (see sweep_x in vof.h)
 */
 
 double immersed_fraction (coord nf, double alphaf, coord ns, double alphas, 
