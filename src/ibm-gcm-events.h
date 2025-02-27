@@ -6,7 +6,7 @@ should execute after the new volume fraction fields have been initalized.
 Its main purpose is to update the metric fields to account for a moving interface.
 */
 
-event vof (i++)
+event update_metric (i++)
 {
     // update metrics considering immersed boundary
 
