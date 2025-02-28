@@ -1500,7 +1500,7 @@ int boundary_points (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
     int i = 0;
     // check on x faces first
     double dx = rhs.x - lhs.x;
-    if (fabs(dx) < 1e-10)
+    if (fabs(dx) < 1e-15)
         return 0;
 
     for (double xint = rhs.x; xint >= lhs.x; xint -= dx) {
@@ -1563,8 +1563,13 @@ returns
     + if inside, - if outisde, and 0 if the points is on the interface
 */
 
-double region_check (coord pc, coord nf, double alphaf, coord ns, double alphas)
+double region_check (double vol, coord pc, coord nf, double alphaf, coord ns, double alphas)
 {
+    //if (fabs(nf.x) < 1e-10 && fabs(nf.y) < 1e-10)
+    //    return 1.;
+    //else if (fabs(nf.x) < 1e-10 && fabs(nf.y) < 1e-10)
+    //    return -1.;
+
     double fluid = alphaf - nf.x*pc.x - nf.y*pc.y;
     double solid = alphas - ns.x*pc.x - ns.y*pc.y;
 
@@ -1609,8 +1614,6 @@ bool is_behind (coord a, coord b, coord center)
 /*
 sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
 clockwise order (or counter-clockwise if y-advection).
-
-TODO: add way to avoid a infinite loop in the while loop
 */
 
 void sort_clockwise (int nump, coord cf[nump])
@@ -1623,7 +1626,8 @@ void sort_clockwise (int nump, coord cf[nump])
     coord pc = {xsum/nump, ysum/nump}; // center coordinate is average of all points
     
     bool sorted = false;
-    while (!sorted) {
+    int nitrmax = 20, nitr = 0;
+    while (!sorted && nitr < nitrmax) {
         sorted = true;
         for (int i = 0; i < nump; ++i) {
             int next = i + 1 < nump? i + 1: 0; // we loop around the list of coords
@@ -1634,6 +1638,7 @@ void sort_clockwise (int nump, coord cf[nump])
                 sorted = false;
             }
         }
+        nitr++;
     }
 }
 
@@ -1660,8 +1665,8 @@ double polygon_area (int nump, coord cf[nump])
 immersed_area calculates the area of the real fluid part of a cell.
 */
 
-double immersed_area (coord nf, double alphaf, coord ns, double alphas, 
-                  coord lhs, coord rhs)
+double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas, 
+                      coord lhs, coord rhs, int print = 1)
 {
     // 1. find the intersection points, pf & ps, of the fluid and solid interface
     //    with the enclosed region
@@ -1682,21 +1687,33 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
     coord lhst = {lhs.x,0.5}, rhsb = {rhs.x,-0.5}; 
 
     // 4. find which points create the polygon defining the real fluid region
-    coord poly[9];
+    coord poly[9]; // 9 possible points
     poly[0] = pf[0], poly[1] = pf[1], poly[2] = ps[0], poly[3] = ps[1], poly[4] = pint;
     poly[5] = lhs, poly[6] = rhs, poly[7] = lhst, poly[8]= rhsb;
 
     int nump = 0; // # of real points
     for (int i = 0; i < 9; ++i) {
-        double placement = region_check(poly[i], nf, alphaf, ns, alphas);
-        if ((placement >= 0 || fabs(placement) < 1e-10) && poly[i].x != nodata) { // should be < nodata?
+        double placement = region_check(c, poly[i], nf, alphaf, ns, alphas);
+        if ((placement >= 0 || fabs(placement) < 1e-15) && poly[i].x != nodata) { // should be < nodata?
             nump++;
         }
         else {
             poly[i].x = nodata, poly[i].y = nodata;
         }
     }
-
+#if 1
+    if (print == 1) {
+        fprintf(stderr, "|| pf1=(%g,%g) pf2(%g,%g) ps1=(%g,%g) ps2=(%g,%g) pint=(%g,%g)\n",
+                        pf[0].x, pf[0].y, pf[1].x, pf[1].y, ps[0].x, ps[0].y, ps[1].x, ps[1].y,
+                        pint.x, pint.y);
+    
+        fprintf(stderr, "|| lhs=(%g,%g) rhs=(%g,%g) lhst=(%g,%g) rhsb=(%g,%g)\n",
+                        lhs.x, lhs.y, rhs.x, rhs.y, lhst.x, lhst.y, rhsb.x, rhsb.y);
+                        
+        fprintf(stderr, "|| nf=(%g,%g) alphaf=%g ns=(%g,%g) alphas=%g %d %d %d %d\n",
+                        nf.x, nf.y, alphaf, ns.x, ns.y, alphas, numpf, numps, numpi, nump);
+    }
+#endif
     if (nump == 0) // we don't do anything if the region has no interface fragments
         return 0;
 
@@ -1709,6 +1726,15 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
         }
     }
 
+#if 1
+    if (print == 1) {
+        for (int i = 0; i < nump; ++i) {
+            fprintf(stderr, "cf[%d] = (%g,%g)\n",
+                             i, cf[i].x, cf[i].y);
+        }
+    }
+#endif
+
     // 5. sort the real points in clockwise order
     if (lhs.x == rhs.x)
         return 0;
@@ -1718,6 +1744,20 @@ double immersed_area (coord nf, double alphaf, coord ns, double alphas,
     double area = polygon_area (nump, cf);
     coord rect[4] = {lhs,rhsb,rhs,lhst};
     double areaTotal = polygon_area (4, rect);
+
+#if 1
+    if (print == 1) {
+        fprintf (stderr, "AFTER SORTING\n");
+        for (int i = 0; i < nump; ++i) {
+            fprintf(stderr, "cf[%d] = (%g,%g)\n",
+                         i, cf[i].x, cf[i].y);
+        }
+        // get f[] w/o considering immersed boundary
+        double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
+        fprintf (stderr, "area = %g  areaTotal = %g areaf=%g f0=%g\n", area, areaTotal, area/areaTotal, f0);
+    }
+#endif
+
 
     return area/areaTotal;
 
@@ -1732,13 +1772,110 @@ lhs and rhs are the bottom left and top right (resp.) coordinates defining the
 region being advected by the split VOF advection scheme (see sweep_x in vof.h)
 */
 
-double immersed_fraction (coord nf, double alphaf, coord ns, double alphas, 
-                          coord lhs, coord rhs)
+double immersed_fraction (double c, coord nf, double alphaf, coord ns, double alphas, 
+                          coord lhs, coord rhs, int print = 1)
 {
-    double area = immersed_area(nf, alphaf, ns, alphas, lhs, rhs);
+    double area = immersed_area(c, nf, alphaf, ns, alphas, lhs, rhs, print);
+    
+    //return clamp(area, 0., 1.);
     return area;
 }
 
+
+/*
+immersed_line_alpha calculates the alpha value that conserves the volume of
+real fluid, given in freal. We find the root of a function using the iterative
+bisection method to obtain alpha.
+
+The solver converges after about 20 iterations if tolerance = 1e-7
+
+TODO: use n from contact angle B.C instead of nf
+*/
+
+double immersed_line_alpha (coord nf, double alphaf, coord ns, double alphas,
+                            double freal, double tolerance = 1e-7)
+{
+    if (freal <= 0 || freal >= 1)
+        return alphaf;
+
+    coord lhs = {-0.5,-0.5}, rhs = {0.5,0.5}; // bottom-left & top-right points, resp.
+
+    double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
+    double alphaMin = -0.5, alphaMax = 0.5; // are there better values?
+    
+    double error = HUGE, alpha = 0;
+    
+#if 0
+    fprintf(stderr,"\n");
+    for (double i = -1; i <= 1; i += 0.1)
+    {
+        double area = immersed_fraction(f0,nf, i, ns, alphas, lhs, rhs,0);
+        double area2 = rectangle_fraction(nf, i, lhs, rhs);
+        fprintf(stderr,"%g %g %g %g %g\n", i, f0, freal, area, area2); 
+    }
+    fprintf(stderr,"\n");
+#endif
+    
+    // determine how increasing/decreasing alpha affects the real area computation,
+    // e.g., increasing alpha could increase area in one case but shrink area in another
+    // due to the orientation of the liquid AND solid interfaces.
+    // TODO: is this actually necessary?
+
+    int maxitr = 30, itr = 0;
+    while (fabs(error) > tolerance && itr < maxitr) {
+        alpha = (alphaMin + alphaMax)/2.;
+        double fcalc = immersed_fraction(f0, nf, alpha, ns, alphas, lhs, rhs,0);
+        error = fcalc - freal;
+        if (error > 0)
+            alphaMax = alpha;
+        else if (error < 0)
+            alphaMin = alpha;
+        //fprintf(stderr, "|| A.S: %d alpha=%g fcalc=%g freal=%g error=%g\n",
+        //                    itr, alpha, fcalc, freal, error);
+        itr++;
+    }
+
+    return alpha;
+}
+
+
+/* 
+Some of the advected fluid gets reconstructed in the solid region of a cell.
+immersed_reconstruction changes c to enforce volume/mass conservation (according
+to cr) considering the immersed boundary.
+
+cr is the total real fluid in a cell after the unidimensional advection.
+
+nf and ns are the liquid and solid normals (resp.). Likewise, alphas and alphaf
+are the corresponding alpha values.
+*/
+
+void immersed_reconstruction (scalar c, const scalar cr, vector nf, scalar alphaf, 
+                              vector ns, scalar alphas)
+{
+    foreach() {
+        if (on_interface(ibm) && c[]) {
+
+            //cr[] = clamp(cr[], 0, ibm[]);
+
+            coord nsolid = {ns.x[], ns.y[]}, nfluid = {nf.x[], nf.y[]};
+            #if 0
+            fprintf(stderr, "\n### New Cell ibm=%g f=%g cr=%g ###\n", ibm[], c[], cr[]);
+            fprintf(stderr, "### nf={%g,%g} af=%g ns=(%g,%g) as=%g ###\n", 
+                             nfluid.x, nfluid.y, alphaf[], nsolid.x, nsolid.y, alphas[]);
+            #endif
+            if ((c[] <= 1e-10 || c[] >= 1-1e-10) || (fabs(nfluid.x) <= 1e-10 && fabs(nfluid.y) <= 1e-10)) {
+                c[] = clamp(c[], 0., 1.);
+                continue;
+            }
+            double alpha = immersed_line_alpha (nfluid, alphaf[], nsolid, alphas[], cr[]);
+            double c0 = c[];
+            c[] = plane_volume (nfluid, alpha);
+            double cnew = plane_volume (nfluid, alpha);
+            //fprintf(stderr, "c[]_before = %g, c[]_after = %g | cr[] = %g\n", c0, cnew, cr[]);
+        }
+    }
+}
 
 /*
 The metric event is used to set the metric fields, fm and cm, to the ibmFaces and

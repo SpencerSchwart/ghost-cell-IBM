@@ -98,9 +98,9 @@ void reconstruction_contact_vof (scalar f, vector n, scalar alpha)
     }
 
     foreach() {
-        //if (on_interface(ibm) && on_interface(f)) {
+       if (on_interface(ibm) && on_interface(f)) {
         coord ns1 = {normals.x[], normals.y[]}, nf1 = {n.x[], n.y[]};
-        if (is_triple_point(point, ns1, nf1)) {
+        //if (is_triple_point(point, ns1, nf1)) {
             coord ns = facet_normal (point, ibm, ibmf);
             normalize (&ns);
             coord nf;
@@ -108,9 +108,11 @@ void reconstruction_contact_vof (scalar f, vector n, scalar alpha)
             foreach_dimension()
                 nf.x = n.x[];
             coord nc = normal_contact (ns, nf, contact_angle[]);
+            //double mag = fabs(nc.x) + fabs(nc.y);
+            double mag = 1;
+            foreach_dimension() 
+                n.x[] = nc.x/mag;
 
-            foreach_dimension()
-                n.x[] = nc.x;
             alpha[] = line_alpha (f[], nc);
         }
     }

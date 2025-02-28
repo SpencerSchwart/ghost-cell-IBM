@@ -93,11 +93,21 @@ event stability (i++) {
 
 coord indicator = {0,1};
 
+scalar cr[]; // holds the real fluid
+scalar cr0[];
+
+vector nf[], ns[];
+scalar alphaf[], alphas[];
+
+void reconstruction_contact_vof (scalar f, vector n, scalar alpha);
+
 foreach_dimension()
 static void sweep_x (scalar c, scalar cc, scalar * tcl)
 {
-  vector n[], ns[];
-  scalar alpha[], alphas[], flux[];
+  //vector n[], ns[];
+  //scalar alpha[], alphas[], flux[];
+  scalar flux[];  // real flux
+  scalar fluxf[]; // fake flux
   double cfl = 0.;
 
 
@@ -118,14 +128,17 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
   }
   
   // 1. Find n and alpha for f[] and ibm[]
-  reconstruction (c, n, alpha);
-  reconstruction (ibm, ns, alphas);
+  
+  trash({ns,nf,alphaf,alphaf});
 
+  reconstruction (c, nf, alphaf);
+  //reconstruction_contact_vof (c, nf, alphaf);
+  reconstruction (ibm, ns, alphas);
 
   foreach_face(x, reduction (max:cfl)) {
 
 #if IBM
-    double un = fm.x[]*uf.x[]*dt/(Delta*fm.x[] + SEPS), s = sign(un);
+    double un = uf.x[]*dt/(Delta + SEPS), s = sign(un);
 #else
     double un = uf.x[]*dt/(Delta*fm.x[] + SEPS), s = sign(un);
 #endif
@@ -142,51 +155,101 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
     if (un*fm.x[]*s/(cm[] + SEPS) > cfl)
       cfl = un*fm.x[]*s/(cm[] + SEPS);
 
+#if 0
     double cf = (c[i] <= 0. || c[i] >= 1.) ? c[i] :
       rectangle_fraction ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
 			  (coord){-0.5, -0.5, -0.5},
 			  (coord){s*un - 0.5, 0.5, 0.5});
-
-#if 0
-    double cf = (c[i] <= 0. || c[i] >= 1.) ? c[i] : (ibm[i] <= 0. || ibm[] >= 1.)?
+#endif
+#if 1
+    double cf = 0;
+    //if ((c[i] <= 0. || c[i] >= 1.) && (ibm[i] <= 0. || ibm[i] >= 1))
+    if ((c[i] <= 0. || c[i] >= 1.)) {
+        cf = c[i];
+        fluxf[] = 0;
+    }
+#if 1
+    else if (ibm[i] > 0. && ibm[i] < 1. && c[i] > 0) {
+        coord tempnf = {-s*nf.x[i], nf.y[i], nf.z[i]};
+        coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
+        coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
+        cf = immersed_fraction (c[i], tempnf, alphaf[i], tempns, alphas[i], lhs, rhs,0);
+        if (cf == 0)
+            fluxf[] = uf.x[]*ibmf.x[]*rectangle_fraction (tempnf, alphaf[i], lhs, rhs);
+        else
+            fluxf[] = 0;
+    }
+#endif
+    else {
+        coord tempnf = {-s*nf.x[i], nf.y[i], nf.z[i]};
+        coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
+        cf = rectangle_fraction (tempnf, alphaf[i], lhs, rhs);
+        fluxf[] = 0;
+    }
+    /*
+    double cf = ((c[i] <= 0. || c[i] >= 1.) && (ibm[i] <= 0. || ibm[i] >= 1)) ? 
+                c[i] : (ibm[i] <= 0. || ibm[] >= 1.)?
       rectangle_fraction ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
 			  (coord){-0.5, -0.5, -0.5},
 			  (coord){s*un - 0.5, 0.5, 0.5}):
-      immersed_fraction_x ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
+      immersed_fraction ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
                          (coord){-s*ns.x[i], ns.y[i], ns.z[i]}, alphas[i],
                          (coord){-0.5, -0.5, -0.5},
                          (coord){s*un - 0.5, 0.5, 0.5});
+    */
+#endif
+#if 0
+    if (ibm[i] > 0 && ibm[i] < 1) {
+      fprintf(stderr, "\n### %g ibm[i] = %g f[i]=%g cf=%g ###\n", indicator.x, ibm[i], c[i], cf);
+        double f0 = immersed_fraction ((coord){-s*nf.x[i], nf.y[i], nf.z[i]}, alphaf[i],
+                         (coord){-s*ns.x[i], ns.y[i], ns.z[i]}, alphas[i],
+                         (coord){-0.5, -0.5, -0.5},
+                         (coord){s*un - 0.5, 0.5, 0.5});
+        double alpha0 = immersed_line_alpha ((coord){-s*nf.x[i], nf.y[i], nf.z[i]}, alphaf[i],
+                         (coord){-s*ns.x[i], ns.y[i], ns.z[i]}, alphas[i],f0);
+        fprintf(stderr, "alpha0 = %g vs alphaf = %g | f0=%g cf=%g\n", alpha0, alphaf[i], f0, cf);
+    }
 #endif
 
-    if (ibm[i] > 0 && ibm[i] < 1 && c[i] > 0 && c[i] < 1) {
-      fprintf(stderr, "\n### %g ibm[i] = %g f[i]=%g cf=%g ###\n", indicator.x, ibm[i], c[i], cf);
-      double test = immersed_fraction ((coord){-s*n.x[i], n.y[i], n.z[i]}, alpha[i],
-                         (coord){-s*ns.x[i], ns.y[i], ns.z[i]}, alphas[i],
-                         (coord){-0.5, -0.5, -0.5},
-                         (coord){s*un - 0.5, 0.5, 0.5});
-    }
 
     /**
     Once we have the upwind volume fraction *cf*, the volume fraction
     flux through the face is simply: */
 
-    flux[] = cf*uf.x[];
+    flux[] = cf*ibmf.x[]*uf.x[]; // add ibmf.x[] to uf.x[]?
+    //flux[] = cf*uf.x[]; // add ibmf.x[] to uf.x[]?
 
     scalar t, gf, tflux;
     for (t,gf,tflux in tracers,gfl,tfluxl) {
       double cf1 = cf, ci = c[i];
       if (t.inverse)
-	cf1 = 1. - cf1, ci = 1. - ci;
+    	cf1 = 1. - cf1, ci = 1. - ci;
       if (ci > 1e-10) {
-	double ff = t[i]/ci + s*min(1., 1. - s*un)*gf[i]*Delta/2.;
-	tflux[] = ff*cf1*uf.x[];
+	    double ff = t[i]/ci + s*min(1., 1. - s*un)*gf[i]*Delta/2.;
+    	tflux[] = ff*cf1*uf.x[];
       }
       else
-	tflux[] = 0.;
+	    tflux[] = 0.;
     }
   }
   delete (gfl); free (gfl);
-  
+ 
+  foreach() {
+    if (ibm[] > 0 && ibm[] < 1 && c[] > 0 && c[] < 1) {
+      //fprintf(stderr, "\n### %g ibm[i] = %g f[i]=%g cf=%g ###\n", indicator.x, ibm[i], c[i], cf);
+        // get the real volume fraction of interfacial cells before advection
+        cr[] = immersed_fraction (c[], (coord){nf.x[], nf.y[]}, alphaf[],
+                         (coord){ns.x[], ns.y[]}, alphas[],
+                         (coord){-0.5, -0.5, -0.5},
+                         (coord){0.5, 0.5, 0.5}, 0);
+        //fprintf(stderr, "cr0[] = %g f[] = %g ibm[]=%g\n", cr[], c[], ibm[]);
+    }
+    else {
+        cr[] = ibm[]*c[];
+        //fprintf(stderr, "cr0[] = %g f[] = %g ibm[]=%g\n", cr[], c[], ibm[]);
+    }
+    cr0[] = cr[];
+  }
   /**
   We warn the user if the CFL condition has been violated. */
 
@@ -196,47 +259,20 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
 	     __LINE__, cfl - 0.5), fflush (ferr);
 
 
-#if !EMBED && !IBM
-  foreach() {
-    c[] += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[]))/(cm[]*Delta);
-#if NO_1D_COMPRESSION
-    scalar t, tflux;
-    for (t, tflux in tracers, tfluxl)
-      t[] += dt*(tflux[] - tflux[1])/(cm[]*Delta);
-#else // !NO_1D_COMPRESSION
-    scalar t, tc, tflux;
-    for (t, tc, tflux in tracers, tcl, tfluxl)
-      t[] += dt*(tflux[] - tflux[1] + tc[]*(uf.x[1] - uf.x[]))/(cm[]*Delta);
-#endif // !NO_1D_COMPRESSION
-  }
-#elif EMBED
-  
+
   foreach()
-    if (cs[] > 0.) {
-      c[] += dt*cs[]*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[]))/(cm[]*Delta);
-#if NO_1D_COMPRESSION
-      for (t, tflux in tracers, tfluxl)
-	t[] += dt*cs[]*(tflux[] - tflux[1])/(cm[]*Delta);
-#else // !NO_1D_COMPRESSION
+    if (ibm[] > 0.) {
+      c[] += dt*((flux[] + fluxf[]) - (flux[1] - fluxf[1]) + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(Delta);
+      //c[] += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[]))/(Delta);
+      // add the real flux to the inital real volume
+      cr[] += dt*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(Delta);
+
       scalar t, tc, tflux;
       for (t, tc, tflux in tracers, tcl, tfluxl)
-	t[] += dt*cs[]*(tflux[] - tflux[1] + tc[]*(uf.x[1] - uf.x[]))/(cm[]*Delta);
-#endif // !NO_1D_COMPRESSION
+    	t[] += dt*ibm[]*(tflux[] - tflux[1] + tc[]*(uf.x[1] - uf.x[]))/(ibm[]*Delta);
     }
-#elif IBM
-  foreach()
-    if (ibm[] > 0.) { // should cm[] be ibm[]?
-      c[] += dt*ibm[]*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[]))/(ibm[]*Delta);
-#if NO_1D_COMPRESSION
-      for (t, tflux in tracers, tfluxl)
-	t[] += dt*ibm[]*(tflux[] - tflux[1])/(ibm[]*Delta);
-#else // !NO_1D_COMPRESSION
-      scalar t, tc, tflux;
-      for (t, tc, tflux in tracers, tcl, tfluxl)
-	t[] += dt*ibm[]*(tflux[] - tflux[1] + tc[]*(uf.x[1] - uf.x[]))/(ibm[]*Delta);
-#endif // !NO_1D_COMPRESSION
-    }
-#endif // IBM || EMBED
+
+  immersed_reconstruction (c, cr, nf, alphaf, ns, alphas);
 
   delete (tfluxl); free (tfluxl);
 }
@@ -298,6 +334,10 @@ void vof_advection (scalar * interfaces, int i)
     for (d = 0; d < dimension; d++)
       sweep[(i + d) % dimension] (c, cc, tcl);
     delete (tcl), free (tcl);
+
+  //reconstruction (c, nf, alphaf);
+  //reconstruction (ibm, ns, alphas);
+  //immersed_reconstruction (c, cr, nf, alphaf, ns, alphas);
   }
 }
 
