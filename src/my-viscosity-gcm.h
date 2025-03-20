@@ -65,7 +65,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
         }
     }
 #else
-    foreach (reduction(max:maxres), nowarning) {
+    foreach (reduction(max:maxres), nowarning)
         foreach_dimension() {
             scalar s = u.x;
             double a = 0.;
@@ -78,7 +78,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
 
             if (fabs (res.x[]) > maxres)
                 maxres = fabs (res.x[]);
-    }
+        }
 #endif
     return maxres;
 }
