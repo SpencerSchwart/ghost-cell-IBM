@@ -30,8 +30,11 @@ for viscosity. */
 #if EMBED
 #include "viscosity-embed.h"
 #elif IBM
+#if !CCM
 #include "my-viscosity-gcm.h"
-//#include "my-viscosity-ccm.h"
+#else  // CCM
+#include "my-viscosity-ccm.h"
+#endif // CCM
 #else
 #include "viscosity.h"
 #endif // EMBED

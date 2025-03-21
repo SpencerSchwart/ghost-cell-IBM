@@ -1217,6 +1217,9 @@ static inline double dirichlet_gradient_x (Point point, scalar s, scalar ibm,
       else
 	break;
     }
+
+  //fprintf(stderr, "(%g,%g) d0=%g d1=%g bc=%g v0=%g v1=%g ibm=%g\n", x, y, d[0], d[1], bc, v[0], v[1], ibm[]);
+
   if (v[0] == nodata) {
 
     /**
@@ -1424,6 +1427,11 @@ static inline double vertex_average (Point point, scalar s)
 }
 
 
+/*
+local_to_global fills ax, ay, and az with the global coordinates of a point, p,
+given in a local coordinate system.
+*/
+
 int local_to_global (Point point, coord p, double* ax, double* ay, double* az)
 {
     *ax = x + p.x * Delta;
@@ -1434,6 +1442,20 @@ int local_to_global (Point point, coord p, double* ax, double* ay, double* az)
 }
 
 
+/*
+copy_coord is used to fill three variables with the coresponding components of p.
+This is used to avoid having the .x or _x indicies being automatically changed
+within a foreach_dimension()
+*/
+
+int copy_coord (coord p, double* ax, double* ay, double* az)
+{
+    *ax = p.x;
+    *ay = p.y;
+    *az = p.z;
+}
+
+
 foreach_dimension()
 double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
 {
@@ -1441,21 +1463,31 @@ double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
     if (ibm[] >= 1. || ibm[] <= 0.)
         return 0.;
 
-    coord n, midPoint;
-    double area = ibm_geometry (point, &n, &midPoint);
+
+    coord n = facet_normal (point, ibm, ibmf), mp;
+    double alpha = plane_alpha (ibm[], n);
+    double area = plane_area_center (n, alpha, &mp);
+    normalize (&n);
+    foreach_dimension()
+        n.x *= -1;
+
+    //ibm_geometry(point, &n, &mp); // why doesn't this work?
 
     double mpx, mpy, mpz;
-    local_to_global(point, midPoint, &mpx, &mpy, &mpz);
+    local_to_global(point, mp, &mpx, &mpy, &mpz);
 
     double bc = uibm_x(mpx, mpy, mpz);
+    //double bc = 0;
     
     double coef = 0.;
-    double grad = dirichlet_gradient (point, s, ibm, n, midPoint, bc, &coef);
-
+    //fprintf(stderr, "\n| ibm_flux (%g, %g) ibm=%g s=%g n.x=%g n.y=%g mp.x=%g mp.y=%g bc=%g\n",
+    //                    x, y, ibm[], s[], n.x, n.y, mp.x, mp.y, bc);
+    double grad = dirichlet_gradient (point, s, ibm, n, mp, bc, &coef);
     double mua = 0., fa = 0.;
     foreach_dimension() {
         mua += mu.x[] + mu.x[1];
         fa += fm.x[] + fm.x[1];
+        //fa += ibmf.x[] + ibmf.x[1];
     }
 
     *val = - mua/(fa + SEPS)*grad*area/Delta;
