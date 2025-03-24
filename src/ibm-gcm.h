@@ -140,6 +140,24 @@ bool fluid_neighbor (Point point, scalar ibm)
 
 
 /*
+match_level is used to make sure that the neighboring fluid cell (assuming there 
+is one) does not contain children that are ghost cells which can undesireably lead 
+to two layers of ghost cells and constant refining/coarsening.
+
+TODO: only check N, S, E, and W neighbors, not entire 3x3 stencil
+*/
+
+bool match_level (Point point, scalar ibm)
+{
+    foreach_neighbor(1) {
+        if (ibm[] > 0.5 && is_leaf(cell) && is_active(cell))
+            return true;
+    }
+    return false;
+}
+
+
+/*
 is_ghost_cell returns true if the given cell shares a face with a fluid cell,
 ibm > 0.5, and the volume fraction is less than or equal to 0.5.
 
@@ -151,7 +169,7 @@ bool is_ghost_cell (Point point, scalar ibm)
 {
    //return fluid_neighbor(point, ibm) && ibm[] <= 0.5 && level == depth(); // temp fix
                                                                            // for solid cells refining
-   return fluid_neighbor(point, ibm) && ibm[] <= 0.5;
+   return fluid_neighbor(point, ibm) && ibm[] <= 0.5 && match_level(point, ibm);
 }
 
 
@@ -1522,6 +1540,9 @@ static inline double ibm_face_gradient_x (Point point, scalar a, int i)
 ###### TWO PHASE FUNCTIONS ######
 */
 
+
+extern (const) scalar contact_angle;
+
 /*
 boundary_points is used to find the intersecting points of the fluid interface
 within the area being advected.
@@ -1568,8 +1589,8 @@ int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
                          coord lhs, coord rhs, coord * pint)
 {
     coord pt;
-    pt.x = (alphas/ns.y - alphaf/nf.y) /
-                  ((ns.x/ns.y) - (nf.x/nf.y));
+    pt.x = (alphas/(ns.y + SEPS) - alphaf/(nf.y + SEPS)) /
+                  ((ns.x/(ns.y + SEPS)) - (nf.x/(nf.y + SEPS)) + SEPS);
 
     pt.y = (alphaf/nf.y) - (nf.x*pt.x)/nf.y;
 
@@ -1874,7 +1895,9 @@ double immersed_line_alpha (coord nf, double alphaf, coord ns, double alphas,
 /* 
 Some of the advected fluid gets reconstructed in the solid region of a cell.
 immersed_reconstruction changes c to enforce volume/mass conservation (according
-to cr) considering the immersed boundary.
+to cr) considering the immersed boundary. In other words, this function brings any
+fluid otherwise reconstructed inside the solid region up in the real fluid portion
+of interface cells
 
 cr is the total real fluid in a cell after the unidimensional advection.
 
@@ -1882,15 +1905,66 @@ nf and ns are the liquid and solid normals (resp.). Likewise, alphas and alphaf
 are the corresponding alpha values.
 */
 
+coord get_normal_contact (coord ns, coord nf, double angle)
+{
+    angle = 0.261799;
+    double norm = distance(ns.x,ns.y) + SEPS;
+    ns.x /= norm, ns.y /= norm;
+    norm = distance(nf.x,nf.y);
+    if (norm == 0)
+        return nf;
+    nf.x /= norm, nf.y /= norm;
+
+    coord n;
+    if (- ns.x * nf.y + ns.y * nf.x > 0) { // 2D cross product
+        n.x = - ns.x * cos(angle) + ns.y * sin(angle);
+        n.y = - ns.x * sin(angle) - ns.y * cos(angle);
+    }
+    else {
+        n.x = - ns.x * cos(angle) - ns.y * sin(angle);
+        n.y =   ns.x * sin(angle) - ns.y * cos(angle);
+    }
+
+    norm = fabs(n.x) + fabs(n.y) + SEPS;
+    n.x /= norm, n.y /= norm;
+    
+    fprintf (stderr, "n.x=%g n.y=%g angle=%g\n", n.x, n.y, angle);
+
+
+    return n;
+}
+
+
+void reconstruction_contact2 (scalar f, vector n, scalar alpha)
+{
+    reconstruction (f, n, alpha);
+
+    foreach() {
+        if (on_interface(ibm) && on_interface(f)) {
+            coord ns = facet_normal (point, ibm, ibmf);
+            coord nf = {n.x[], n.y[]};
+
+            coord ncontact = get_normal_contact (ns, nf, 0.261799);
+
+            foreach_dimension()
+                n.x[] = ncontact.x;
+            alpha[] = line_alpha (f[], ncontact);
+        }
+    }
+}
+
 void immersed_reconstruction (scalar c, const scalar cr, vector nf, scalar alphaf, 
                               vector ns, scalar alphas)
 {
+    //reconstruction (c, nf, alphaf); // normal reconstruction // TODO:test w and w/o to see effect
     foreach() {
         if (on_interface(ibm) && c[]) {
 
             //cr[] = clamp(cr[], 0, ibm[]);
-
             coord nsolid = {ns.x[], ns.y[]}, nfluid = {nf.x[], nf.y[]};
+
+            coord ncontact = get_normal_contact (nsolid, nfluid, 0.261799);
+
             #if 0
             fprintf(stderr, "\n### New Cell ibm=%g f=%g cr=%g ###\n", ibm[], c[], cr[]);
             fprintf(stderr, "### nf={%g,%g} af=%g ns=(%g,%g) as=%g ###\n", 
@@ -1900,10 +1974,10 @@ void immersed_reconstruction (scalar c, const scalar cr, vector nf, scalar alpha
                 c[] = clamp(c[], 0., 1.);
                 continue;
             }
-            double alpha = immersed_line_alpha (nfluid, alphaf[], nsolid, alphas[], cr[]);
+            double alpha = immersed_line_alpha (ncontact, alphaf[], nsolid, alphas[], cr[]);
             double c0 = c[];
-            c[] = plane_volume (nfluid, alpha);
-            double cnew = plane_volume (nfluid, alpha);
+            c[] = plane_volume (ncontact, alpha);
+            double cnew = plane_volume (ncontact, alpha);
             //fprintf(stderr, "c[]_before = %g, c[]_after = %g | cr[] = %g\n", c0, cnew, cr[]);
         }
     }
