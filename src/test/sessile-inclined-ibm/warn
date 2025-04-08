@@ -1,37 +1,39 @@
-sessile-inclined-ibm.c:19:10: warning: extra tokens at end of #undef directive
+In file included from sessile-inclined-ibm.c:1:
+./../ibm-gcm.h:1:10: warning: extra tokens at end of #undef directive
 ./../ibm-gcm.h: In function ‘_stencil_borders_boundary’:
-./../ibm-gcm.h:358:24: warning: variable ‘j’ set but not used [-Wunused-but-set-variable]
-./../ibm-gcm.h:358:17: warning: variable ‘i’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h:377:24: warning: variable ‘j’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h:377:17: warning: variable ‘i’ set but not used [-Wunused-but-set-variable]
 ./../ibm-gcm.h: In function ‘fluid_only’:
-./../ibm-gcm.h:491:41: warning: unused variable ‘off_z’ [-Wunused-variable]
+./../ibm-gcm.h:510:41: warning: unused variable ‘off_z’ [-Wunused-variable]
 ./../ibm-gcm.h: In function ‘image_velocity’:
-./../ibm-gcm.h:532:9: warning: unused variable ‘k’ [-Wunused-variable]
-./../ibm-gcm.h:521:10: warning: unused variable ‘border’ [-Wunused-variable]
+./../ibm-gcm.h:551:9: warning: unused variable ‘k’ [-Wunused-variable]
+./../ibm-gcm.h:540:10: warning: unused variable ‘border’ [-Wunused-variable]
 ./../ibm-gcm.h: In function ‘image_pressure’:
-./../ibm-gcm.h:742:37: warning: unused variable ‘zz’ [-Wunused-variable]
-./../ibm-gcm.h:740:9: warning: unused variable ‘k’ [-Wunused-variable]
+./../ibm-gcm.h:761:37: warning: unused variable ‘zz’ [-Wunused-variable]
+./../ibm-gcm.h:759:9: warning: unused variable ‘k’ [-Wunused-variable]
 ./../ibm-gcm.h: In function ‘polygon_area’:
-./../ibm-gcm.h:1650:10: warning: unused variable ‘finished’ [-Wunused-variable]
-./../contact-ibm.h: In function ‘contact’:
-./../contact-ibm.h:191:31: warning: variable ‘nstemp’ set but not used [-Wunused-but-set-variable]
-./../contact-ibm.h:191:23: warning: variable ‘nftemp’ set but not used [-Wunused-but-set-variable]
-./../contact-ibm.h:189:74: warning: unused variable ‘nf1’ [-Wunused-variable]
-./../contact-ibm.h:189:23: warning: unused variable ‘ns’ [-Wunused-variable]
-./../contact-ibm.h: In function ‘impose_contact_angle’:
-./../contact-ibm.h:272:35: warning: variable ‘nstemp’ set but not used [-Wunused-but-set-variable]
-./../contact-ibm.h:272:27: warning: variable ‘nftemp’ set but not used [-Wunused-but-set-variable]
-./../my-vof-test.h: In function ‘sweep_x’:
-./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
-./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
-./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
-./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
-./../my-vof-test.h: In function ‘sweep_y’:
-./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
-./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
-./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
-./../my-vof-test.h:163:14: warning: unused variable ‘area’ [-Wunused-variable]
+./../ibm-gcm.h:1713:10: warning: unused variable ‘finished’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘immersed_line_alpha’:
+./../ibm-gcm.h:1958:16: warning: unused variable ‘fg’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘immersed_reconstruction’:
+./../ibm-gcm.h:2108:20: warning: unused variable ‘c0’ [-Wunused-variable]
+./../my-vof-test.h: In function ‘vof_advection’:
+./../my-vof-test.h:315:12: warning: unused variable ‘ind’ [-Wunused-variable]
+./../contact-ibm.h: In function ‘reconstruction_contact_vof’:
+./../contact-ibm.h:136:67: warning: unused variable ‘nf1’ [-Wunused-variable]
+./../contact-ibm.h:136:15: warning: unused variable ‘ns1’ [-Wunused-variable]
+./../contact-ibm.h:136:67: warning: unused variable ‘nf1’ [-Wunused-variable]
+./../contact-ibm.h:136:15: warning: unused variable ‘ns1’ [-Wunused-variable]
+./../contact-ibm.h: In function ‘tracer_advection_1’:
+./../contact-ibm.h:227:31: warning: variable ‘nstemp’ set but not used [-Wunused-but-set-variable]
+./../contact-ibm.h:227:23: warning: variable ‘nftemp’ set but not used [-Wunused-but-set-variable]
+./../contact-ibm.h:225:65: warning: unused variable ‘nf1’ [-Wunused-variable]
+./../contact-ibm.h:225:23: warning: unused variable ‘ns1’ [-Wunused-variable]
+./../contact-ibm.h:267:27: warning: unused variable ‘ns1’ [-Wunused-variable]
+./../contact-ibm.h:286:65: warning: unused variable ‘nf1’ [-Wunused-variable]
 At top level:
-./../ibm-gcm.h:487:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
+./../ibm-gcm.h:1866:13: warning: ‘_stencil_immersed_line_alpha’ defined but not used [-Wunused-function]
+./../ibm-gcm.h:506:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
 ast/init_solver.h: In function ‘ibm_gradient’:
-./../ibm-gcm.h:1267:46: warning: ‘midPoint.z’ is used uninitialized [-Wuninitialized]
-./../ibm-gcm.h:1263:33: note: ‘midPoint’ declared here
+./../ibm-gcm.h:1289:46: warning: ‘midPoint.z’ is used uninitialized [-Wuninitialized]
+./../ibm-gcm.h:1285:33: note: ‘midPoint’ declared here

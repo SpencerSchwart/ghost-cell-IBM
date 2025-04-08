@@ -1,31 +1,3 @@
-/**
-# droplet on an embedded cylinder
-
-
-~~~gnuplot Equilibrium shapes for $30^\circ \leq \theta \leq 150^\circ$
-set term push
-set term @SVG size 640,180
-set size ratio -1
-unset key
-unset xtics
-unset ytics
-unset border
-set xrange [-1:1]
-set yrange [0:]
-f0(x) = sqrt(0.5**2 - x**2) + 0.575
-f(x)  = sqrt(0.5**2 - x**2) - 0.575
-
-plot 'out' w l lt -1 lw 3 lc rgb "blue" t 'Numerical solution',\
-  f0(x) with filledcurves above y1 = 0.575 fc "black" t 'cylinder',\
- -1*f(x) with filledcurves below y1 = 0.575 fc "black" t ''
- 
-set term pop
-~~~
-*/
-
-#undef dv()
-#define dv() (sq(Delta) * ibm[])
-
 #include "../ibm-gcm.h"
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
@@ -37,13 +9,13 @@ set term pop
 #define R0 0.5
 #define xc 0.
 #define yc 0.575 
-#define T 15
 
-double theta0, volume_vof_init;
-int LEVEL = 6;
+const double t_end = 15.;
+double theta0;
 
 u_x_ibm_dirichlet (0)
 u_y_ibm_dirichlet (0)
+
 
 int main() {
   size (2.);
@@ -53,7 +25,7 @@ int main() {
 
   origin (-1, 0);
 
-  init_grid (1 << LEVEL);
+  init_grid (64);
   /**
   We use a constant viscosity. */
 
@@ -66,17 +38,21 @@ int main() {
 
   /**
   We vary the contact_angle. */
-
+#if 0
   for (theta0 = 30; theta0 <= 150; theta0 += 30) {
   	const scalar c[] = theta0*pi/180.;
   	contact_angle = c;
   	run();
   }
+#else
+    theta0 = 90;
+    const scalar c[] = theta0*pi/180.;
+    contact_angle = c;
+    run();
+#endif
 }
 
- //u.n[embed] = dirichlet( 0 ); 
- //u.t[embed] = dirichlet( 0 );
-
+double v0 = 0;
 event init (t = 0)
 {
   /**
@@ -85,9 +61,10 @@ event init (t = 0)
   solid (ibm, ibmf, (sq(x - xc) + sq(y - yc) - sq(R0)));
 
   fraction (f, - (sq(x - xc) + sq(y - (yc+sqrt(2)/2)) - sq(R0)));
+  v0 = real_volume(f);
 }
 
-event logfile (i++; t <= T)
+event logfile (i++; t <= t_end)
 {
   /**
   If the curvature is almost constant, we stop the computation
@@ -100,6 +77,12 @@ event logfile (i++; t <= T)
       kappa[] = nodata;
   if (statsf (kappa).stddev < 1e-6)
     return true;
+
+  double vreal = real_volume(f), vreal2 = 0;
+  foreach()
+    vreal2 += cr[]*sq(Delta);
+
+  fprintf(stderr, "%d %g %g %g %g %g\n", i, t, theta0, v0, vreal, vreal2);
 }
 
 #if 0
@@ -121,7 +104,6 @@ event end (t = end)
   /**
   At the end, we output the equilibrium shape. */
 
-  output_facets (f, stdout);
   char name[80];
   sprintf (name, "shape-%g", theta0);
   FILE * fp = fopen (name, "w");
@@ -136,22 +118,19 @@ event end (t = end)
       kappa[] = nodata;
   
   stats s = statsf (kappa);
-  double R = s.volume/s.sum, V = statsf(f).sum;
-  fprintf (stderr, "%d %g %.5g %.5g %.3g\n", N, theta0, R, R/sqrt(V/pi), s.stddev);
+  double R = s.volume/s.sum, V = real_volume(f);
+  fprintf (stderr, "%d %g %.5g %.5g %.3g %g %g\n", N, theta0, R, R/sqrt(V/pi), s.stddev, v0, V);
 }
 
+#if 0
 event movie(i+=10,last){
-  if (theta0 == 120) {
+    char name[80];
+    sprintf(name, "movie-%g.mp4", theta0);
     view(fov=20, tx = 0, ty = -0.5);
-  //view(fov=20, quat = {0,0,-0.707,0.707}, tx = 0, ty = -0.5);
     draw_vof ("f", lw=2);
     draw_vof("ibm", "ibmf",filled=-1);
     squares("f", linear = true, min = 0, max = 1);
-    save("movie.mp4");
-  }
+    save(name);
 }
-/**
-![Relaxation toward a $120^\circ$ contact angle.](droplet-cylinder-embed/movie.mp4)
-*/
+#endif
 
-// fixme: Comparison to theory is missing (add soon) 

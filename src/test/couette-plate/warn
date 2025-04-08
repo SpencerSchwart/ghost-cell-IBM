@@ -1,0 +1,35 @@
+./../ibm-gcm.h: In function ‘_stencil_borders_boundary’:
+./../ibm-gcm.h:358:24: warning: variable ‘j’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h:358:17: warning: variable ‘i’ set but not used [-Wunused-but-set-variable]
+./../ibm-gcm.h: In function ‘fluid_only’:
+./../ibm-gcm.h:491:41: warning: unused variable ‘off_z’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘image_velocity’:
+./../ibm-gcm.h:532:9: warning: unused variable ‘k’ [-Wunused-variable]
+./../ibm-gcm.h:521:10: warning: unused variable ‘border’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘image_pressure’:
+./../ibm-gcm.h:742:37: warning: unused variable ‘zz’ [-Wunused-variable]
+./../ibm-gcm.h:740:9: warning: unused variable ‘k’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘polygon_area’:
+./../ibm-gcm.h:1685:10: warning: unused variable ‘finished’ [-Wunused-variable]
+./../ibm-gcm.h: In function ‘immersed_reconstruction’:
+./../ibm-gcm.h:1905:20: warning: unused variable ‘cnew’ [-Wunused-variable]
+./../ibm-gcm.h:1903:20: warning: unused variable ‘c0’ [-Wunused-variable]
+./../my-viscosity-ccm.h: In function ‘residual_diffusion’:
+./../my-viscosity-ccm.h:121:17: warning: the address of ‘ibm_flux_x’ will always evaluate as ‘true’ [-Waddress]
+./../my-viscosity-ccm.h:121:17: warning: the address of ‘ibm_flux_x’ will always evaluate as ‘true’ [-Waddress]
+./../my-viscosity-ccm.h:121:17: warning: the address of ‘ibm_flux_x’ will always evaluate as ‘true’ [-Waddress]
+./../my-viscosity-ccm.h:121:17: warning: the address of ‘ibm_flux_x’ will always evaluate as ‘true’ [-Waddress]
+./../my-viscosity-ccm.h:121:17: warning: the address of ‘ibm_flux_y’ will always evaluate as ‘true’ [-Waddress]
+./../my-viscosity-ccm.h:121:17: warning: the address of ‘ibm_flux_y’ will always evaluate as ‘true’ [-Waddress]
+./../my-viscosity-ccm.h:121:17: warning: the address of ‘ibm_flux_y’ will always evaluate as ‘true’ [-Waddress]
+./../my-viscosity-ccm.h:121:17: warning: the address of ‘ibm_flux_y’ will always evaluate as ‘true’ [-Waddress]
+couette-plate.c: At top level:
+couette-plate.c:17:22: warning: initializer element is not a constant expression [-Wpedantic]
+./../ibm-gcm.h: In function ‘copy_coord’:
+./../ibm-gcm.h:1455:1: warning: control reaches end of non-void function [-Wreturn-type]
+At top level:
+./../ibm-gcm.h:998:13: warning: ‘_stencil_ibm_geometry’ defined but not used [-Wunused-function]
+./../ibm-gcm.h:487:13: warning: ‘_stencil_fluid_only’ defined but not used [-Wunused-function]
+ast/init_solver.h: In function ‘ibm_gradient’:
+./../ibm-gcm.h:1269:46: warning: ‘midPoint.z’ is used uninitialized [-Wuninitialized]
+./../ibm-gcm.h:1265:33: note: ‘midPoint’ declared here

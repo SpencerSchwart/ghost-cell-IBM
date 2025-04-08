@@ -1,2 +1,2 @@
-CFLAGS += -O2 -disable-dimensions -events
+CFLAGS += -O2 -disable-dimensions
 include ~/basilisk/src/Makefile.defs

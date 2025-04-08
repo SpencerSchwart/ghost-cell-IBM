@@ -67,8 +67,10 @@ int main() {
   }
 }
 
- //u.n[embed] = dirichlet( 0 ); 
- //u.t[embed] = dirichlet( 0 );
+//u.n[embed] = dirichlet( 0 ); 
+//u.t[embed] = dirichlet( 0 );
+
+double v0 = 0;
 
 event init (t = 0)
 {
@@ -78,6 +80,10 @@ event init (t = 0)
   solid (cs, fs, (sq(x - xc) + sq(y - yc) - sq(R0)));
 
   fraction (f, - (sq(x - xc) + sq(y - (yc+sqrt(2)/2)) - sq(R0)));
+
+  v0 = 0;
+  foreach()
+    v0 += cs[]? f[]*sq(Delta): 0;
 }
 
 event logfile (i++; t <= T)
@@ -93,6 +99,14 @@ event logfile (i++; t <= T)
       kappa[] = nodata;
   if (statsf (kappa).stddev < 1e-6)
     return true;
+
+  double vreal = 0, vreal2 = 0;
+  foreach() {
+    vreal += cs[]? f[]*sq(Delta): 0;
+    vreal2 += f[]*dv();
+  }
+
+  fprintf(stderr, "%d %g %g %g %g %g\n", i, t, theta0, v0, vreal, vreal2);
 }
 
 #if 0
@@ -131,6 +145,7 @@ event end (t = end)
   
   stats s = statsf (kappa);
   double R = s.volume/s.sum, V = statsf(f).sum;
+
   fprintf (stderr, "%d %g %.5g %.5g %.3g\n", N, theta0, R, R/sqrt(V/pi), s.stddev);
 }
 

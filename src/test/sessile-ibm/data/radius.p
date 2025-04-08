@@ -10,5 +10,6 @@ set ytics font ",10"
 set key font ",12"
 
 plot 1./sqrt(x/180. - sin(x*pi/180.)*cos(x*pi/180.)/pi) t 'analytical', \
-  'log-ibm' u 2:3 pt 7 t 'numerical IBM', \
-      'log-embed' u 2:3 pt 7 t 'numerical embed'
+  'log-ibm' u 2:3 pt 6 ps 2 t 'numerical IBM', \
+      'log-embed' u 2:3 pt 7 ps 2  t 'numerical embed', \
+        'log-newibm' u 2:3 pt 5 ps 2 t 'new IBM'

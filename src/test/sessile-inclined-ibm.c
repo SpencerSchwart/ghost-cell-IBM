@@ -1,33 +1,11 @@
-
-/**
-# Sessile drop on an embedded boundary inclined at 45 degrees
-
-This is a less trivial version of [this test case](sessile.c).
-
-~~~gnuplot Equilibrium shapes for $15^\circ \leq \theta \leq 165^\circ$
-set term push
-set term @SVG size 480,480
-set size ratio -1
-unset key
-unset xtics
-unset ytics
-unset border
-plot 'out' w l, x + 0.97 with filledcurves x1 lc 'grey'
-set term pop
-~~~
-*/
-#undef dv()
-#define dv() (sq(Delta) * ibm[])
 #include "../ibm-gcm.h"
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
-#include "../contact-ibm.h"
 #include "../my-two-phase.h"
 #include "../my-tension.h"
-//#include "../contact-ibm.h"
+#include "../contact-ibm.h"
 
-face vector acc[];
-
+const double t_end = 20.;
 double theta0;
 
 u_x_ibm_dirichlet(0)
@@ -37,6 +15,7 @@ int main()
 {
   size (2.);
   origin (-1, 0);
+  init_grid (64);
   
   /**
   We use a constant viscosity. */
@@ -50,15 +29,23 @@ int main()
 
   /**
   We vary the contact_angle. */
-  
+ 
+#if 1
   for (theta0 = 15; theta0 <= 165; theta0 += 15) {
     const scalar c[] = theta0*pi/180.;
     contact_angle = c;
     run();
   }
+#else
+  theta0 = 165;
+  const scalar c[] = theta0*pi/180.;
+  contact_angle = c;
+  run();
+#endif
 }
 
-double init_volume = 0;
+double v0 = 0;
+
 event init (t = 0)
 {
   /**
@@ -72,18 +59,11 @@ event init (t = 0)
   fractions (phi, ibm, ibmf);
   fraction (f, - (sq(x - 0) + sq(y - 1.) - sq(0.25)));
 
-  init_volume = 0;
-  foreach() {
-    init_volume += f[]*dv();
-    //init_volume += f[]*(ibm[] != 0)*sq(Delta);
-  }
+  v0 = real_volume(f);
 }
 
-
-event logfile (i++; t <= 20)
+event logfile (i++; t <= t_end)
 {
-  foreach_face()
-    acc.x[] = a.x[];
   /**
   If the curvature is almost constant, we stop the computation
   (convergence has been reached). */
@@ -95,6 +75,13 @@ event logfile (i++; t <= 20)
       kappa[] = nodata;
   if (statsf (kappa).stddev < 1e-6)
     return true;
+  double vreal = real_volume(f), vreal2 = 0;
+  foreach()
+    vreal2 += cr[]*sq(Delta);
+
+  double thetar = get_contact_angle(f, ibm);
+
+  fprintf(stderr, "%d %g %g %g %g %g %g\n", i, t, theta0, v0, vreal, vreal2, thetar);
 }
 
 /**
@@ -122,10 +109,6 @@ double equivalent_contact_angle (double R, double V)
   
 event end (t = end)
 {
-  double final_volume = 0;
-  foreach()
-    final_volume += f[]*dv();
-    //final_volume += f[]*(ibm[] != 0)*sq(Delta);
   /**
   At the end, we output the equilibrium shape. */
   
@@ -133,6 +116,7 @@ event end (t = end)
   sprintf (name, "shape-%g", theta0);
   FILE * fp = fopen (name, "w");
   output_facets (f, fp);
+  fclose (fp);
 
   /**
   We compute the curvature only in full cells. */
@@ -142,44 +126,13 @@ event end (t = end)
   foreach()
     if (ibm[] < 1.)
       kappa[] = nodata;
-    
+
   stats s = statsf (kappa);
-  double R = s.volume/s.sum, V = statsf(f).sum;
-  fprintf (stderr, "%d %g %.5g %.3g %.4g %g %g\n", N, theta0, R/sqrt(V/pi), s.stddev,
-	   equivalent_contact_angle (R, V)*180./pi, init_volume, final_volume);
+  double R = s.volume/s.sum, V = real_volume(f);
+
+  double thetar = get_contact_angle(f, ibm);
+
+  fprintf (stdout, "%d %g %.5g %.3g %.4g %g %g %g\n", N, theta0, R/sqrt(V/pi), s.stddev,
+	   equivalent_contact_angle (R, V)*180./pi, v0, V, thetar);
 }
 
-/**
-We compare $R/R_0$ to the analytical expression, with $R_0=\sqrt{V/\pi}$.
-
-The results are not very good, especially for small contact angles.
-
-~~~gnuplot
-reset
-set xlabel 'Contact angle (degrees)'
-set ylabel 'R/R_0'
-set arrow from 15,1 to 165,1 nohead dt 2
-set xtics 15,15,165
-plot 1./sqrt(x/180. - sin(x*pi/180.)*cos(x*pi/180.)/pi) t 'analytical', \
-  'log' u 2:3 pt 7 t 'numerical'
-~~~
-
-Another way to display the same result is to compare the "apparent
-contact angle" with the imposed contact angle. It is clear that
-contact angles smaller than $\approx 45$ degrees or larger than
-$\approx 135$ degrees cannot be imposed.
-
-~~~gnuplot
-reset
-set xlabel 'Imposed contact angle (degrees)'
-set ylabel 'Apparent contact angle (degrees)'
-unset key
-set xtics 15,15,165
-set ytics 15,15,165
-plot 'log' u 2:5 pt 7, x
-~~~
-
-## See also
-
-* [Sessile drop on a horizontal embedded boundary](sessile.c)
-*/

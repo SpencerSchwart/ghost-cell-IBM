@@ -1,11 +1,46 @@
-64 15 12.286 0.0542 18.16
-64 30 6.0739 0.00679 29.36
-64 45 3.3869 0.0101 44.33
-64 60 2.3111 0.00404 58.99
-64 75 1.7545 0.00344 73.81
-64 90 1.4376 0.000369 88.55
-64 105 1.2451 0.00362 103.3
-64 120 1.1244 0.0057 118.4
-64 135 1.0563 0.00401 132.8
-64 150 1.0228 0.0955 145.2
-64 165 0.99761 0.0357 180
+
+events (i = 0, t = 0)
+  metric                    ./../ibm-gcm.h:2140
+  defaults                  ./../my-iforce.h:31
+  defaults                  ./../my-two-phase-generic.h:10
+  defaults                  ./../my-vof-test.h:79
+  defaults                  ./../my-vof-test.h:62
+  defaults                  ./../my-centered.h:143
+  defaults                  src/run.h:42
+  default_display           ./../my-centered.h:222
+  init                      sessile-ibm.c:84
+  update_metric             ./../ibm-gcm-events.h:9
+  init                      ./../my-centered.h:231
+  properties                ./../my-two-phase-generic.h:83
+  properties                ./../my-centered.h:278
+  stability                 ./../my-tension.h:36
+  stability                 ./../my-vof-test.h:89
+  stability                 ./../my-centered.h:259
+  update_metric             ./../ibm-gcm-events.h:9
+  contact                   ./../contact-ibm.h:199
+1st 1 (0.453125, 0.005625) nf ={0.211325,0.788675} f[]=1 fr[]=0.68 tw=0.00196421 gf=0.00196421 gf/tw=1 alphaf1=0.444895
+  f`[]=1
+1st 1 (0.515625, 0.005625) nf ={0.211325,0.788675} f[]=0 fr[]=0 tw=0.00196421 gf=0.00156381 gf/tw=0.796155 alphaf1=0.444895
+|| A.S.E: f0=0.990890322580642 alphaf=0.444895017105656 freal=0 ibm=0.68
+|| A.S.E (a): 0 fmin=0 fmid=0.5 fmax=0.18 alpha=0 error=0.18
+|| A.S.E (a): 1 fmin=-0.5 fmid=0 fmax=0 alpha=0 error=0
+|| A.S.E (b): 0 fmin=0.25 fmid=0.816987298107781 fmax=0.49698729810778 alpha=0 error=0.496987
+|| A.S.E (b): 1 fmin=-0.125 fmid=0.34150635094611 fmax=0.0451099044392611 alpha=0 error=0.0451099
+|| A.S.E (b): 2 fmin=-0.3125 fmid=0.10546875 fmax=0 alpha=0 error=0
+|| A.S.E (c): 0 fmin=-0.75 fmid=0 fmax=0 alpha=0 error=0
+|| A.S.E (d): 0 fmin=0 fmid=0 fmax=0.10546875 alpha=-0.3125
+  f`[]=0.10546875
+2nd (0.515625, 0.005625) nf ={0.492116,0.507884} f[]=0.105469 fr[]=0
+|| A.S.E: f0=0.10546875 alphaf=-0.270388883598091 freal=0 ibm=0.68
+|| A.S.E (a): 0 fmin=0 fmid=0.5 fmax=0.227838400301729 alpha=0 error=0.227838
+|| A.S.E (a): 1 fmin=-0.5 fmid=0 fmax=0 alpha=0 error=0
+|| A.S.E (b): 0 fmin=0.25 fmid=0.874968916184189 fmax=0.554968916184189 alpha=0 error=0.554969
+|| A.S.E (b): 1 fmin=-0.125 fmid=0.281319938585575 fmax=0.0903155973599108 alpha=0 error=0.0903156
+|| A.S.E (b): 2 fmin=-0.3125 fmid=0.0703299846463937 fmax=0.00124803402450646 alpha=0 error=0.00124803
+|| A.S.E (b): 3 fmin=-0.40625 fmid=0.0175824961615984 fmax=0 alpha=0 error=0
+|| A.S.E (c): 0 fmin=-0.75 fmid=0 fmax=0 alpha=0 error=0
+|| A.S.E (d): 0 fmin=0 fmid=0 fmax=0.0175824961615984 alpha=-0.40625
+  f`[]=0.0175825
+  logfile                   sessile-ibm.c:103
+0 0 0.1961 0.196099 0
+  refresh_display           src/display.h:798
