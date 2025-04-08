@@ -1,55 +1,5 @@
 #include "fractions.h"
-(const) scalar contact_angle;
-
-#if 0
-static inline coord normal_contact (coord ns, coord nf, double angle)
-{
-    coord n;
-    if (- ns.x * nf.y + ns.y * nf.x > 0) { // 2D cross product
-        n.x = - ns.x * cos(angle) + ns.y * sin(angle);
-        n.y = - ns.x * sin(angle) - ns.y * cos(angle);
-    }
-    else {
-        n.x = - ns.x * cos(angle) - ns.y * sin(angle);
-        n.y =   ns.x * sin(angle) - ns.y * cos(angle);
-    }
-    return n;
-}
-
-
-/*
-This function extends the normal reconstruction() function in fractions.h by
-taking into account the contact angle on immersed boundaries. Given a volume fraction
-field, f, it fills fields n and alpha with the each cells normal and intercept, resp.
-*/
-
-void reconstruction_contact (scalar f, vector n, scalar alpha)
-{
-    reconstruction (f, n, alpha);
-
-    foreach() {
-        if (on_interface(ibm) && on_interface(f)) {
-            coord ns = facet_normal (point, ibm, ibmf);
-            normalize (&ns);
-            coord nf, nfnorm;
-
-            foreach_dimension() 
-                nf.x = n.x[];
-            //normalize(&nfnorm);
-            coord nc = normal_contact (ns, nf, contact_angle[]);
-            
-            double mag = fabs(nc.x) + fabs(nc.y);
-            nc.x /= mag, nc.y /= mag;
-
-            foreach_dimension()
-                n.x[] = nc.x;
-            alpha[] = line_alpha (f[], nc);
-        }
-    }
-
-    boundary ({n, alpha});
-}
-#endif
+//(const) scalar contact_angle;
 
 /**
 # Volume-Of-Fluid advection
@@ -292,7 +242,11 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
     Once we have the upwind volume fraction *cf*, the volume fraction
     flux through the face is simply: */
 
+#if IBM
+    flux[] = cf*ibmf.x[]*uf.x[];
+#else
     flux[] = cf*uf.x[];
+#endif
 
     /**
     If we are transporting tracers, we compute their flux using the
@@ -376,14 +330,14 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
 #elif IBM
   foreach()
     if (ibm[] > 0.) { // should cm[] be ibm[]?
-      c[] += dt*ibm[]*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[]))/(ibm[]*Delta);
+      c[] += dt*ibm[]*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(ibm[]*Delta);
 #if NO_1D_COMPRESSION
       for (t, tflux in tracers, tfluxl)
 	t[] += dt*ibm[]*(tflux[] - tflux[1])/(ibm[]*Delta);
 #else // !NO_1D_COMPRESSION
       scalar t, tc, tflux;
       for (t, tc, tflux in tracers, tcl, tfluxl)
-	t[] += dt*ibm[]*(tflux[] - tflux[1] + tc[]*(uf.x[1] - uf.x[]))/(ibm[]*Delta);
+	t[] += dt*ibm[]*(tflux[] - tflux[1] + tc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(ibm[]*Delta);
 #endif // !NO_1D_COMPRESSION
     }
 #endif // IBM || EMBED

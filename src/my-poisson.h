@@ -479,7 +479,7 @@ $$
 \nabla\cdot(\alpha\nabla p) = \frac{\nabla\cdot\mathbf{u}_f}{\Delta t}
 $$ */
 
-scalar divg[];
+scalar divg[], divg1[];
 
 trace
 mgstats project (face vector uf, scalar p,
@@ -539,12 +539,20 @@ mgstats project (face vector uf, scalar p,
   foreach_face() {
 #if IBM // is this correct? should uf be multiplied by ibmf?
     double metric = !ibmf.x[]? 0: alpha.x[] / ibmf.x[];
+    //double metric = alpha.x[];
     uf.x[] -= dt*metric*face_gradient_x (p, 0);
 #else
     uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
 #endif
     if (fabs(uf.x[]) > LIMIT)
         fprintf(stderr, "WARNING in proj: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
+  }
+
+  foreach() {
+    divg1[] = 0;
+    foreach_dimension()
+      divg1[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
+    divg1[] /= Delta;
   }
 
   return mgp;
