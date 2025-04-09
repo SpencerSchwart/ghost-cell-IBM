@@ -129,7 +129,7 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar c0)
   
   // 1. Find n and alpha for f[] and ibm[]
   reconstruction (c, nf, alphaf);
-  reconstruction (ibm, ns, alphas);
+  reconstruction (ibm0, ns, alphas);
 
   foreach_face(x, reduction (max:cfl)) {
 
@@ -146,16 +146,16 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar c0)
 #if EMBED
     if (cs[] >= 1.)
 #elif IBM
-    if (ibm[] >= 1.)
+    if (ibm0[] >= 1.)
 #endif
     if (un*fm.x[]*s/(cm[] + SEPS) > cfl)
       cfl = un*fm.x[]*s/(cm[] + SEPS);
 
     double cf = 0;
-    if (c[i]*ibm[i] >= 1. || c[i]*ibm[i] <= 0.) {
+    if (c[i]*ibm0[i] >= 1. || c[i]*ibm0[i] <= 0.) {
         cf = c[i];
     }
-    else if (ibm[i] > 0. && ibm[i] < 1. && c[i] > 0.) {
+    else if (ibm0[i] > 0. && ibm0[i] < 1. && c[i] > 0.) {
         coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
         coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
         coord tempnf = {-s*nf.x[i], nf.y[i], nf.z[i]};
@@ -173,7 +173,7 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar c0)
         cf = rectangle_fraction (tempnf, alphaf[i], lhs, rhs);
     }
 
-    flux[] = cf*ibmf.x[]*uf.x[];
+    flux[] = cf*ibmf0.x[]*uf.x[];
 
     scalar t, gf, tflux;
     for (t,gf,tflux in tracers,gfl,tfluxl) {
@@ -199,40 +199,37 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar c0)
 	     __LINE__, cfl - 0.5), fflush (ferr);
 
   foreach()
-    if (ibm[] > 0) {
+    if (ibm0[] > 0) {
 
-#if 0
-      if (on_interface(ibm)) 
+#if 1
+      if (on_interface(ibm0)) 
         fprintf (stderr, "F* W/O FLUX: %g (%g, %g) c[]=%0.15g cr[]=%0.15g"
                          " ibmf[]=%g ibmf[1]=%g uf[]=%g uf[1]=%g dx=%g\n",
                          indicator.x, x, y, c[], cr[], ibmf.x[], ibmf.x[1],
                          uf.x[], uf.x[1], Delta);
 #endif
-      if (on_interface(ibm)) {
+      if (on_interface(ibm0)) {
           coord mp, n;
-          double area = ibm_geometry (point, &mp, &n);
+          double area = ibm0_geometry (point, &mp, &n);
           double mpx, mpy, mpz;
           local_to_global (point, mp, &mpx, &mpy, &mpz);
 
           double divs = uibm_x(mpx,mpy,mpz) * n.x * area;
 
-          c[]  += dt*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[] - divs))/Delta;
-          cr[] += dt*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[] - divs))/Delta;
+          c[]  += dt*(flux[] - flux[1] + cc[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[] - divs))/Delta;
+          cr[] += dt*(flux[] - flux[1] + cc[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[] - divs))/Delta;
       }
       else {
-          c[]  += dt*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(Delta);
-          cr[] += dt*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(Delta);
+          c[]  += dt*(flux[] - flux[1] + cc[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[]))/(Delta);
+          cr[] += dt*(flux[] - flux[1] + cc[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[]))/(Delta);
       }
-#if 0
+#if 1
       if (on_interface(ibm)) 
         fprintf (stderr, "F* W/FLUX: %g (%g, %g) c[]=%0.15g cr[]=%0.15g cc[]=%g"
                          " flux[]=%g flux[1]=%g div=%g\n",
                          indicator.x, x, y, c[], cr[], cc[], flux[], flux[1], divg1[]);
 #endif
     }
-
-  reconstruction (c, nfg, alphafg);
-  reconstruction (ibm, nsg, alphasg);
 
 #if 0
   reconstruction (c, nf, alphaf);
@@ -325,6 +322,9 @@ void vof_advection (scalar * interfaces, int i)
    reconstruction (c, nf, alphaf);
    reconstruction (ibm, ns, alphas);
    immersed_reconstruction (c, creal, nf, alphaf, ns, alphas);
+
+   reconstruction (c, nfg, alphafg);
+   reconstruction (ibm, nsg, alphasg);
   }
 }
 
