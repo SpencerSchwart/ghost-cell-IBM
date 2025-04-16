@@ -168,7 +168,7 @@ event tracer_advection (i++)
             if (totalWeight > 0.)
                 f[] = ghostf / totalWeight;
         }
-        else if (on_interface(ibm) && (fr0[] <= 0 || fr0[] >= ibm[])) // solid interface cell with full
+        else if (on_interface(ibm) && (fr0[] <= 0+INT_TOL || fr0[] >= ibm[]-INT_TOL)) // solid interface cell with full
         {                                                           // or empty real fluid
             double ghostf = 0., totalWeight = 0., alphaf1 = 0;
             coord ghostCell = {x,y,z}, nf2;
@@ -197,21 +197,26 @@ event tracer_advection (i++)
             }
 
             // 3.d. if extrapolation results in f inside the interface cell, adjust it to preserve fr
-            if (totalWeight > 0. && ghostf > 0. && f[] >= 0) {
-                
+            if (totalWeight > 0. && ghostf > 0.) {
+#if 1
                 coord ns1 = {ns.x[], ns.y[]}, nf1 = {nf.x[], nf.y[]};
                 fprintf (stderr, "1st %d (%g, %g) nf ={%g,%g} f[]=%0.15g fr0[]=%0.15g tw=%g gf=%g ", 
                                   count, x, y, nf2.x, nf2.y, f[], fr0[], totalWeight, ghostf);
                 fprintf (stderr, "gf/tw=%g alphaf1=%g\n", ghostf/totalWeight, alphaf1);
-                //if (ghostf / totalWeight >= 1. && fr0[] >= ibm[] - INT_TOL)
-                if (ghostf / totalWeight >= 1.)
-                     f[] = ghostf / totalWeight;
+                //if (ghostf / totalWeight >= 1. && fr0[] >= ibm[] - INT_TOL) {
+                if (ghostf / totalWeight >= 1.) {
+                    fprintf(stderr, "(a) fr0[]=%g ibm[]=%g\n", fr0[], ibm[]);     
+                    f[] = ghostf / totalWeight;
+                }
                 else { // should it really be nf2 here instead of nf1?
-                    double alpha = immersed_line_alpha (point, nf2, alphaf1, ns1, alphas[], fr0[]);
-                    f[] = plane_volume (nf2, alpha);
+                    fprintf(stderr, "(b) fr0[]=%g ibm[]=%g tw=%g gf=%g\n", fr0[], ibm[], totalWeight, ghostf);
+                    //double alpha = immersed_line_alpha (point, nf2, alphaf1, ns1, alphas[], fr0[]);
+                    //f[] = plane_volume (nf2, alpha);
+                    f[] = ghostf / totalWeight;
                 }
                 if (f[] > 1 - INT_TOL) f[] = 1;
-                fprintf (stderr, "  f`[]=%0.15g\n", f[]);
+#endif
+                fprintf (stderr, "  f`[]=%0.15g \n", f[]);
             }
             // 3.e otherwise, cell should not be used to enforce C.A.
             else if (ghostf <= 0 && fr0[] <= 0)
@@ -222,6 +227,7 @@ event tracer_advection (i++)
     // 4. Correct f in cells that may violate volume conservation by calculating
     //    and comparing fr before and after step 3.
 
+    boundary ({f});
     reconstruction (f, nf, alphaf);
 
     scalar fr[];
@@ -237,12 +243,12 @@ event tracer_advection (i++)
             if (freal >= fr0[] - 1e-10 && freal <= fr0[] + 1e-10)
                 continue;
 
-            fprintf (stderr, "2nd (%g, %g) nf ={%g,%g} f[]=%g fr0[]=%g fr[]=%g freal=%g\n", 
+            fprintf (stderr, "2nd (%g, %g) nf ={%g,%g} f[]=%0.15g fr0[]=%0.15g fr[]=%0.15g freal=%g\n", 
                              x, y, nf1.x, nf1.y, f[], fr0[], fr[], freal);
             double alpha = immersed_line_alpha (point, nf1, alphaf[], ns1, alphas[], fr0[]);
             f[] = plane_volume (nf1, alpha);
             if (f[] > 1 - INT_TOL) f[] = 1;
-            fprintf (stderr, "  f`[]=%g\n", f[]);
+            fprintf (stderr, "  f`[]=%0.15g \n", f[]);
         }
     }
     clean_fluid(f, fr0, ibm);

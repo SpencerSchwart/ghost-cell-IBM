@@ -10,7 +10,7 @@ method. The volume fraction in fluid 1 is $f=1$ and $f=0$ in fluid
 2. The densities and dynamic viscosities for fluid 1 and 2 are *rho1*,
 *mu1*, *rho2*, *mu2*, respectively. */
 
-#if !IBM
+#if 0
 #include "my-vof.h"
 #else
 #include "my-vof-test.h"

@@ -104,7 +104,7 @@ scalar flux[];  // real flux
 scalar fluxf[]; // fake flux
 
 foreach_dimension()
-static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar c0)
+static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar ibm0, face vector ibmf0)
 {
   vector nf[], ns[];
   scalar alphaf[], alphas[];
@@ -159,8 +159,8 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar c0)
         coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
         coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
         coord tempnf = {-s*nf.x[i], nf.y[i], nf.z[i]};
-        cf = immersed_fraction (c[i], tempnf, alphaf[i], tempns, alphas[i], lhs, rhs,0);
-        #if 0
+        cf = immersed_fraction (c[i], tempnf, alphaf[i], tempns, alphas[i], lhs, rhs,1);
+        #if 1
         fprintf(stderr, "VOF (b): %g (%g, %g) ibm[%d]=%g cf=%0.15g"
                             " c[%d]=%0.15g cr[%d]=%0.15g un=%g, uf=%g\n", 
                              indicator.x, x, y, i, ibm[i], cf, i, c[i], i, cr[i], 
@@ -210,7 +210,8 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar c0)
 #endif
       if (on_interface(ibm0)) {
           coord mp, n;
-          double area = ibm0_geometry (point, &mp, &n);
+          //double area = ibm0_geometry (point, &mp, &n);
+          double area = ibm_geometry (point, &mp, &n);
           double mpx, mpy, mpz;
           local_to_global (point, mp, &mpx, &mpy, &mpz);
 
@@ -304,14 +305,14 @@ void vof_advection (scalar * interfaces, int i)
      c0[] = c[];
    }
 
-    void (* sweep[dimension]) (scalar, scalar, scalar *, scalar, scalar);
+    void (* sweep[dimension]) (scalar, scalar, scalar *, scalar, scalar, face vector);
     int d = 0;
     foreach_dimension()
       sweep[d++] = sweep_x;
     for (d = 0; d < dimension; d++) {
       char ind = (i + d) % dimension == 0? 'x': 'y';
-      //fprintf(stderr, "\n=== %c SWEEP (i = %d) ===\n", ind, i);
-      sweep[(i + d) % dimension] (c, cc, tcl, creal, c0);
+      fprintf(stderr, "\n=== %c SWEEP (i = %d) ===\n", ind, i);
+      sweep[(i + d) % dimension] (c, cc, tcl, creal, ibm, ibmf);
     }
     delete (tcl), free (tcl);
 

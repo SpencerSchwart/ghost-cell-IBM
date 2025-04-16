@@ -329,7 +329,7 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
     }
 #elif IBM
   foreach()
-    if (ibm[] > 0.) { // should cm[] be ibm[]?
+    if (ibm[] > 0.) {
       c[] += dt*ibm[]*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(ibm[]*Delta);
 #if NO_1D_COMPRESSION
       for (t, tflux in tracers, tfluxl)

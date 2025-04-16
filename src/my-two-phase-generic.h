@@ -84,6 +84,7 @@ event properties (i++)
 {
 
 #if IBM
+#if 0
   vector nf[], ns[];
   scalar alphaf[], alphas[];
   reconstruction (f, nf, alphaf);
@@ -123,11 +124,24 @@ event properties (i++)
       muv.x[] = fm.x[]*mu(ff); // should fm be ibmf here?
     }
   }
+#endif
+    foreach_face() {
+        double ff = (sf[] + sf[-1])/2.;
+        alphav.x[] = ibmf.x[]/rho(ff);
+        if (mu1 || mu2) {
+          face vector muv = mu;
+           muv.x[] = fm.x[]*mu(ff); // should fm be ibmf here?
+        }
+    }
 #else // !IBM
-   foreach_face() {
-    double ff = (sf[] + sf[-1])/2.;
-    alphav.x[] = fm.x[]/rho(ff);
-   }
+    foreach_face() {
+        double ff = (sf[] + sf[-1])/2.;
+        alphav.x[] = fm.x[]/rho(ff);
+        if (mu1 || mu2) {
+          face vector muv = mu;
+           muv.x[] = fm.x[]*mu(ff); // should fm be ibmf here?
+        }
+    }
 #endif // !IBM
   
   foreach() {
