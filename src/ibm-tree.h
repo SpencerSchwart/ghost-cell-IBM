@@ -432,3 +432,11 @@ static inline void restriction_face_metric (Point point, scalar s)
   face_max_metric (point, s.v);
 }
 
+static inline void restriction_cell_metric (Point point, scalar s)
+{
+    double sum = 0.;
+    foreach_child()
+        sum += ibm[];
+    s[] = sum/(1 << dimension) > 0.5;
+}
+
