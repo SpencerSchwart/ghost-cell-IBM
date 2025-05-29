@@ -426,11 +426,13 @@ static inline void face_max_metric (Point point, vector v)
     #endif
   }
 }
-  
+
+
 static inline void restriction_face_metric (Point point, scalar s)
 {
   face_max_metric (point, s.v);
 }
+
 
 static inline void restriction_cell_metric (Point point, scalar s)
 {
@@ -438,5 +440,38 @@ static inline void restriction_cell_metric (Point point, scalar s)
     foreach_child()
         sum += ibm[];
     s[] = sum/(1 << dimension) > 0.5;
+}
+
+
+static void fraction_refine_metric (Point point, scalar s)
+{
+  double cc = ibm[];
+
+  /**
+  If the cell is empty or full, simple injection from the coarse cell
+  value is used. */
+  
+  if (cc <= 0. || cc >= 1.) {
+    foreach_child()
+      s[] = cc;
+  }
+  else {
+
+    /**
+    If the cell contains the ibmded boundary, we reconstruct the
+    boundary using VOF linear reconstruction and a normal estimated
+    from the surface fractions. */
+
+    coord n = facet_normal (point, ibm, ibmf);
+    double alpha = plane_alpha (cc, n);
+      
+    foreach_child() {
+      static const coord a = {0.,0.,0.}, b = {.5,.5,.5};
+      coord nc;
+      foreach_dimension()
+	    nc.x = child.x*n.x;
+      s[] = rectangle_fraction (nc, alpha, a, b) > 0.5;
+    }
+  }
 }
 

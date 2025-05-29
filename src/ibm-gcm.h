@@ -1741,8 +1741,57 @@ double line_intersect (double alpha, coord n, double x = HUGE, double y = HUGE)
         inter = alpha/n.x - (n.y/(n.x+SEPS))*y;
     else
         inter = alpha/n.y - (n.x/(n.y+SEPS))*x;
-
     return inter;
+}
+
+// adjust x coordinate (rhsx) to conserve area
+// lhsb = left-hand-side bottom, rhst = right-hand-side top
+double fit_area (coord ns, double alphas, coord lhsb, coord rhst)
+{
+    double oldx = rhst.x;
+    // assuming liquid is on top of solid interface
+    coord lhst = {lhsb.x, rhst.y}, rhsb = {rhst.x, lhsb.y};
+
+    // change the verticies if the solid interface is on top of the liquid interface
+    if (ns.y > 0) {
+        rhst.y = lhsb.y;
+        lhsb.y = -0.5;
+        lhst.y = rhst.y;
+    }
+
+    double error = HUGE, tolerance = 1e-9;
+    int itr = 0, maxitr = 40;
+
+    coord rect0[4] = {lhsb,rhsb,rhst,lhst};
+    double area0 = polygon_area (4, rect0);
+    double areaReal = area0 * rectangle_fraction (ns, alphas, lhsb, rhst);
+    double error0 = area0 - areaReal;
+
+    double minx = -0.5, maxx = 0, newx; // maxx could probably be 0 instead due to CFL=0.5 (was 0.5)
+    while (fabs(error) > tolerance && itr < maxitr) {
+
+        newx = (maxx + minx)/2.; // find mid section
+
+        coord lhsb2 = {lhsb.x,-0.5}, rhsb2 = {newx, -0.5}, rhst2 = {newx, 0.5}, lhst2 = {lhst.x,0.5};
+        coord rect[4] = {lhsb2,rhsb2,rhst2,lhst2};
+
+        double areaTotal = polygon_area (4, rect);
+        areaReal = areaTotal * rectangle_fraction (ns, alphas, lhsb2, rhst2);
+
+        error = area0 - areaReal;
+        if (error > 0)
+            minx = newx;
+        else
+            maxx = newx;
+        //fprintf(stderr, "AREA SOLVER: %d error=%g area0=%g arear=%g minx=%g maxx=%g\n",
+        //                 itr, error, area0, areaReal, minx, maxx);
+        itr++;
+    }
+    fprintf(stderr, "AREA SOLVER done: oldx=%g newx=%g\n", oldx, newx);
+    if (itr == maxitr)
+        fprintf(stderr, "WARNING: area root solver didn't converge after %d iteration wtih an error of %g\n",
+                        itr, error);
+    return newx;
 }
 
 
@@ -1753,7 +1802,30 @@ immersed_area calculates the area of the real fluid part of a cell.
 double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas, 
                       coord lhs, coord rhs, int print = 0)
 {
-    // 1. find the intersection points, pf & ps, of the fluid and solid interface
+    if (lhs.x == rhs.x)
+        return 0;
+
+    // 1. calculate the area of the real region within the advected region
+    coord lhst = {lhs.x,0.5}, rhsb = {rhs.x,-0.5}; 
+    coord rect[4] = {lhs,rhsb,rhs,lhst};
+    double areaTotal = polygon_area (4, rect); // total area being considered for advection (uf*dt*h)
+    double areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs); // volume fraction that isn't solid
+
+    double cvy = line_intersect (alphas, ns, x = -0.5), rhsx = 0; // intercept of solid interface on left face
+    #if 1
+    if (rhs.x < 0.5 && areaLiquid < 1) {
+        cvy = clamp(cvy, -0.5, 0.5);
+        rhsx = fit_area (ns, alphas, (coord){lhs.x, cvy}, (coord){rhs.x, rhs.y});
+        rhs.x = rhsx;
+        rhsb.x = rhsx;
+        coord rect0[4] = {lhs,rhsb,rhs,lhst};
+        areaTotal = polygon_area (4, rect0);
+        areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs);
+    }
+    #endif
+    double areaAdv = areaTotal*areaLiquid;
+
+    // 2. find the intersection points, pf & ps, of the fluid and solid interface
     //    with the enclosed region
     coord pf[2], ps[2];
     for (int i = 0; i < 2; ++i)
@@ -1764,17 +1836,15 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
 
     int numpf = boundary_points(nf, alphaf, lhs, rhs, pf);
     int numps = boundary_points(ns, alphas, lhs, rhs, ps);
-    
-    // 2. find the intersecting point of the two interfaces (if there is one)
+
+    // 3. find the intersecting point of the two interfaces (if there is one)
     coord pint = {nodata,nodata,nodata};
     int numpi = interface_intersect (nf, alphaf, ns, alphas, lhs, rhs, &pint);
 
-    // 3. get the other points enclosing the region being advected
-    coord lhst = {lhs.x,0.5}, rhsb = {rhs.x,-0.5}; 
 
     // 4. find which points create the polygon defining the real fluid region
-    
-    coord poly[9]; // 9 possible points
+    //    9 possible points
+    coord poly[9];
     poly[0] = pf[0], poly[1] = pf[1], poly[2] = ps[0], poly[3] = ps[1], poly[4] = pint;
     poly[5] = lhs, poly[6] = rhs, poly[7] = lhst, poly[8]= rhsb;
 
@@ -1810,30 +1880,25 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
 
     coord cf[nump]; // holds real points
     int count = 0;
-    for (int i = 0; i < 9; ++i) {
+    for (int i = 0; i < 9; ++i)
         if (poly[i].x != nodata && count < nump) {
             cf[count] = poly[i];
             count++;
         }
-    }
 
     if (print == 1) 
         for (int i = 0; i < nump; ++i) 
             fprintf(stderr, "cf[%d] = (%g,%g)\n", i, cf[i].x, cf[i].y);
 
     // 5. sort the real points in clockwise order
-    if (lhs.x == rhs.x)
-        return 0;
     sort_clockwise (nump, cf);
 
     // 6. use the shoelace formula to find the area
     double area = polygon_area (nump, cf);
-    coord rect[4] = {lhs,rhsb,rhs,lhst};
-    double areaTotal = polygon_area (4, rect);
-    double areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs);
+    // coord rect[4] = {lhs,rhsb,rhs,lhst};
+    // double areaTotal = polygon_area (4, rect);
+    // double areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs);
 
-    double cvy = line_intersect (alphas, ns, x = -0.5);
-    double areaAdv = areaTotal*areaLiquid;
     #if 0
     if (fabs(cvy) < 0.5) {
         coord lhs2 = {lhs.x, cvy}, rhs2 = {rhsb.x, cvy};
@@ -1872,8 +1937,8 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     }
 
     double vf = clamp(area/areaAdv, 0., 1.);
-    return vf >= 1 - INT_TOL? 1.: vf;
-    //return vf;
+    //return vf >= 1 - INT_TOL? 1.: vf; // necessary for incline?
+    return vf;
 }
 
 /*
@@ -1931,15 +1996,19 @@ int bisection_solver (double* a, double amin, double amax, tripoint tcell,
     double ibm0 = tcell.s == 0? rectangle_fraction (tcell.ns, tcell.alphas, lhs, rhs): tcell.s;
 
     double cmax = rectangle_fraction (tcell.nf, amax, lhs, rhs);
-    double crmax = ibm0*immersed_fraction (cmax, tcell.nf, amax, tcell.ns, tcell.alphas, lhs, rhs);
+    double crmax = immersed_fraction (cmax, tcell.nf, amax, tcell.ns, tcell.alphas, lhs, rhs);
     double errmax = crmax - tcell.fr;
+    //if (fabs(errmax) <= tolerance) {
+    //    *a = tcell.alphaf;
+    //    return 0;
+    //}
 
     double alpha = 0, error = HUGE;
     int itr = 0;
     while (fabs(error) > tolerance && itr < maxitr) {
         alpha = (amin + amax)/2.;   // bisection
         double fa = rectangle_fraction (tcell.nf, alpha, lhs, rhs);
-        double fcalc = ibm0*immersed_fraction (fa, tcell.nf, alpha, tcell.ns, tcell.alphas, lhs, rhs);
+        double fcalc = immersed_fraction (fa, tcell.nf, alpha, tcell.ns, tcell.alphas, lhs, rhs);
         error = fcalc - tcell.fr;
         if (sign2(error) == sign2(errmax)) {
             amax = alpha;
@@ -2036,15 +2105,17 @@ double immersed_line_alpha (Point point, coord nf, double alphaf, coord ns, doub
     double error = HUGE, alpha = 0;
 
     double f0 = clamp(rectangle_fraction (nf, alphaf, lhs, rhs), 0., 1.);
+    //if (f0 == 0. && alphaf == 0.)
+    //    f0 = 1.;
     double ibm0 = rectangle_fraction (ns, alphas, lhs, rhs);
-    freal = clamp(freal, 0., ibm0);
+    freal = clamp(freal, 0., 1.);
     tripoint tcell = fill_tripoint (freal, nf, alphaf, ns, alphas, f0, ibm0);
 
     int maxitr = 40;
 
     // the cell is full or empty, but we want to change f to set C.A while conserving freal
     #if 1
-    if ((nf.x || nf.y) && (freal >= ibm0-1e-6 || freal <= 1e-6)) {
+    if ((nf.x || nf.y) && (freal >= 1-1e-6 || freal <= 1e-6)) {
         #if PRINTA
         fprintf (stderr, "|| A.S.E: f0=%0.15g alphaf=%0.15g freal=%0.15g ibm=%g\n", 
                           f0, alphaf, freal, ibm0);
@@ -2109,12 +2180,12 @@ void real_fluid (scalar f, scalar fr)
 
     foreach() {
         if (on_interface(ibm) && on_interface(f))
-            fr[] = ibm[]*immersed_fraction (f[], (coord){nf.x[], nf.y[]}, alphaf[],
+            fr[] = immersed_fraction (f[], (coord){nf.x[], nf.y[]}, alphaf[],
                                                  (coord){ns.x[], ns.y[]}, alphas[],
                                                  (coord){-0.5, -0.5, -0.5},
                                                  (coord){0.5, 0.5, 0.5}, 0);
         else
-            fr[] = ibm[]*clamp(f[], 0., 1.);
+            fr[] = clamp(f[], 0., 1.);
     }
 }
 
@@ -2132,23 +2203,23 @@ nf and ns are the liquid and solid normals (resp.). Likewise, alphas and alphaf
 are the corresponding alpha values.
 */
 
-void immersed_reconstruction (scalar c, scalar cr, vector nf, scalar alphaf, 
+void immersed_reconstruction (scalar c, const scalar cr, vector nf, scalar alphaf, 
                               vector ns, scalar alphas)
 {
     foreach() {
         if (on_interface(ibm) && c[]) {
 
-           if (cr[] == 0)
+           if (cr[] == 0 || (cr[] >= 1 && c[] >= 1))
                 continue;
 
             fprintf(stderr, "cr[] = %g\n", cr[]);
 
             coord nsolid = {ns.x[], ns.y[]}, nfluid = {nf.x[], nf.y[]};
 
-            if ((c[] <= 0 + INT_TOL || c[] >= 1 - INT_TOL) || (fabs(nfluid.x) <= 1e-10 && fabs(nfluid.y) <= 1e-10))
-                continue;
+//            if ((c[] <= 0 + INT_TOL || c[] >= 1 - INT_TOL) || (fabs(nfluid.x) <= 1e-10 && fabs(nfluid.y) <= 1e-10))
+//                continue;
             
-            double freal = ibm[]*immersed_fraction (c[], nfluid, alphaf[], nsolid, alphas[],
+            double freal = immersed_fraction (c[], nfluid, alphaf[], nsolid, alphas[],
                                               (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5},0);
             
             if (cr[] < freal + INT_TOL && cr[] > freal - INT_TOL) // was getting alpha convergence errors with 1e-8
@@ -2161,6 +2232,7 @@ void immersed_reconstruction (scalar c, scalar cr, vector nf, scalar alphaf,
             fprintf(stderr, "(%g, %g) c[]_before = %0.15f, c[]_after = %0.15f | cr[] = %0.15f crcalc =%0.15f\n",
                            x, y, c0, c[], cr[], freal);
         }
+        //if (c[] > 1 - 1e-7) c[] = 1;
     }
 #if 0
     reconstruction (c, nf, alphaf);
@@ -2169,7 +2241,7 @@ void immersed_reconstruction (scalar c, scalar cr, vector nf, scalar alphaf,
     real_fluid (c, fr);
 
     foreach() {
-        clamp (cr[], 0., ibm[]);
+        //clamp (cr[], 0., ibm[]);
         if (fr[] < cr[] - INT_TOL || fr[] > cr[] + INT_TOL) {
             double f0 = c[], fr0 = fr[];
             coord ns1 = {ns.x[], ns.y[]}, nf1 = {nf.x[], nf.y[]};
@@ -2181,7 +2253,7 @@ void immersed_reconstruction (scalar c, scalar cr, vector nf, scalar alphaf,
 
             double alpha = immersed_line_alpha (point, nf1, alphaf[], ns1, alphas[], cr[]);
             c[] = plane_volume (nf1, alpha);
-            if (c[] > 1 - INT_TOL) c[] = 1;
+            if (c[] > 1 - 1e-10) c[] = 1;
 
             fprintf (stderr, "clean-up (%g, %g) f0[]=%g fr0[]=%g f[]=%g fr[]=%g\n", 
                               x, y, f0, fr0, c[], cr[]);
@@ -2210,9 +2282,9 @@ double real_volume (scalar f)
             volume += immersed_fraction (f[], (coord){nf.x[], nf.y[]}, alphaf[],
                                               (coord){ns.x[], ns.y[]}, alphas[],
                                               (coord){-0.5, -0.5, -0.5},
-                                              (coord){0.5, 0.5, 0.5}, 0) * dv();
+                                              (coord){0.5, 0.5, 0.5}, 0) * sq(Delta);
         else
-            volume += f[]*dv();
+            volume += f[]*sq(Delta)*ibm[];
     }
 
     return volume;
@@ -2333,8 +2405,13 @@ event metric (i = 0)
     ibmCells.refine = ibm_fraction_refine;
     ibmCells.prolongation = fraction_refine;
 
+    // THESE DON'T WORK WITH AMR, EVEN IN SERIAL
+    //ibmCells.refine = fraction_refine_metric;
+    //ibmCells.prolongation = fraction_refine_metric;
+    //ibmCells.restriction = restriction_cell_metric;
+
     ibm0.refine = ibm.refine = ibm_fraction_refine;
-    ibm0.refine = ibm.prolongation = fraction_refine;
+    ibm0.prolongation = ibm.prolongation = fraction_refine;
 
     foreach_dimension() {
         ibmFaces.x.prolongation = refine_metric_injection_x;

@@ -11,6 +11,7 @@ extern scalar * interfaces;
 extern face vector uf;
 extern double dt;
 
+double cerror0, cerror1_x, cerror1_y, cerror2;
 
 foreach_dimension()
 static double vof_concentration_gradient_x (Point point, scalar c, scalar t)
@@ -104,7 +105,7 @@ scalar flux[];  // real flux
 scalar fluxf[]; // fake flux
 
 foreach_dimension()
-static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar ibm0, face vector ibmf0)
+static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar ccr, scalar ibm0, face vector ibmf0)
 {
   vector nf[], ns[];
   scalar alphaf[], alphas[];
@@ -130,6 +131,10 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar ibm0, 
   // 1. Find n and alpha for f[] and ibm[]
   reconstruction (c, nf, alphaf);
   reconstruction (ibm0, ns, alphas);
+  //immersed_reconstruction (c, cr, nf, alphaf, ns, alphas);
+  //reconstruction (c, nf, alphaf);
+  //reconstruction (ibm0, ns, alphas);
+  cerror1_x = real_volume (c);
 
   foreach_face(x, reduction (max:cfl)) {
 
@@ -152,24 +157,31 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar ibm0, 
       cfl = un*fm.x[]*s/(cm[] + SEPS);
 
     double cf = 0;
-    if (c[i]*ibm0[i] >= 1. || c[i]*ibm0[i] <= 0.) {
-        cf = c[i];
+    coord tempnf = {-s*nf.x[i], nf.y[i], nf.z[i]};
+    coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
+
+    if (ibm0[i] >= 1. || ibm0[i] <= 0.) {
+        cf = (c[i] <= 0. || c[i] >= 1.)? c[i] : rectangle_fraction (tempnf, alphaf[i], lhs, rhs);
     }
-    else if (ibm0[i] > 0. && ibm0[i] < 1. && c[i] > 0.) {
-        coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
+    else if (ibm0[i] > 0. && ibm0[i] < 1.) {
         coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
-        coord tempnf = {-s*nf.x[i], nf.y[i], nf.z[i]};
-        cf = immersed_fraction (c[i], tempnf, alphaf[i], tempns, alphas[i], lhs, rhs,1);
-        #if 1
-        fprintf(stderr, "VOF (b): %g (%g, %g) ibm[%d]=%g cf=%0.15g"
+        if (cr[i] <= 0. || un <= 0.)
+            cf = 0.;
+        else if (cr[i] >= ibm0[i]) { // interfacial cell is full
+            double alphac = plane_alpha (cr[i], (coord){ns.x[i], ns.y[i]});
+            cf = (cr[i] <= 0. || cr[i] >= 1.)? cr[i] : rectangle_fraction (tempns, alphac, lhs, rhs);
+        }
+        else {
+            cf = immersed_fraction (c[i], tempnf, alphaf[i], tempns, alphas[i], lhs, rhs,0);
+            #if 0
+            fprintf(stderr, "VOF (b): %g (%g, %g) ibm[%d]=%g cf=%0.15g"
                             " c[%d]=%0.15g cr[%d]=%0.15g un=%g, uf=%g\n", 
                              indicator.x, x, y, i, ibm[i], cf, i, c[i], i, cr[i], 
                              un, uf.x[]);
-       #endif
+           #endif
+       }
     }
     else {
-        coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
-        coord tempnf = {-s*nf.x[i], nf.y[i], nf.z[i]};
         cf = rectangle_fraction (tempnf, alphaf[i], lhs, rhs);
     }
 
@@ -218,11 +230,11 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar ibm0, 
           double divs = uibm_x(mpx,mpy,mpz) * n.x * area;
 
           c[]  += dt*(flux[] - flux[1] + cc[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[] - divs))/Delta;
-          cr[] += dt*(flux[] - flux[1] + cc[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[] - divs))/Delta;
+          cr[] += dt*(flux[] - flux[1] + ccr[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[] - divs))/(ibm[]*Delta);
       }
       else {
           c[]  += dt*(flux[] - flux[1] + cc[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[]))/(Delta);
-          cr[] += dt*(flux[] - flux[1] + cc[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[]))/(Delta);
+          cr[] += dt*(flux[] - flux[1] + ccr[]*(ibmf0.x[1]*uf.x[1] - ibmf0.x[]*uf.x[]))/(Delta);
       }
 #if 1
       if (on_interface(ibm)) 
@@ -260,7 +272,7 @@ void vof_advection (scalar * interfaces, int i)
     multi-dimensional advection scheme (provided the advection velocity
     field is exactly non-divergent). */
 
-    scalar cc[], * tcl = NULL, * tracers = c.tracers;    
+    scalar cc[], ccr[], * tcl = NULL, * tracers = c.tracers;
     for (scalar t in tracers) {
 #if !NO_1D_COMPRESSION
       scalar tc = new scalar;
@@ -277,6 +289,7 @@ void vof_advection (scalar * interfaces, int i)
     }
     foreach() {
       cc[] = (c[] > 0.5);
+      ccr[] = (c[] > 0.5*ibm[]);
 #if !NO_1D_COMPRESSION
       scalar t, tc;
       for (t, tc in tracers, tcl) {
@@ -291,34 +304,40 @@ void vof_advection (scalar * interfaces, int i)
    reconstruction (c, nf, alphaf);
    reconstruction (ibm, ns, alphas);
 
+   // TODO: cr should be = 1 in cells where cr == ibm, i.e. full cells,
+   //       so i think we just dont multiply by ibm[] here.
    foreach() {
      if (on_interface(ibm) && on_interface(c)) {
-       creal[] = ibm[]*immersed_fraction (c[], (coord){nf.x[], nf.y[]}, alphaf[],
-                         (coord){ns.x[], ns.y[]}, alphas[],
-                         (coord){-0.5, -0.5, -0.5},
-                         (coord){0.5, 0.5, 0.5}, 0);
+       creal[] = immersed_fraction (c[], (coord){nf.x[], nf.y[]}, alphaf[],
+                                         (coord){ns.x[], ns.y[]}, alphas[],
+                                         (coord){-0.5, -0.5, -0.5},
+                                         (coord){0.5, 0.5, 0.5}, 0);
      }
      else
-       creal[] = ibm[]*c[];
+       creal[] = c[];
      
      cr0[] = creal[];   
      c0[] = c[];
    }
 
-    void (* sweep[dimension]) (scalar, scalar, scalar *, scalar, scalar, face vector);
+    cerror0 = real_volume (c);
+
+    void (* sweep[dimension]) (scalar, scalar, scalar *, scalar, scalar, scalar, face vector);
     int d = 0;
     foreach_dimension()
       sweep[d++] = sweep_x;
     for (d = 0; d < dimension; d++) {
       char ind = (i + d) % dimension == 0? 'x': 'y';
       fprintf(stderr, "\n=== %c SWEEP (i = %d) ===\n", ind, i);
-      sweep[(i + d) % dimension] (c, cc, tcl, creal, ibm, ibmf);
+      sweep[(i + d) % dimension] (c, cc, tcl, creal, ccr, ibm, ibmf);
     }
     delete (tcl), free (tcl);
 
    foreach() {
      cr[] = creal[];
    }
+
+   cerror2 = real_volume (c);
 
    reconstruction (c, nf, alphaf);
    reconstruction (ibm, ns, alphas);

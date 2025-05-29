@@ -363,6 +363,11 @@ event advection_term (i++,last)
 
   if (!stokes) {
     prediction();
+    #if 0
+    foreach_face()
+        if (uf.x[] > 1000)
+            fprintf(stderr, "WARNING (%g,%g) uf=%g\n",x,y, uf.x[]);
+    #endif
     mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);
     advection ((scalar *){u}, uf, dt, (scalar *){g});
   }
@@ -483,6 +488,9 @@ next timestep). Then compute the centered gradient field *g*. */
 
 event projection (i++,last)
 {
+  foreach_face()
+    if (uf.x[] > 1e4)
+      fprintf(stderr, "(%g, %g) max velocity = %g\n", x, y, uf.x[]);
   mgp = project (uf, p, alpha, dt, mgp.nrelax);
   centered_gradient (p, g);
   

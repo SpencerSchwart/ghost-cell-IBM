@@ -147,7 +147,7 @@ event tracer_advection (i++)
     
             // 3.a. Calculate weights
             foreach_neighbor() {
-                if (on_interface(ibm) && (on_interface(f) &&
+                if (on_interface(ibm) && (on_interface(fr0) &&
                     fr0[] <= ibm[] - INT_TOL && fr0[] > 0 + INT_TOL)) { // cell with potential triple point
 
                     double cellWeight = ibm[] * (1. - ibm[]) * f[] * (1. - f[]);

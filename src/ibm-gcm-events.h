@@ -6,20 +6,19 @@ should execute after the new volume fraction fields have been initalized.
 Its main purpose is to update the metric fields to account for a moving interface.
 */
 
+// TODO: this event is very sensitive to MPI and can cause crashes w/AMR
 event update_metric (i++)
 {
     // update metrics considering immersed boundary
 
     boundary((scalar *){ibm, ibmf});
-
-    trash ({ibmFaces});
     foreach() {
         if (ibm[] > 0.5) // fluid cell
             ibmCells[] = 1;
         else // ghost or solid cell
             ibmCells[] = 0;
     }
-
+    trash ({ibmFaces});
     foreach_face() {
        //if (is_ghost_cell (point, ibm) || ibm[] > 0.5)
         if (ibm[] > 0. || ibm[-1] > 0.)
@@ -31,6 +30,38 @@ event update_metric (i++)
     boundary((scalar *){ibmFaces, ibmCells});
 }
 
+#if 0
+event end_timestep (i++)
+{
+    // update metrics considering immersed boundary
+
+    boundary((scalar *){ibm, ibmf});
+#if 0
+    foreach() {
+        if (ibm[] > 0.5) // fluid cell
+            ibmCells[] = 1;
+        else // ghost or solid cell
+            ibmCells[] = 0;
+    }
+    boundary({ibmCells});
+#endif
+#if 1
+    //trash ({ibmFaces});
+    foreach_face() {
+       //if (is_ghost_cell (point, ibm) || ibm[] > 0.5)
+        if (ibm[] > 0. || ibm[-1] > 0.)
+            ibmFaces.x[] = 1;
+            //ibmFaces.x[] = ibmFaces.x[];
+        else // solid sell
+            ibmFaces.x[] = 0;
+    }
+
+    //fm = ibmFaces;
+    //restriction({fm});
+    boundary((scalar *){ibmFaces, ibmCells});
+#endif
+}
+#endif
 
 /*
 ###### NOT NECESSARY FOR STATIONARY SOLID ######
