@@ -1,12 +1,8 @@
-#undef dv
-#define dv() (pow(Delta,dimension)*ibm[])
-
 #include "fractions.h"
 
 #define BGHOSTS 2
 #define IBM 1
 #define LIMIT 1.e10
-#define INT_TOL 1e-7    // tolerance used for volume fraction fields (interface tolerance)
 
 #undef SEPS
 #define SEPS 1e-30
@@ -14,7 +10,6 @@
 scalar ibm[];
 scalar ibm0[];          // solid volume fraction field of previous timestep
 face vector ibmf[];
-face vector ibmf0[];
 
 // metric fields
 scalar ibmCells[];
@@ -40,8 +35,8 @@ void fill_fragment (double c, coord n, fragment * frag)
 
 #define distance(a,b) sqrt(sq(a) + sq(b))
 #define distance3D(a,b,c) sqrt(sq(a) + sq(b) + sq(c))
-#define on_interface(a) (a[] > 0+INT_TOL && a[] < 1-INT_TOL)
-#define is_mostly_solid(a, i) (a[i] > 0+INT_TOL && a[i] <= 0.5)
+#define on_interface(a) (a[] > 1e-6 && a[] < 1-1e-6)
+#define is_mostly_solid(a, i) (a[i] > 1e-6 && a[i] <= 0.5)
 #define is_fresh_cell(a0, a) (a0[] <= 0.5 && a[] > 0.5)
 
 
@@ -52,7 +47,6 @@ dirichlet b.c for velocity.
 
 TODO: allow neumann b.c (navier-slip b.c?)
 TODO: make other macros for p, pf, f, etc.
-TODO: use new macro feature?
 */
 
 static inline double uibm_x (double x, double y, double z);
@@ -120,7 +114,6 @@ Checks to see if the given point has at least 1 fluid neigbor touching one of
 it's faces. If so, returns true.
 
 TODO: change algorithm to only check neighbors, not the cell itself (ibm[0,0])
-      - should only require using i += 2 instead of i++
 */
 
 bool fluid_neighbor (Point point, scalar ibm)
@@ -167,6 +160,9 @@ bool match_level (Point point, scalar ibm)
 /*
 is_ghost_cell returns true if the given cell shares a face with a fluid cell,
 ibm > 0.5, and the volume fraction is less than or equal to 0.5.
+
+TODO: add check to make sure ghost cells, particularly ghost cells w/ different
+      levels of refinement, dont overlap with each other.
 */
 
 bool is_ghost_cell (Point point, scalar ibm)
@@ -364,27 +360,29 @@ Returns true if it has one or more neighbors that are inside the boundary.
 
 Optionally, the user can provide two integer pointers (useri and userj) to be
 filled with the indexs of the boundary neighbor.
+
+TODO: Signals when cell is on MPI and/or openMP boundary too?
+TODO: 3D implementation
 */
 
-bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL, int * userk = NULL)
+bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL)
 {
 #if TREE
     // Look at directly adjacent neighbors (4 in 2D)
     for (int d = 0; d < dimension; d++) {
-	    for (int kk = -1; kk <= 1; kk += 2) {
-            int i = 0, j = 0, k = 0;
-	        if (d == 0)
-                i = kk; 
-            else if (d == 1)
-                j = kk; 
-            else if (d == 2)
-                k = kk;
+	    for (int k = -1; k <= 1; k += 2) {
+            int i = 0, j = 0;
+	        if (d == 0) {
+                i = k; 
+            }
+            else if (d == 1) {
+                j = k; 
+            }
             // check to see if neighboring cell is inside boundary
-            if (neighbor(-i,-j,-k).pid < 0) {
+            if (neighbor(-i,-j,0).pid < 0) {
 
                 if (useri) *useri = -i;
                 if (userj) *userj = -j;
-                if (userk) *userk = -k;
 
                 return true;
             }
@@ -394,36 +392,6 @@ bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL, int 
     return false;
 }
 
-
-#if _MPI
-/*
-borders_boundary checks to see if a cell is adjacent to a MPI boundary. 
-Returns true if it has one or more neighbors that are inside the boundary.
-*/
-
-bool borders_mpi_boundary (Point point)
-{
-#if TREE 
-    // Look at directly adjacent neighbors (4 in 2D, 6 in 3D)
-    for (int d = 0; d < dimension; d++) {
-	    for (int kk = -1; kk <= 1; kk += 2) {
-            int i = 0, j = 0, k = 0;
-	        if (d == 0)
-                i = kk; 
-            else if (d == 1)
-                j = kk; 
-            else if (d == 2)
-                k = kk;
-
-            // check to see if neighboring cell is outside the current MPI rank/processor
-            if (neighbor(-i,-j,-k).pid != pid())
-                return true;
-        }
-    }
-#endif
-    return false;
-}
-#endif
 
 /*
 gauss_elim performs *in place* transformation to the provided augmented matrix 
@@ -565,8 +533,8 @@ TODO: Extend to handle higher-order interpolation schemes, i.e. larger matrices.
 coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints)
 {
     
-    int boundaryOffsetX = 0, boundaryOffsetY = 0, boundaryOffsetZ = 0;
-    bool border = borders_boundary (point, &boundaryOffsetX, &boundaryOffsetY, &boundaryOffsetZ);
+    int boundaryOffsetX = 0, boundaryOffsetY = 0;
+    bool border = borders_boundary (point, &boundaryOffsetX, &boundaryOffsetY);
     
     int xOffset = 0, yOffset = 0, zOffset = 0;
     image_offsets (point, imagePoint, &xOffset, &yOffset, &zOffset);
@@ -634,28 +602,28 @@ coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints)
     // make sure all points are inside the fluid domain ...
     // if not, change their coordinates to a point on the interface
     fluid_only (point, xx, yy, zz, 0, 0, 0, &p0, &velocity[0], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY);
 
     fluid_only (point, xx, yy, zz, i, 0, 0, &p1, &velocity[1], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY);
 
     fluid_only (point, xx, yy, zz, i, j, 0, &p2, &velocity[2], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY);
 
     fluid_only (point, xx, yy, zz, 0, j, 0, &p3, &velocity[3], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY);
 #if dimension == 3
     fluid_only (point, xx, yy, zz, 0, 0, k, &p4, &velocity[4], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY);
 
     fluid_only (point, xx, yy, zz, i, 0, k, &p5, &velocity[5], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY);
 
     fluid_only (point, xx, yy, zz, i, j, k, &p6, &velocity[6], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY);
 
     fluid_only (point, xx, yy, zz, 0, j, k, &p7, &velocity[7], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY);
 #endif
 
 #if dimension == 2
@@ -1059,20 +1027,6 @@ double ibm_geometry (Point point, coord * p, coord * n, double * alphau = NULL)
 }
 
 
-static inline
-double ibm0_geometry (Point point, coord * p, coord * n)
-{
-    *n = facet_normal (point, ibm0, ibmf0);
-    double alpha = plane_alpha (ibm0[], *n);
-    double area = plane_area_center (*n, alpha, p);
-    foreach_dimension()
-        n->x *= -1;
-    normalize (n);
-
-    return area;
-}
-
-
 void normalize_norm (coord n, coord * newn)
 {
     double norm = fabs(n.y) + fabs(n.x) + fabs(n.z);
@@ -1138,8 +1092,6 @@ coord offset_normal (Point point, face vector sf, int xoffset, int yoffset)
 /*
 ghost_fluxes returns the fluxes of a ghost cell (small cut-cell) that is to
 be redistributed or virtually merged with non-ghost cell neighbors.
-
-Note: THIS IS CURRENTLY NOT USED
 
 TODO: clean up and streamline code
 TODO: 3D implementation
@@ -1517,8 +1469,6 @@ int copy_coord (coord p, double* ax, double* ay, double* az)
     *ax = p.x;
     *ay = p.y;
     *az = p.z;
-
-    return 1;
 }
 
 
@@ -1542,8 +1492,8 @@ double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
     double mpx, mpy, mpz;
     local_to_global(point, mp, &mpx, &mpy, &mpz);
 
-    //double bc = uibm_x(mpx, mpy, mpz);
-    double bc = 0;
+    double bc = uibm_x(mpx, mpy, mpz);
+    //double bc = 0;
     
     double coef = 0.;
     //fprintf(stderr, "\n| ibm_flux (%g, %g) ibm=%g s=%g n.x=%g n.y=%g mp.x=%g mp.y=%g bc=%g\n",
@@ -1552,12 +1502,15 @@ double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
     double mua = 0., fa = 0.;
     foreach_dimension() {
         mua += mu.x[] + mu.x[1];
-        fa += ibmf.x[] + ibmf.x[1];
+        fa += fm.x[] + fm.x[1];
+        //fa += ibmf.x[] + ibmf.x[1];
     }
 
     *val = - mua/(fa + SEPS)*grad*area/Delta;
     return - mua/(fa + SEPS)*coef*area/Delta;
 }
+
+
 
 
 #if 0 // this seems to not have any major effect, despite its use in embed
@@ -1580,6 +1533,629 @@ static inline double ibm_face_gradient_x (Point point, scalar a, int i)
 }
 #endif
 
+
+/*
+###### TWO PHASE FUNCTIONS ######
+*/
+
+
+(const) scalar contact_angle;
+
+/*
+boundary_points is used to find the intersecting points of the fluid interface
+within the area being advected.
+*/
+
+int boundary_points (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
+{
+    int i = 0;
+    // check on x faces first
+    double dx = rhs.x - lhs.x;
+    if (fabs(dx) < 1e-15)
+        return 0;
+
+    if (fabs(nf.x) < 1e-15 && fabs(nf.y) < 1e-15)
+        return 0;
+
+    for (double xint = rhs.x; xint >= lhs.x; xint -= dx) {
+        double yint = (alphaf - nf.x*xint)/(nf.y+SEPS);
+        if (fabs(yint) <= 0.5) {
+            bp[i].x = xint;
+            bp[i].y = yint;
+            ++i;
+        }
+    }
+
+    // then check y faces
+    for (double yint = -0.5; yint <= 0.5; yint += 1.) {
+        double xint = (alphaf - nf.y*yint)/(nf.x+SEPS);
+        if (xint <= rhs.x && xint >= lhs.x) {
+            bp[i].x = xint;
+            bp[i].y = yint;
+            ++i;
+        }
+    }
+
+    return i;
+}
+
+
+/*
+this function checks to see if the two interfaces intersect each other. If they
+do, and it is within the bounds of the region, the coordinates is stored in pi.
+It also returns 1 or 0 based on if the lines intersect each other or not.
+*/
+
+int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
+                         coord lhs, coord rhs, coord * pint)
+{
+    coord pt;
+    pt.x = (alphas/(ns.y + SEPS) - alphaf/(nf.y + SEPS)) /
+                  ((ns.x/(ns.y + SEPS)) - (nf.x/(nf.y + SEPS)) + SEPS);
+
+    pt.y = (alphaf/(nf.y + SEPS)) - (nf.x*pt.x)/(nf.y + SEPS);
+
+    foreach_dimension() {
+        if (pt.x < lhs.x || pt.x > rhs.x) {
+            return 0;
+        }
+    }
+
+    *pint = pt;
+    return 1;
+}
+
+
+/*
+this function checks to see if a given point, pc, is inside the region
+containing only real fluid and not inside the immersed boundary.
+
+Note: ns is the inward pointing normal for the solid boundary while
+      nf is the outward pointing normal for the fluid boundary.
+
+returns
+    + if inside, - if outisde, and 0 if the points is on the interface
+*/
+
+double region_check (double vol, coord pc, coord nf, double alphaf, coord ns, double alphas)
+{
+    //if (fabs(nf.x) < 1e-10 && fabs(nf.y) < 1e-10)
+    //    return 1.;
+    //else if (fabs(nf.x) < 1e-10 && fabs(nf.y) < 1e-10)
+    //    return -1.;
+
+    double fluid = alphaf - nf.x*pc.x - nf.y*pc.y;
+    double solid = alphas - ns.x*pc.x - ns.y*pc.y;
+
+    return difference(fluid,-solid); //- because solid has inward pointing normal
+    //return intersection(fluid,solid); // these options are equivalent
+    //return min(fluid,solid);
+}
+
+
+/*
+This function uses cross products to determine the orientation of two points w.r.t
+a given center coordinate.
+
+is_begin will return
+    true is a behind b in a clockwise order,
+    false if a is in front of b, i.e. a is already in clockwise order with b.
+
+in degenerate cases where a and b lay along the same line (a x b = 0) we return
+true if a is further from the center than b.
+*/
+
+bool is_behind (coord a, coord b, coord center)
+{
+    // calculate cross product of a and b w.r.t the center
+    double det = (a.x - center.x)*(b.y - center.y) - (a.y - center.y)*(b.x - center.x);
+
+    if (det > 0)
+        return false;
+    if (det < 0)
+        return true;
+
+    // a and b lay along the same line, so det = 0. Instead, we check to see
+    // if a is further from the center than b.
+    double dista = sq(a.x - center.x) + sq(a.y - center.y);
+    double distb = sq(b.x - center.x) + sq(b.y - center.y);
+
+    return dista > distb;
+}
+
+
+
+/*
+sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
+clockwise order (or counter-clockwise if y-advection).
+*/
+
+void sort_clockwise (int nump, coord cf[nump])
+{
+    double xsum = 0, ysum = 0;
+    for (int i = 0; i < nump; ++i) {
+        xsum += cf[i].x;
+        ysum += cf[i].y;
+    }
+    coord pc = {xsum/nump, ysum/nump}; // center coordinate is average of all points
+    
+    bool sorted = false;
+    int nitrmax = 20, nitr = 0;
+    while (!sorted && nitr < nitrmax) {
+        sorted = true;
+        for (int i = 0; i < nump; ++i) {
+            int next = i + 1 < nump? i + 1: 0; // we loop around the list of coords
+            if (is_behind(cf[i],cf[next],pc)) {
+                coord tempcf = cf[i];
+                cf[i] = cf[next];
+                cf[next] = tempcf;
+                sorted = false;
+            }
+        }
+        nitr++;
+    }
+}
+
+
+/*
+polygon_area calculates the area enclosed by a list of points (in cw or ccw order)
+using the shoelace formula.
+*/
+
+double polygon_area (int nump, coord cf[nump])
+{
+    double area = 0;
+    bool finished = false;
+    for (int i = 0; i < nump; ++i) {
+        int next = i + 1 < nump? i + 1: 0; // to close the shape
+        area += cf[i].x*cf[next].y - cf[next].x*cf[i].y;
+    }
+
+    return fabs(area)/2.;
+}
+
+
+/*
+immersed_area calculates the area of the real fluid part of a cell.
+*/
+
+double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas, 
+                      coord lhs, coord rhs, int print = 1)
+{
+    //c = clamp (c, 0., 1.);
+    
+    // 1. find the intersection points, pf & ps, of the fluid and solid interface
+    //    with the enclosed region
+    coord pf[2], ps[2];
+    for (int i = 0; i < 2; ++i)
+        foreach_dimension() {
+            pf[i].x = nodata;
+            ps[i].x = nodata;
+        }
+
+    int numpf = boundary_points(nf, alphaf, lhs, rhs, pf);
+    if (numpf == 0) // the portion enclosed is full, no special treatment needed
+        return rectangle_fraction (ns, alphas, lhs, rhs);
+    int numps = boundary_points(ns, alphas, lhs, rhs, ps);
+    
+    // 2. find the intersecting point of the two interfaces (if there is one)
+    coord pint = {nodata,nodata,nodata};
+    int numpi = interface_intersect (nf, alphaf, ns, alphas, lhs, rhs, &pint);
+
+    // 3. get the other points enclosing the region being advected
+    coord lhst = {lhs.x,0.5}, rhsb = {rhs.x,-0.5}; 
+
+    // 4. find which points create the polygon defining the real fluid region
+    coord poly[9]; // 9 possible points
+    poly[0] = pf[0], poly[1] = pf[1], poly[2] = ps[0], poly[3] = ps[1], poly[4] = pint;
+    poly[5] = lhs, poly[6] = rhs, poly[7] = lhst, poly[8]= rhsb;
+
+    int nump = 0; // # of real points
+    for (int i = 0; i < 9; ++i) {
+        double placement = region_check(c, poly[i], nf, alphaf, ns, alphas);
+        //if (i == 3)
+        //    fprintf (stderr, "|| f(ps2) = %g\n", placement);
+        if ((placement >= 0 || fabs(placement) < 1e-6) && poly[i].x != nodata) { // should be < nodata?
+            nump++;
+        }
+        else {
+            poly[i].x = nodata, poly[i].y = nodata;
+        }
+    }
+#if 1
+    if (print == 1) {
+        fprintf(stderr, "||  pf1=(%g,%g) pf2(%g,%g) ps1=(%g,%g) ps2=(%g,%g) pint=(%g,%g)\n",
+                        pf[0].x, pf[0].y, pf[1].x, pf[1].y, ps[0].x, ps[0].y, ps[1].x, ps[1].y,
+                        pint.x, pint.y);
+   
+        fprintf(stderr, "|| p0=(%g,%g) p1=(%g,%g) p2=(%g,%g) p3=(%g,%g) p4=(%g,%g) p5=(%g,%g) p6=(%g,%g) p7=(%g,%g) p8=(%g,%g)\n", 
+                poly[0].x, poly[0].y, poly[1].x, poly[1].y,poly[2].x, poly[2].y, poly[3].x, poly[3].y,
+                poly[4].x, poly[4].y, poly[5].x, poly[5].y,poly[6].x, poly[6].y, poly[7].x, poly[7].y,
+                poly[8].x, poly[8].y);
+
+        fprintf(stderr, "||  lhs=(%g,%g) rhs=(%g,%g) lhst=(%g,%g) rhsb=(%g,%g)\n",
+                        lhs.x, lhs.y, rhs.x, rhs.y, lhst.x, lhst.y, rhsb.x, rhsb.y);
+                        
+        fprintf(stderr, "||  nf=(%g,%g) alphaf=%g ns=(%g,%g) alphas=%g c=%g %d %d %d %d\n",
+                        nf.x, nf.y, alphaf, ns.x, ns.y, alphas, c, numpf, numps, numpi, nump);
+    }
+#endif
+    if (nump == 0) // we don't do anything if the region has no interface fragments
+        return 0;
+
+    coord cf[nump]; // holds real points
+    int count = 0;
+    for (int i = 0; i < 9; ++i) {
+        if (poly[i].x != nodata && count < nump) {
+            cf[count] = poly[i];
+            count++;
+        }
+    }
+
+#if 1
+    if (print == 1) {
+        for (int i = 0; i < nump; ++i) {
+            fprintf(stderr, "cf[%d] = (%g,%g)\n",
+                             i, cf[i].x, cf[i].y);
+        }
+    }
+#endif
+
+    // 5. sort the real points in clockwise order
+    if (lhs.x == rhs.x)
+        return 0;
+    sort_clockwise (nump, cf);
+
+    // 6. use the shoelace formula to find the area
+    double area = polygon_area (nump, cf);
+    coord rect[4] = {lhs,rhsb,rhs,lhst};
+    double areaTotal = polygon_area (4, rect);
+    //double areaTotal = rectangle_fraction (ns, alphas, lhs, rhs);
+
+#if 1
+    if (print == 1) {
+        fprintf (stderr, "AFTER SORTING\n");
+        for (int i = 0; i < nump; ++i) {
+            fprintf(stderr, "cf[%d] = (%g,%g)\n",
+                         i, cf[i].x, cf[i].y);
+        }
+        // get f[] w/o considering immersed boundary
+        double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
+        fprintf (stderr, "area = %0.15g  areaTotal = %0.15g areaf=%0.15g f0=%0.15g\n", area, areaTotal, area/areaTotal, f0);
+    }
+#endif
+    //if (c >= 1.)
+    //    return 0.68;
+
+    return area/areaTotal;
+    //return area;
+
+}
+
+/*
+This function calculates the fraction of a rectangle (defined by lhs and rhs)
+which lies inside the liquid interface neglecting the portion inside of the 
+immersed boundary.
+
+lhs and rhs are the bottom left and top right (resp.) coordinates defining the
+region being advected by the split VOF advection scheme (see sweep_x in vof.h)
+*/
+
+double immersed_fraction (double c, coord nf, double alphaf, coord ns, double alphas, 
+                          coord lhs, coord rhs, int print = 1)
+{
+    //if (c >= 1 || c <= 0)
+    //    return c;
+
+    double area = immersed_area(c, nf, alphaf, ns, alphas, lhs, rhs, print);
+    
+    //double liquid = rectangle_fraction (ns, alphas, lhs, rhs);
+    //if (area >= liquid - 1e-6)
+    //    return liquid;
+
+   //return clamp(area, 0., liquid);
+   return area;
+}
+
+
+/*
+immersed_line_alpha calculates the alpha value that conserves the volume of
+real fluid, given in freal. We find the root of a function using the iterative
+bisection method to obtain alpha.
+
+The solver converges after about 20 iterations if tolerance = 1e-7
+
+TODO: implement proper min and max solver for alpha
+*/
+
+double immersed_line_alpha (Point point, coord nf, double alphaf, coord ns, double alphas,
+                            double freal, double tolerance = 1e-9)
+{
+    if ((freal <= 1e-6 || freal >= 1-1e-6) && !nf.x && !nf.y)
+    //if ((freal <= 0 || freal >= 1))
+        return alphaf;
+
+    coord lhs = {-0.5,-0.5}, rhs = {0.5,0.5}; // bottom-left & top-right points, resp.
+
+    double alphaMin = -1, alphaMax = 1; // are there better values?
+    
+    double error = HUGE, alpha = 0;
+
+    double f0 = rectangle_fraction (nf, alphaf, lhs, rhs);
+    double ibm0 = rectangle_fraction (ns, alphas, lhs, rhs);
+
+    int maxitr = 40;
+#if 1
+    // the cell is full or empty, but we want to change f to set C.A while conserving freal
+    if ((nf.x || nf.y) && (freal >= ibm0-1e-6 || freal <= 1e-6)) {
+        fprintf (stderr, "|| A.S.E: f0=%0.15g alphaf=%0.15g freal=%0.15g ibm=%g\n", f0, alphaf, freal, ibm0);
+        double arangeMin, arangeMax;
+
+        // a. Find a value of alpha that satifies volume conservation of freal
+        int itr = 0;
+        while (fabs(error) > tolerance && itr < maxitr) {
+            alpha = (alphaMin + alphaMax)/2.;
+            f0 = rectangle_fraction (nf, alpha, lhs, rhs);
+            double fcalc = immersed_fraction (f0, nf, alpha, ns, alphas, lhs, rhs,0);
+            error = fcalc - freal;
+            if (error > 0)
+                alphaMax = alpha;
+            else if (error < 0)
+                alphaMin = alpha;
+          fprintf(stderr, "|| A.S.E (a): %d fmin=%0.15g fmid=%0.15g fmax=%0.15g alpha=%0.15g error=%g\n",
+                                itr, alpha, f0, fcalc, freal, error);
+            itr++;
+        }
+        if (itr == maxitr) 
+        fprintf(stderr, "WARNING: alphaf (a) solver does not converge after maximum iteration (%d), error = %g\n", 
+                        maxitr, error);
+
+        // b. calculate the upper value of alpha, still ensuring volume conservation
+        error = HUGE; itr = 0;
+        alphaMin = alpha; alphaMax = 1;
+        while (fabs(error) > tolerance && itr < maxitr) {
+            arangeMax = (alphaMin + alphaMax)/2.;
+            f0 = rectangle_fraction (nf, arangeMax, lhs, rhs);
+            double fcalc = immersed_fraction (f0, nf, arangeMax, ns, alphas, lhs, rhs,0);
+            error = fcalc - freal;
+            if (error > 0)
+                alphaMax = arangeMax;
+            else if (error < 0)
+                alphaMin = arangeMax;
+           fprintf(stderr, "|| A.S.E (b): %d fmin=%0.15g fmid=%0.15g fmax=%0.15g alpha=%0.15g error=%g\n",
+                                itr, arangeMax, f0, fcalc, freal, error);
+            itr++;
+        }
+        if (itr == maxitr) 
+        fprintf(stderr, "WARNING: alphaf (b) solver does not converge after maximum iteration (%d), error = %g\n", 
+                        maxitr, error);
+
+        // c. calculate the lower value of alpha
+        error = HUGE; itr = 0; 
+        alphaMax = alpha; alphaMin = -1;
+        while (fabs(error) > tolerance && itr < maxitr) {
+            arangeMin = (alphaMin + alphaMax)/2.;
+            f0 = rectangle_fraction (nf, arangeMin, lhs, rhs);
+            double fcalc = immersed_fraction (f0, nf, arangeMin, ns, alphas, lhs, rhs,0);
+            error = fcalc - freal;
+            if (error > 0)
+                alphaMax = arangeMin;
+            else if (error < 0)
+                alphaMin = arangeMin;
+            fprintf(stderr, "|| A.S.E (c): %d fmin=%0.15g fmid=%0.15g fmax=%0.15g alpha=%0.15g error=%g\n",
+                                itr, arangeMin, f0, fcalc, freal, error);
+            itr++;
+        }
+        if (itr == maxitr) 
+        fprintf(stderr, "WARNING: alphaf (c) solver does not converge after maximum iteration (%d), error = %g\n", 
+                        maxitr, error);
+
+        // d. find the maximum value of fg (ghost fluid) given the alpha range using
+        //    the golden-section search technique.
+        double fg = 0;
+
+        error = HUGE; itr = 0;
+
+        alphaMax = arangeMax; alphaMin = arangeMin; // 3 points
+        double alphaMid = alpha;                    //
+        while (fabs(error) > tolerance && itr < maxitr) {
+
+            double fmax = rectangle_fraction (nf, alphaMax, lhs, rhs);
+            double fmid = rectangle_fraction (nf, alphaMid, lhs, rhs);
+            double fmin = rectangle_fraction (nf, alphaMin, lhs, rhs);
+
+            if (fmax >= fmid && fmax >= fmin)
+                alpha = alphaMax;
+            else if (fmid >= fmax && fmid >= fmin)
+                alpha = alphaMid;
+            else if (fmin >= fmax && fmin >= fmid)
+                alpha = alphaMin;
+            
+            #if 1
+            if (fmax >= 1-1e-6 && fmid >= 1-1e-6)
+                alpha = alphaMin;
+
+            if (rectangle_fraction (nf, alpha, lhs, rhs) < 1e-6)
+                alpha = alphaMin; // temp fix
+            #endif
+            fprintf(stderr, "|| A.S.E (d): %d fmin=%0.15g fmid=%0.15g fmax=%0.15g alpha=%0.15g\n",
+                             itr, fmin, fmid, fmax, alpha);
+
+            break;
+        }
+        if (itr == maxitr) 
+        fprintf(stderr, "WARNING: alphaf (d) solver does not converge after maximum iteration (%d), error = %g\n", 
+                        maxitr, error);
+        return alpha;
+    }
+#endif    
+#if 0
+    fprintf(stderr,"\n");
+    for (double i = -1; i <= 1; i += 0.1)
+    {
+        double area = immersed_fraction(f0,nf, i, ns, alphas, lhs, rhs,0);
+        double area2 = rectangle_fraction(nf, i, lhs, rhs);
+        fprintf(stderr,"%g %g %g %g %g\n", i, f0, freal, area, area2); 
+    }
+    fprintf(stderr,"\n");
+#endif
+    
+    // determine how increasing/decreasing alpha affects the real area computation,
+    // e.g., increasing alpha could increase area in one case but shrink area in another
+    // due to the orientation of the liquid AND solid interfaces.
+    // TODO: ^ is this actually necessary?
+
+    alphaMin = -0.75, alphaMax = 0.75;
+
+    int itr = 0;
+    while (fabs(error) > tolerance && itr < maxitr) {
+        alpha = (alphaMin + alphaMax)/2.;
+        f0 = rectangle_fraction (nf, alpha, lhs, rhs);
+        double fcalc = immersed_fraction (f0, nf, alpha, ns, alphas, lhs, rhs,0);
+        error = fcalc - freal;
+        if (error > 0)
+            alphaMax = alpha;
+        else if (error < 0)
+            alphaMin = alpha;
+        fprintf(stderr, "|| A.S: %d alpha=%g f0=%g fcalc=%g freal=%g error=%g\n",
+                            itr, alpha, f0, fcalc, freal, error);
+        itr++;
+    }
+
+    if (itr == maxitr) 
+        fprintf(stderr, "WARNING: alphaf solver does not converge after maximum iteration (%d), error = %g\n", 
+                        maxitr, error);
+
+    return alpha;
+}
+
+
+/* 
+Some of the advected fluid gets reconstructed in the solid region of a cell.
+immersed_reconstruction changes c to enforce volume/mass conservation (according
+to cr) considering the immersed boundary. In other words, this function brings any
+fluid otherwise reconstructed inside the solid region up in the real fluid portion
+of interface cells
+
+cr is the total real fluid in a cell after the unidimensional advection.
+
+nf and ns are the liquid and solid normals (resp.). Likewise, alphas and alphaf
+are the corresponding alpha values.
+*/
+
+coord get_normal_contact (coord ns, coord nf, double angle)
+{
+    double norm = distance(ns.x,ns.y) + SEPS;
+    ns.x /= norm, ns.y /= norm;
+    norm = distance(nf.x,nf.y);
+    if (norm == 0)
+        return nf;
+    nf.x /= norm, nf.y /= norm;
+
+    coord n;
+    if (- ns.x * nf.y + ns.y * nf.x > 0) { // 2D cross product
+        n.x = - ns.x * cos(angle) + ns.y * sin(angle);
+        n.y = - ns.x * sin(angle) - ns.y * cos(angle);
+    }
+    else {
+        n.x = - ns.x * cos(angle) - ns.y * sin(angle);
+        n.y =   ns.x * sin(angle) - ns.y * cos(angle);
+    }
+
+    norm = fabs(n.x) + fabs(n.y) + SEPS;
+    n.x /= norm, n.y /= norm;
+    
+    fprintf (stderr, "n.x=%g n.y=%g angle=%g\n", n.x, n.y, angle);
+
+
+    return n;
+}
+
+
+void reconstruction_contact2 (scalar f, vector n, scalar alpha)
+{
+    reconstruction (f, n, alpha);
+
+    foreach() {
+        if (on_interface(ibm) && on_interface(f)) {
+            coord ns = facet_normal (point, ibm, ibmf);
+            coord nf = {n.x[], n.y[]};
+
+            coord ncontact = get_normal_contact (ns, nf, contact_angle[]);
+
+            foreach_dimension()
+                n.x[] = ncontact.x;
+            alpha[] = line_alpha (f[], ncontact);
+        }
+    }
+}
+
+
+void immersed_reconstruction (scalar c, const scalar cr, vector nf, scalar alphaf, 
+                              vector ns, scalar alphas)
+{
+    //reconstruction (c, nf, alphaf); // normal reconstruction // TODO:test w and w/o to see effect
+    foreach() {
+        if (on_interface(ibm) && c[]) {
+
+            //cr[] = clamp(cr[], 0, ibm[]);
+            coord nsolid = {ns.x[], ns.y[]}, nfluid = {nf.x[], nf.y[]};
+
+            //coord ncontact = get_normal_contact (nsolid, nfluid, contact_angle[]);
+            coord ncontact = {nf.x[], nf.y[]};
+
+            #if 0
+            fprintf(stderr, "\n### New Cell ibm=%g f=%g cr=%g ###\n", ibm[], c[], cr[]);
+            fprintf(stderr, "### nf={%g,%g} af=%g ns=(%g,%g) as=%g ###\n", 
+                             nfluid.x, nfluid.y, alphaf[], nsolid.x, nsolid.y, alphas[]);
+            #endif
+            if ((c[] <= 1e-6 || c[] >= 1-1e-6) || (fabs(nfluid.x) <= 1e-10 && fabs(nfluid.y) <= 1e-10)) {
+                //c[] = clamp(c[], 0., 1.);
+                continue;
+            }
+            if (cr[] == 0)
+                continue;
+
+            double freal = immersed_fraction (c[], nfluid, alphaf[], nsolid, alphas[],
+                                              (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5},0);
+            if (cr[] < freal + 1e-6 && cr[] > freal - 1e-6)
+                continue;
+
+            double alpha = immersed_line_alpha (point, ncontact, alphaf[], nsolid, alphas[], cr[]);
+            double c0 = c[];
+            c[] = plane_volume (ncontact, alpha);
+            alphaf[] = alpha;
+            fprintf(stderr, "(%g, %g) c[]_before = %0.15f, c[]_after = %0.15f | cr[] = %0.15f crcalc =%0.15f\n",
+                             x, y, c0, c[], cr[], freal);
+            //c[] = c0;
+        }
+    }
+}
+
+
+/*
+this function fills fr with only the (real) volume fraction of f that lays 
+outside of the solid immersed boundary, ibm.
+*/
+
+void real_fluid (scalar f, scalar fr)
+{
+    vector nf[], ns[];
+    scalar alphaf[], alphas[];
+
+    reconstruction (f, nf, alphaf);
+    reconstruction (ibm, ns, alphas);
+
+    foreach() {
+        if (on_interface(ibm) && on_interface(f))
+            fr[] = immersed_fraction (f[], (coord){nf.x[], nf.y[]}, alphaf[],
+                                           (coord){ns.x[], ns.y[]}, alphas[],
+                                           (coord){-0.5, -0.5, -0.5},
+                                           (coord){0.5, 0.5, 0.5}, 0);
+        else
+            fr[] = ibm[]*f[];
+    }
+}
 
 /*
 The metric event is used to set the metric fields, fm and cm, to the ibmFaces and
@@ -1618,22 +2194,16 @@ event metric (i = 0)
 
 #if TREE
     // set prolongation and refining functions
-    //ibmCells.refine = ibm_fraction_refine;
-    //ibmCells.prolongation = fraction_refine;
-
-    ibmCells.refine = fraction_refine_metric;
-    ibmCells.prolongation = fraction_refine_metric;
-
-    // THIS DOSEN'T WORK WITH AMR, EVEN IN SERIAL
-    //ibmCells.restriction = restriction_cell_metric;
+    ibmCells.refine = ibm_fraction_refine;
+    ibmCells.prolongation = fraction_refine;
 
     ibm0.refine = ibm.refine = ibm_fraction_refine;
-    ibm0.prolongation = ibm.prolongation = fraction_refine;
+    ibm0.refine = ibm.prolongation = fraction_refine;
 
     foreach_dimension() {
         ibmFaces.x.prolongation = refine_metric_injection_x;
         ibmf.x.prolongation = ibm_face_fraction_refine_x;
-        ibmFaces.x.restriction = restriction_face_metric; // is this really necessary?
+        ibmFaces.x.restriction = restriction_face_metric;
     }
 #endif
     restriction ({ibm, ibmf, ibmFaces, ibmCells});

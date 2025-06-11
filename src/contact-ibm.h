@@ -43,8 +43,8 @@ bool is_triple_point (Point point, coord nf, coord ns)
 
     double alphaf = plane_alpha (f[], nf);
 
-    double intercept = ((alphas/ns.y) - (alphaf/nf.y)) /
-                       ((ns.x/ns.y) - (nf.x/nf.y));
+    double intercept = ((alphas/(ns.y+SEPS)) - (alphaf/(nf.y+SEPS))) /
+                       ((ns.x/(ns.y+SEPS)) - (nf.x/(nf.y+SEPS)) + SEPS);
     
     return fabs(intercept) <= 0.5;
 
@@ -57,7 +57,7 @@ taking into account the contact angle on immersed boundaries. Given a volume fra
 field, f, it fills fields n and alpha with the each cells normal and intercept, resp.
 */
 
-void reconstruction_contact (scalar f, scalar fr, vector n, scalar alpha)
+void reconstruction_contact (scalar f, scalar fr, vector n, scalar alpha, scalar inter)
 {
     reconstruction (f, n, alpha);
 
@@ -77,8 +77,9 @@ void reconstruction_contact (scalar f, scalar fr, vector n, scalar alpha)
             }
             alpha[] = line_alpha (f[], nc);
         }
+        inter[] = real_interfacial (point, fr, f)? 1: 0;
     }
-    boundary ({n, alpha});
+    boundary ({n, alpha, inter});
 }
 
 
@@ -124,33 +125,50 @@ The event is named "tracer_advection" just to make sure that it is ran before th
 surface tension force calculation which takes place in the acceleration event.
 */
 
-event tracer_advection (i++)
+#define PRINTCA 0
+
+double cerror3 = 0;
+
+scalar inter[];
+
+//event tracer_advection (i++)
+void set_contact_angle (scalar f, scalar fr0, scalar ibm)
 {
+    #if PRINTCA
+    fprintf (stderr, "\n=== SETTING C.A. ===\n");
+    #endif
+
     scalar alphaf[], alphas[];
     vector nf0[], nf[], ns[];
     
     reconstruction (f, nf0, alphaf);
     reconstruction (ibm, ns, alphas);
 
-    // 1. get real portion of fluid, fr
-    scalar fr0[];
-    real_fluid (f, fr0);
+    // 1. get real portion of fluid, fr (now a func. parameter)
 
     // 2. reconstruct n and alpha considering the contact angle B.C.
-    reconstruction_contact (f, fr0, nf, alphaf);
+    reconstruction_contact (f, fr0, nf, alphaf, inter);
 
     // 3. look for ghost and pure solid cells near triple point to enforce B.C
     foreach() {
         if (ibm[] <= 0.) {  // pure solid cell
-            double ghostf = 0., totalWeight = 0.; // ghostf = volume fraction of ghost cell
-            coord ghostCell = {x,y,z};
-    
+            double ghostf = 0., totalWeight = 0., alphaf1; // ghostf = volume fraction of ghost cell
+            coord ghostCell = {x,y,z}, nf2;
+            int count = 0;
+
             // 3.a. Calculate weights
             foreach_neighbor() {
-                if (on_interface(ibm) && (on_interface(fr0) &&
-                    fr0[] <= ibm[] - INT_TOL && fr0[] > 0 + INT_TOL)) { // cell with potential triple point
 
-                    double cellWeight = ibm[] * (1. - ibm[]) * f[] * (1. - f[]);
+                //if (on_interface(ibm) && (on_interface(fr0) && // should fr0 be f here? or even necessary?
+                //    fr0[] <= ibm[] - INT_TOL && fr0[] > 0 + INT_TOL)) { // cell with potential triple point
+                //bool cond = fr0[] != ibm[]? true: is_triple_point (point, (coord){nf.x[], nf.y[]}, 
+                //if (on_interface(ibm) && (fr0[] != ibm[] || (f[] > 0 && f[] < 1 && (nf0.x[] || nf0.y[])))) {
+                //if (on_interface(ibm) && inter[]) {
+                if (on_interface(ibm) && inter[] && on_interface(f)) {
+                //((fr0[] < ibm[] - 1e-6 && fr0[] > 0 + 1e-6) || inter[])) {
+                //    || (f[] > 0 && f[] < 1 && (nf0.x[] || nf0.y[])))) {
+                //if (on_interface(ibm) && on_interface(f)) {
+                    double cellWeight = ibm[] * (1. - ibm[]) * fr0[] * (1. - fr0[]);
                     totalWeight += cellWeight;
 
                     coord leftPoint = {x, y, z}, rightPoint;
@@ -161,24 +179,37 @@ event tracer_advection (i++)
 
                     coord nf1 = {nf.x[], nf.y[]};
                     ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+
+                    nf2 = nf1;
+                    alphaf1 = alphaf[];
+                    count++;
                 }
             }
             
             // 3.b. Assign volume fraction in ghost/solid cell
-            if (totalWeight > 0.)
+            if (totalWeight > 0.) {
+                #if PRINTCA && 1
+                fprintf (stderr, "0th %d (%g, %g) nf ={%g,%g} f[]=%0.15g fr0[]=%0.15g tw=%g gf=%g ", 
+                                  count, x, y, nf2.x, nf2.y, f[], fr0[], totalWeight, ghostf);
+                fprintf (stderr, "gf/tw=%g alphaf1=%g\n", ghostf/totalWeight, alphaf1);
+                #endif
                 f[] = ghostf / totalWeight;
+            }
         }
-        else if (on_interface(ibm) && (fr0[] <= 0+INT_TOL || fr0[] >= ibm[]-INT_TOL)) // solid interface cell with full
-        {                                                           // or empty real fluid
+        else if (on_interface(ibm) && (fr0[] <= INT_TOL || fr0[] >= ibm[] - INT_TOL)) // solid interface cell with full
+        {                                                                           // or empty real fluid
             double ghostf = 0., totalWeight = 0., alphaf1 = 0;
             coord ghostCell = {x,y,z}, nf2;
             int count = 0;
 
             // 3.c. extrapolate f from direct neighbors to get initial guess
-            foreach_neighbor(1) {
-                if (on_interface(ibm) && on_interface(f) && fr0[] < ibm[] && fr0[] > 0 + INT_TOL) {
+            foreach_neighbor() {
+                //if (on_interface(ibm) && (fr0[] != ibm[] || (f[] > 0 && f[] < 1 && (nf0.x[] || nf0.y[])))) {
+                if (on_interface(ibm) && on_interface(f) && inter[]) {
+                //((fr0[] < ibm[] - 1e-6 && fr0[] > 0 + 1e-6) || inter[])) {
+                //if (on_interface(ibm) && on_interface(f)) {
 
-                    double cellWeight = ibm[] * (1. - ibm[]) * f[] * (1. - f[]);
+                    double cellWeight = ibm[] * (1. - ibm[]) * fr0[] * (1. - fr0[]);
                     totalWeight += cellWeight;
 
                     coord leftPoint = {x, y, z}, rightPoint;
@@ -198,25 +229,18 @@ event tracer_advection (i++)
 
             // 3.d. if extrapolation results in f inside the interface cell, adjust it to preserve fr
             if (totalWeight > 0. && ghostf > 0.) {
-#if 1
                 coord ns1 = {ns.x[], ns.y[]}, nf1 = {nf.x[], nf.y[]};
+                #if PRINTCA
                 fprintf (stderr, "1st %d (%g, %g) nf ={%g,%g} f[]=%0.15g fr0[]=%0.15g tw=%g gf=%g ", 
                                   count, x, y, nf2.x, nf2.y, f[], fr0[], totalWeight, ghostf);
                 fprintf (stderr, "gf/tw=%g alphaf1=%g\n", ghostf/totalWeight, alphaf1);
-                //if (ghostf / totalWeight >= 1. && fr0[] >= ibm[] - INT_TOL) {
-                if (ghostf / totalWeight >= 1.) {
-                    fprintf(stderr, "(a) fr0[]=%g ibm[]=%g\n", fr0[], ibm[]);     
-                    f[] = ghostf / totalWeight;
-                }
-                else { // should it really be nf2 here instead of nf1?
-                    fprintf(stderr, "(b) fr0[]=%g ibm[]=%g tw=%g gf=%g\n", fr0[], ibm[], totalWeight, ghostf);
-                    //double alpha = immersed_line_alpha (point, nf2, alphaf1, ns1, alphas[], fr0[]);
-                    //f[] = plane_volume (nf2, alpha);
-                    f[] = ghostf / totalWeight;
-                }
+                #endif
+                //fprintf(stderr, "(b) fr0[]=%g ibm[]=%g tw=%g gf=%g\n", fr0[], ibm[], totalWeight, ghostf);
+                f[] = ghostf / totalWeight;
                 if (f[] > 1 - INT_TOL) f[] = 1;
-#endif
+                #if PRINTCA
                 fprintf (stderr, "  f`[]=%0.15g \n", f[]);
+                #endif
             }
             // 3.e otherwise, cell should not be used to enforce C.A.
             else if (ghostf <= 0 && fr0[] <= 0)
@@ -227,30 +251,74 @@ event tracer_advection (i++)
     // 4. Correct f in cells that may violate volume conservation by calculating
     //    and comparing fr before and after step 3.
 
+    #if 1
     boundary ({f});
     reconstruction (f, nf, alphaf);
 
     scalar fr[];
-    real_fluid (f, fr);
+    real_fluid (f, fr); // should be combined with following foreach loop for efficiency
 
     foreach() {
-          if (fr[] < fr0[] - INT_TOL || fr[] > fr0[] + INT_TOL) {
+          if (fr[] < fr0[] - 1e-10 || fr[] > fr0[] + 1e-10) {
 
             coord ns1 = {ns.x[], ns.y[]}, nf1 = {nf.x[], nf.y[]};
             double freal = ibm[]*immersed_fraction (f[], nf1, alphaf[], ns1, alphas[],
                                               (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5},0);
 
-            if (freal >= fr0[] - 1e-10 && freal <= fr0[] + 1e-10)
+            //if (freal >= fr0[] - 1e-10 && freal <= fr0[] + 1e-10)
+            if (fabs(freal - fr0[]) <= 1e-6)
                 continue;
 
+            #if PRINTCA
             fprintf (stderr, "2nd (%g, %g) nf ={%g,%g} f[]=%0.15g fr0[]=%0.15g fr[]=%0.15g freal=%g\n", 
                              x, y, nf1.x, nf1.y, f[], fr0[], fr[], freal);
-            double alpha = immersed_line_alpha (point, nf1, alphaf[], ns1, alphas[], fr0[]);
+            #endif
+
+            coord lhs = {-0.5,-0.5}, rhs = {0.5,0.5}, ip[2]; // intersecting point
+            int bp = boundary_points (ns1, alphas[], lhs, rhs, ip);
+            double alpha0 = nf1.x*ip[0].x + nf1.y*ip[0].y;
+            double alpha1 = nf1.x*ip[1].x + nf1.y*ip[1].y;
+
+            double f0 = plane_volume (nf1, alpha0);
+            double f1 = plane_volume (nf1, alpha1);
+
+            double freal0 = ibm[]*immersed_fraction (f0, nf1, alpha0, ns1, alphas[],
+                                              (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5});
+            double freal1 = ibm[]*immersed_fraction (f1, nf1, alpha1, ns1, alphas[],
+                                              (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5});
+
+            #if PRINTCA
+            fprintf(stderr, "    f0=%g f1=%g freal0=%g freal1=%g alpha0=%g alpha1=%g\n",
+                f0, f1, freal0, freal1, alpha0, alpha1);
+            fprintf(stderr, "    ip0 = {%g, %g} ip1 = {%g, %g}\n",
+                ip[0].x, ip[0].y, ip[1].x, ip[1].y);
+            #endif
+
+            double alpha = alphaf[];
+            //if (freal0 >= fr0[] - INT_TOL && freal0 <= fr0[] + INT_TOL)
+            if (fabs(freal0 - fr0[]) <= 1e-8)
+                alpha = alpha0;
+            //else if (freal1 >= fr0[] - INT_TOL && freal1 <= fr0[] + INT_TOL)
+            else if (fabs(freal1 - fr0[]) <= 1e-8)
+                alpha = alpha1;
+            else {
+                tripoint tcell = fill_tripoint (fr0[], nf1, alphaf[], ns1, alphas[], f[], ibm[]);
+                bisection_solver (&alpha, -0.75, 0.75, tcell);
+                //f[] = fr0[];
+                //continue;
+            }
+
             f[] = plane_volume (nf1, alpha);
             if (f[] > 1 - INT_TOL) f[] = 1;
+            #if PRINTCA
             fprintf (stderr, "  f`[]=%0.15g \n", f[]);
+            #endif
         }
     }
+    #endif
+
+   cerror3 = real_volume(f);
+
     clean_fluid(f, fr0, ibm);
     boundary ({f});
 }

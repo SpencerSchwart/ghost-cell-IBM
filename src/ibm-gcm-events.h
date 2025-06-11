@@ -7,61 +7,31 @@ Its main purpose is to update the metric fields to account for a moving interfac
 */
 
 // TODO: this event is very sensitive to MPI and can cause crashes w/AMR
+
+
 event update_metric (i++)
 {
     // update metrics considering immersed boundary
-
-    boundary((scalar *){ibm, ibmf});
+    boundary({ibm, ibmf});
     foreach() {
         if (ibm[] > 0.5) // fluid cell
             ibmCells[] = 1;
         else // ghost or solid cell
             ibmCells[] = 0;
     }
-    trash ({ibmFaces});
+
+    #if 1
     foreach_face() {
-       //if (is_ghost_cell (point, ibm) || ibm[] > 0.5)
-        if (ibm[] > 0. || ibm[-1] > 0.)
+       if (is_ghost_cell (point, ibm) || ibm[] > 0 || ibm[-1] > 0)
+       // if (is_ghost_cell (point, ibm) || ibm[] > 0)
             ibmFaces.x[] = 1;
-        else // solid sell
+       else
             ibmFaces.x[] = 0;
     }
-
+    #endif
     boundary((scalar *){ibmFaces, ibmCells});
 }
 
-#if 0
-event end_timestep (i++)
-{
-    // update metrics considering immersed boundary
-
-    boundary((scalar *){ibm, ibmf});
-#if 0
-    foreach() {
-        if (ibm[] > 0.5) // fluid cell
-            ibmCells[] = 1;
-        else // ghost or solid cell
-            ibmCells[] = 0;
-    }
-    boundary({ibmCells});
-#endif
-#if 1
-    //trash ({ibmFaces});
-    foreach_face() {
-       //if (is_ghost_cell (point, ibm) || ibm[] > 0.5)
-        if (ibm[] > 0. || ibm[-1] > 0.)
-            ibmFaces.x[] = 1;
-            //ibmFaces.x[] = ibmFaces.x[];
-        else // solid sell
-            ibmFaces.x[] = 0;
-    }
-
-    //fm = ibmFaces;
-    //restriction({fm});
-    boundary((scalar *){ibmFaces, ibmCells});
-#endif
-}
-#endif
 
 /*
 ###### NOT NECESSARY FOR STATIONARY SOLID ######
@@ -169,6 +139,7 @@ TODO: is assigning pressure to full ghost cells necessary? probably not
 vector normals[];
 vector midPoints[];
 
+#if 1
 event acceleration (i++)
 {
 
@@ -229,7 +200,7 @@ event acceleration (i++)
 
     boundary((scalar *){u, p, pf});
 }
-
+#endif
 
 /*
 end_timestep updates the boundary conditions (both pressure and velocity) since

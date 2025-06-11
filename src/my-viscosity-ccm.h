@@ -10,7 +10,7 @@ struct Viscosity {
 
 #define lambda ((coord){0.,0.,0.})
 
-#if 0
+#if 1
 #define face_condition(ibmf, ibm)						\
   (ibmf.x[i,j] > 0.5 && ibmf.y[i,j + (j < 0)] && ibmf.y[i-1,j + (j < 0)] &&	\
    ibm[i,j] && ibm[i-1,j])
@@ -53,7 +53,7 @@ static void relax_diffusion (scalar * a, scalar * b, int l, void * data)
     foreach_level_or_leaf (l, nowarning) {
         double avgmu = 0.;
         foreach_dimension()
-            avgmu += ibmf.x[]*mu.x[] + ibmf.x[1]*mu.x[1];
+            avgmu += mu.x[] + mu.x[1];
         avgmu = dt*avgmu + SEPS;
         foreach_dimension() {
             double c = 0.;
@@ -61,7 +61,7 @@ static void relax_diffusion (scalar * a, scalar * b, int l, void * data)
             scalar s = u.x;
             double a = 0.;
             foreach_dimension()
-            	a += ibmf.x[1]*mu.x[1]*s[1] + ibmf.x[]*mu.x[]*s[-1];
+            	a += mu.x[1]*s[1] + mu.x[]*s[-1];
             u.x[] = (dt*a + (r.x[] - dt*c)*sq(Delta))/
                     (sq(Delta)*(rho[] + lambda.x + dt*d) + avgmu);
         }
@@ -112,7 +112,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
       scalar s = u.x;
         face vector g[];
         foreach_face()
-            g.x[] = ibmf.x[]*mu.x[]*face_gradient_x (s, 0);
+            g.x[] = mu.x[]*face_gradient_x (s, 0);
         foreach (reduction(max:maxres), nowarning) {
             double a = 0.;
             foreach_dimension()
@@ -188,12 +188,17 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
     vector r[];
     foreach() {
         foreach_dimension() {
-            r.x[] = rho[]/(ibm[] + SEPS) * u.x[];
+            r.x[] = rho[] * u.x[];
         }
     }
 
-    restriction ({mu, rho, cm, ibmf, ibm});
-    struct Viscosity p = { mu, rho, dt };
+    face vector muibm[];
+    foreach_face() {
+        muibm.x[] = mu.x[]*ibmf.x[];
+    }
+
+    restriction ({muibm, rho, cm, ibm, ibmf, fm});
+    struct Viscosity p = { muibm, rho, dt };
     #if 1
     p.ibm_flux_x = ibm_flux_x;
     p.ibm_flux_y = ibm_flux_y;
@@ -201,13 +206,16 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
     p.ibm_flux_x = NULL;
     p.ibm_flux_y = NULL;
     #endif
-    return mg_solve ((scalar *){u}, (scalar *){r},
-                     residual_diffusion, relax_diffusion, &p, 
-                     nrelax, res, minlevel = 1, 
-                     tolerance = TOLERANCE_MU ? TOLERANCE_MU : TOLERANCE);
+
+    mgstats ustat =  mg_solve ((scalar *){u}, (scalar *){r},
+                         residual_diffusion, relax_diffusion, &p, 
+                         nrelax, res, minlevel = 1, 
+                         tolerance = TOLERANCE_MU ? TOLERANCE_MU : TOLERANCE);
+
+    return ustat;
 }
 
-#if 0
+#if 1
 #undef face_gradient_x
 #define face_gradient_x(a,i) ((a[i] - a[i-1])/Delta)
 #undef face_gradient_y

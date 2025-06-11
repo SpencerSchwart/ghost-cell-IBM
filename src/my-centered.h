@@ -520,10 +520,14 @@ event adapt (i++,last) {
     if (uf.x[] && !fs.x[])
       uf.x[] = 0.;
   #elif IBM
-  fractions_cleanup (ibm, ibmf);
+  //fractions_cleanup (ibm, ibmf);
   foreach_face()
     if (uf.x[] && (!fm.x[] || !ibmf.x[]))
       uf.x[] = 0.;
+  //mpi_boundary_update_buffers();
+  //ibmf.x.dirty = true;
+  //boundary ({ibmf});
+  //mpi_boundary_update({ibmf});
   #endif
   event ("properties");
 }

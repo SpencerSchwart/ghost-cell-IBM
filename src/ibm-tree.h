@@ -56,7 +56,6 @@ foreach_dimension()
 static void ibm_face_fraction_refine_x (Point point, scalar s)
 {
   vector ibmf = s.v;
-
   /**
   If the cell is empty or full, simple injection from the coarse cell
   value is used. */
@@ -133,8 +132,7 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
     coarse cell face fraction. */
 
     for (int i = 0; i <= 1; i++)
-      if (neighbor(2*i-1).neighbors &&
-	      (is_local(cell) || is_local(neighbor(2*i-1)))) {
+      if (neighbor(2*i-1).neighbors && (is_local(cell) || is_local(neighbor(2*i-1)))) {
 	    if (!is_refined(neighbor(2*i-1))) {
 	      if (ibmf.x[i] <= 0. || ibmf.x[i] >= 1.)
 	        for (int j = 0; j <= 1; j++)
@@ -188,6 +186,7 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
 	      fine(ibmf.x,2*i,j,k) = 0.;
       }
   }
+
 }
 
 /**
@@ -229,7 +228,7 @@ static inline void restriction_ibm_linear (Point point, scalar s)
     for (int j = 0; j <= 1; j++)
 #endif
       if (fine(ibm,0,i,j) && fine(ibm,1,!i,!j))
-	val += (fine(s,0,i,j) + fine(s,1,!i,!j))/2., nv++;
+	    val += (fine(s,0,i,j) + fine(s,1,!i,!j))/2., nv++;
   if (nv > 0.) {
     s[] = val/nv;
     return;
@@ -240,10 +239,11 @@ static inline void restriction_ibm_linear (Point point, scalar s)
   (there is at least one). */
   
   coord p = {0.,0.,0.};
-  foreach_child()
-    // if (ibm[] || is_ghost_cell (point, ibm)) // does including ghost cells help?
+
+  foreach_child() {
     if (ibm[])
       p.x += x, p.y += y, p.z += z, val += s[], nv++;
+   }
   assert (nv > 0.);
   s[] = val/nv;
 
@@ -431,15 +431,19 @@ static inline void face_max_metric (Point point, vector v)
 static inline void restriction_face_metric (Point point, scalar s)
 {
   face_max_metric (point, s.v);
+  //restriction_face (point, s);
 }
 
 
 static inline void restriction_cell_metric (Point point, scalar s)
 {
-    double sum = 0.;
-    foreach_child()
-        sum += ibm[];
-    s[] = sum/(1 << dimension) > 0.5;
+   // double sum = 0.;
+   // foreach_child()
+   //     sum += ibm[];
+   // s[] = sum/(1 << dimension) > 0.5;
+   double val = s[];
+   foreach_child()
+     s[] = val;
 }
 
 

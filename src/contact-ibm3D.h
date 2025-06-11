@@ -138,7 +138,10 @@ The event is named "tracer_advection" just to make sure that it is ran before th
 surface tension force calculation which takes place in the acceleration event.
 */
 
-event tracer_advection (i++)
+double cerror3 = 0;
+
+//event tracer_advection (i++)
+void set_contact_angle (scalar f, scalar fr0, scalar ibm)
 {
     vector n[];
     scalar alpha[];
@@ -175,6 +178,8 @@ event tracer_advection (i++)
                 f[] = ghostf / totalWeight;
         }
     }
+
+   cerror3 = real_volume(f);
 
     //3. remove unnecessary fluid
     clean_fluid(f, ibm);
