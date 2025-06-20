@@ -55,20 +55,20 @@ TODO: make other macros for p, pf, f, etc.
 TODO: use new macro feature?
 */
 
-static inline double uibm_x (double x, double y, double z);
-static inline double uibm_y (double x, double y, double z);
+static inline double uibm_x (double x, double y, double z, double tt = t);
+static inline double uibm_y (double x, double y, double z, double tt = t);
 #if dimension == 3
-static inline double uibm_z (double x, double y, double z);
+static inline double uibm_z (double x, double y, double z, double tt = t);
 #endif
 
 #define u_x_ibm_dirichlet(expr) \
-    static inline double uibm_x (double x, double y, double z) {return expr;} \
+    static inline double uibm_x (double x, double y, double z, double tt = t) {return expr;} \
 
 #define u_y_ibm_dirichlet(expr) \
-    static inline double uibm_y (double x, double y, double z) {return expr;} \
+    static inline double uibm_y (double x, double y, double z, double tt = t) {return expr;} \
 
 #define u_z_ibm_dirichlet(expr) \
-    static inline double uibm_z (double x, double y, double z) {return expr;} \
+    static inline double uibm_z (double x, double y, double z, double tt = t) {return expr;} \
 
 
 /*
@@ -292,7 +292,13 @@ coord boundary_int (Point point, fragment frag, coord fluidCell, scalar ibm)
 {
     double mag = distance3D(frag.n.x, frag.n.y, frag.n.z) + SEPS;
     coord n = frag.n, ghostCell = {x,y,z};
-    normalize(&n);
+
+    double norm = 0;
+    foreach_dimension()
+        norm += sq(n.x);
+    foreach_dimension()
+        n.x /= norm + SEPS;
+    //normalize(&n);
     // double mag = fabs(n.x) + fabs(n.y) + fabs(n.z);
 
     double offset = 0;
@@ -1060,10 +1066,10 @@ double ibm_geometry (Point point, coord * p, coord * n, double * alphau = NULL)
 
 
 static inline
-double ibm0_geometry (Point point, coord * p, coord * n)
+double ibm0_geometry (Point point, coord * p, coord * n, scalar ibm1, face vector ibmf1)
 {
-    *n = facet_normal (point, ibm0, ibmf0);
-    double alpha = plane_alpha (ibm0[], *n);
+    *n = facet_normal (point, ibm1, ibmf1);
+    double alpha = plane_alpha (ibm1[], *n);
     double area = plane_area_center (*n, alpha, p);
     foreach_dimension()
         n->x *= -1;
@@ -1542,8 +1548,7 @@ double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
     double mpx, mpy, mpz;
     local_to_global(point, mp, &mpx, &mpy, &mpz);
 
-    //double bc = uibm_x(mpx, mpy, mpz);
-    double bc = 0;
+    double bc = uibm_x(mpx, mpy, mpz);
     
     double coef = 0.;
     //fprintf(stderr, "\n| ibm_flux (%g, %g) ibm=%g s=%g n.x=%g n.y=%g mp.x=%g mp.y=%g bc=%g\n",

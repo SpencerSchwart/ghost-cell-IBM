@@ -2,7 +2,7 @@
 ###### TWO PHASE FUNCTIONS FOR IBM ######
 */
 
-#define PRINTA 0
+#define PRINTA 1
 
 #include "fractions.h"
 
@@ -84,7 +84,7 @@ returns
     + if inside, - if outisde, and 0 if the points is on the interface
 */
 
-double region_check (double vol, coord pc, coord nf, double alphaf, coord ns, double alphas)
+double region_check (coord pc, coord nf, double alphaf, coord ns, double alphas)
 {
     double fluid = alphaf - nf.x*pc.x - nf.y*pc.y;
     double solid = alphas - ns.x*pc.x - ns.y*pc.y;
@@ -251,7 +251,12 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     double areaTotal = polygon_area (4, rect); // total area being considered for advection (uf*dt*h)
     double areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs); // volume fraction that isn't solid
 
+    // TODO: temp fix when flux area > fluid area (small cell problem)
+    if (alphas - ns.x*rhs.x - ns.y*rhs.y < 0 && alphas - ns.x*rhsb.x - ns.y*rhsb.y < 0)
+        areaLiquid = 1.;
+
     double cvy = line_intersect (alphas, ns, x = -0.5), rhsx = 0; // intercept of solid interface on left face
+
     #if 0 // temporarily off
     if (rhs.x < 0.5 && areaLiquid < 1) {
         cvy = clamp(cvy, -0.5, 0.5);
@@ -263,7 +268,7 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
         areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs);
     }
     #endif
-    double areaAdv = areaTotal*areaLiquid;
+    double areaAdv = areaTotal*areaLiquid; // = uf*dt*ibmf*dx
 
     // 2. find the intersection points, pf & ps, of the fluid and solid interface
     //    with the enclosed region
@@ -290,7 +295,7 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
 
     int nump = 0; // # of real points
     for (int i = 0; i < 9; ++i) {
-        double placement = region_check(c, poly[i], nf, alphaf, ns, alphas);
+        double placement = region_check(poly[i], nf, alphaf, ns, alphas);
         if ((placement >= 0 || fabs(placement) < 1e-6) && poly[i].x != nodata) // should be < nodata?
             nump++;
         else 
@@ -336,6 +341,7 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     // 6. use the shoelace formula to find the area
     double area = polygon_area (nump, cf);
 
+    #if PRINTA
     if (print == 1) {
         fprintf (stderr, "AFTER SORTING\n");
         for (int i = 0; i < nump; ++i) {
@@ -349,8 +355,9 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
                           area, areaTotal, areaLiquid, area/(areaTotal*areaLiquid), 
                           f0, areaAdv, cvy, area/areaAdv);
     }
+    #endif
 
-    double vf = clamp(area/areaAdv, 0., 1.);
+    double vf = clamp(area/(areaAdv+SEPS), 0., 1.);
     return vf;
 }
 
@@ -539,6 +546,28 @@ void real_fluid (scalar f, scalar fr)
 }
 
 
+bool is_interior_cell (Point point, scalar ibm, scalar c, scalar cr)
+{
+    #if PRINTA
+    fprintf(stderr, "checking if (%g, %g) is an interior cell ibm=%g cr=%g c=%g \n",
+        x, y, ibm[], cr[], c[]);
+    #endif
+
+    foreach_neighbor(1) {
+
+        #if PRINTA
+        fprintf (stderr, "  || (%g, %g) ibm=%g cr=%g c=%g |cr - ibm| = %g\n",
+            x, y, ibm[], cr[], c[], fabs(cr[] - ibm[]));
+        #endif
+
+    // TODO: if cr[] != ibm[], try seeing if ibm[] == 1 instead (full fluid cell)
+        if (ibm[] && !(fabs(cr[] - ibm[]) <= 1e-3))
+            return false;
+    }
+    return true;
+}
+
+
 /* 
 Some of the advected fluid gets reconstructed in the solid region of a cell.
 immersed_reconstruction changes c to enforce volume/mass conservation (according
@@ -552,26 +581,34 @@ nf and ns are the liquid and solid normals (resp.). Likewise, alphas and alphaf
 are the corresponding alpha values.
 */
 
-void immersed_reconstruction (scalar c, const scalar cr, vector nf, scalar alphaf, 
+void immersed_reconstruction (scalar c, scalar cr, vector nf, scalar alphaf, 
                               vector ns, scalar alphas)
 {
     foreach() {
         c[] = clamp(c[], 0, 1);
         if (on_interface(ibm) && c[]) {
 
-            cr[] = clamp(cr[], 0, ibm[]);
-            
             #if PRINTA
             fprintf(stderr, "cr[] = %g\n", cr[]);
             #endif
+
+            cr[] = clamp(cr[], 0, ibm[]);
 
             coord nsolid = {ns.x[], ns.y[]}, nfluid = {nf.x[], nf.y[]};
 
             double freal = immersed_fraction (c[], nfluid, alphaf[], nsolid, alphas[],
                                               (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5},0)*ibm[];
-            freal = clamp (freal, 0, ibm[]);
-            
-            if (cr[] < freal + INT_TOL && cr[] > freal - INT_TOL)
+            //freal = clamp (freal, 0, ibm[]);
+
+            if (is_interior_cell (point, ibm, c, cr)) {
+                c[] = 1;
+                fprintf(stderr, "(%g, %g) cell is interior cell c=%g cr=%g\n",
+                    x, y, c[], cr[]);
+                continue;
+            }
+
+            //if (cr[] < freal + INT_TOL && cr[] > freal - INT_TOL)
+            if (cr[] < freal + 1e-10 && cr[] > freal - 1e-10)
                 continue;
 
             double alpha = immersed_line_alpha (point, nfluid, alphaf[], nsolid, alphas[], cr[]);
@@ -653,6 +690,9 @@ double get_contact_angle (scalar f, scalar ibm)
 /*
 real_interfacial checks to see if the given point should be used for extrapolation
 while setting the CAs
+
+TODO: somehow incorporate "internal" cell definition in here, will likely improve
+      this function in terms of accuracy and efficiency
 */
 
 static inline bool real_interfacial (Point point, scalar cr, scalar c)
@@ -680,6 +720,122 @@ static inline bool real_interfacial (Point point, scalar cr, scalar c)
         return true;
     return false;
 }
+
+
+/*
+redistribute_volume calculates the volume loss caused by imprecise movement of the
+solid boundary (ibm), which itself is caused by us using different methods
+to advect the liquid and solid interface: VOF and level-set reinitialization -> VOF, resp.
+
+The weights used for redistribution is based on the number of interfacial cells. Meaning
+each cell will get the same amount of volume.
+
+TODO: improve weighting function to account for cell's volume & maybe distance from interface
+*/
+
+double redistribute_volume (scalar c, scalar cr, const scalar ibm)
+{
+    // 0. reconstruct liquid and solid interface 
+    // TODO: optimize w/rest of reconstructions to eliminate unncessary reconstructions
+    scalar alphaf[], alphas[];
+    vector nf[], ns[];
+
+    reconstruction (c, nf, alphaf);
+    reconstruction (ibm, ns, alphas);
+
+    // 1. Calculate the volume error
+    //    and count the number of interfacial cells that contain no solid fragment
+    double verror = 0;
+    int icells = 0;
+    foreach(reduction (+:verror) reduction (+:icells)) {
+        if (cr[] > ibm[]) {
+            verror += cr[] - ibm[];
+            cr[] = ibm[];
+        }
+        else if (cr[] < 0) {
+            verror += cr[];
+            cr[] = 0;
+        }
+        if (on_interface(c) && ibm[] >= 1)
+            icells++;
+    }
+   
+    if (verror == 0) return verror;
+
+    boundary ({cr});
+
+    // 2. Redistribute volume error to interfacial cells
+
+    vector id[];
+
+    bool overfill = false;
+
+    int count = 0;
+
+    foreach() {
+        if (on_interface(c) && ibm[] >= 1) {
+
+            // cell is too full to take the additional volume, so give it to neighbors
+            if (cr[] + (verror / icells) > ibm[]) {
+                overfill = true;
+
+                count++;
+
+                // check for left/right neighbors
+                bool done = false;
+                for (int i = -1; i <= 1; i += 2)
+                    if (cr[i] + 2*(verror / icells) < ibm[i] && ibm[i]) // 2* because cell may be a recipient for multiple cells (temp fix)
+                        id.x[] = i, done = true;
+
+                // then check for top/bottom neighbors
+                if (!done)
+                   for (int j = -1; j <= 1; j += 2)
+                       if (cr[0,j] + 2*(verror / icells) < ibm[0,j] && ibm[0,j])
+                           id.y[] = j, done = true;
+                
+                if (!done)
+                    fprintf (stderr, "WARNING: could not fill cell with volume error!\n");
+            }
+            else {
+
+                cr[] += verror / icells;
+                c[]  += verror / icells;
+            }
+        }
+        else {
+            id.x[] = id.y[] = 0;       
+        }
+    }
+
+    boundary ({id});
+
+
+    bool fixed = overfill? false: true;
+    if (overfill)
+        foreach() {
+            for (int i = -1; i <= 1; i += 2)
+                foreach_dimension()
+                    if (id.x[i] == -i) {
+                        double cr0 = cr[];
+                        cr[] += verror / icells;
+                        c[]  += verror / icells;
+                        fixed = true;
+                        fprintf(stderr, "OVERFILL FIX:(%g, %g) cr0=%g cr[]=%g id=%g i=%d\n",
+                            x, y, cr0, cr[], id.x[i], i);
+                        cr[] = clamp (cr[], 0, ibm[]);
+                        c[] = clamp (c[], 0, 1);
+                    }
+        }
+
+#if PRINTA
+    fprintf (stderr, "verror=%g icells=%d overfill=%d fixed=%d count=%d\n",
+        verror, icells, overfill, fixed, count);
+#endif
+    boundary ({cr, c});
+
+    return verror;
+}
+
 
 
 /*
