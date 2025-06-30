@@ -2,11 +2,44 @@
 ###### TWO PHASE FUNCTIONS FOR IBM ######
 */
 
-#define PRINTA 1
+#define PRINTA 0
 
 #include "fractions.h"
 
 (const) scalar contact_angle;
+
+extern scalar f;
+
+/*
+This function returns true if there exists a triple points within the cell, 
+i.e. the liquid interface intersects the solid one, given the normals of the
+liquid and solid interfaces.
+*/
+
+bool is_triple_point (Point point, coord nf, coord ns)
+{
+    if (!(on_interface(ibm)) || !(on_interface(f)))
+        return false;
+    if ((ns.x == 0 && ns.y == 0) || (nf.x == 0 && nf.y == 0))
+        return false;
+
+    double alphas = plane_alpha (ibm[], ns);
+
+    double alphaf = plane_alpha (f[], nf);
+
+    #if 0
+    double intercept = ((alphas/(ns.y+SEPS)) - (alphaf/(nf.y+SEPS))) /
+                       ((ns.x/(ns.y+SEPS)) - (nf.x/(nf.y+SEPS)) + SEPS);
+    #endif
+    
+    coord pt_int = {0,0};
+    pt_int.x = ((alphas/(ns.y+SEPS)) - (alphaf/(nf.y+SEPS))) /
+                  ((ns.x/(ns.y+SEPS)) - (nf.x/(nf.y+SEPS)) + SEPS);
+    pt_int.y = (alphaf/(nf.y + SEPS)) - (nf.x*pt_int.x)/(nf.y + SEPS);
+
+    return (fabs(pt_int.x) <= 0.5 && fabs(pt_int.y) <= 0.5);
+}
+
 
 /*
 boundary_points is used to find the intersecting points of the fluid interface
@@ -51,6 +84,9 @@ int boundary_points (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
 this function checks to see if the two interfaces intersect each other. If they
 do, and it is within the bounds of the region, the coordinates is stored in pi.
 It also returns 1 or 0 based on if the lines intersect each other or not.
+
+TODO: do we need another case when ns.y || nf.y = 0? or does this code
+      handle everything ok?
 */
 
 int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
@@ -127,10 +163,50 @@ int is_behind (const void *pa, const void *pb, void *center)
     return (dista > distb) ? -1: (dista < distb);
 }
 
+struct sort_r_data
+{
+  void *arg;
+  int (*compar)(const void *a1, const void *a2, void *aarg);
+};
+
+int sort_r_arg_swap(void *s, const void *aa, const void *bb)
+{
+  struct sort_r_data *ss = (struct sort_r_data*)s;
+  return (ss->compar)(aa, bb, ss->arg);
+}
+
+void sort_r(void *base, size_t nel, size_t width,
+            int (*compar)(const void *a1, const void *a2, void *aarg), void *arg)
+{
+  #if (defined _GNU_SOURCE || defined __GNU__ || defined __linux__)
+
+    qsort_r(base, nel, width, compar, arg);
+
+  #elif (defined __APPLE__ || defined __MACH__ || defined __DARWIN__ || \
+         defined __FREEBSD__ || defined __BSD__ || \
+         defined OpenBSD3_1 || defined OpenBSD3_9)
+
+    struct sort_r_data tmp;
+    tmp.arg = arg;
+    tmp.compar = compar;
+    qsort_r(base, nel, width, &tmp, &sort_r_arg_swap);
+
+  #elif (defined _WIN32 || defined _WIN64 || defined __WINDOWS__)
+
+    struct sort_r_data tmp = {arg, compar};
+    qsort_s(*base, nel, width, &sort_r_arg_swap, &tmp);
+
+  #else
+    #error Cannot detect operating system
+  #endif
+}
+
 
 /*
 sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
 clockwise order (or counter-clockwise if y-advection).
+
+TODO: make custome qsort_r function to allow compatiblity with Mac compilers
 */
 
 void sort_clockwise (int nump, coord cf[nump], int print = 0)
@@ -144,7 +220,7 @@ void sort_clockwise (int nump, coord cf[nump], int print = 0)
    
     if (print)
         fprintf(stderr, "SORTING: pc={%g, %g} nump=%d\n", pc.x, pc.y, nump);
-    qsort_r (cf, nump, sizeof(coord), is_behind, &pc);
+    sort_r (cf, nump, sizeof(coord), is_behind, &pc);
 }
 
 
@@ -424,6 +500,9 @@ int bisection_solver (double* a, double amin, double amax, tripoint tcell,
         return 0;
     }
 
+    if (!tcell.nf.x && !tcell.nf.y)
+        fprintf (stderr, "WARNING: liquid normal vector is zero in the midsection solver!\n");
+
     double alpha = 0, error = HUGE;
     int itr = 0;
     while (fabs(error) > tolerance && itr < maxitr) {
@@ -546,6 +625,16 @@ void real_fluid (scalar f, scalar fr)
 }
 
 
+/*
+interior cells are cells along the solid interface that
+    1. are full before and after the advection step
+    2. do not contribute to the contact angle imposition
+    3. are exempt from the special three-phase advection treatment
+
+TODO: make a formal definition of what an interior cell is (full cells along the solid interface?
+      any full cell that would not contain an extrapolated interface for CAs?)
+*/
+
 bool is_interior_cell (Point point, scalar ibm, scalar c, scalar cr)
 {
     #if PRINTA
@@ -553,6 +642,20 @@ bool is_interior_cell (Point point, scalar ibm, scalar c, scalar cr)
         x, y, ibm[], cr[], c[]);
     #endif
 
+    if ((ibm[] == 1 && cr[] == ibm[]) || cr[] == 0)
+        return false;
+
+    coord nf = interface_normal (point, c);
+    coord ns = interface_normal (point, ibm);
+
+    if (on_interface(ibm) && cr[] >= ibm[] - 1e-3 && !is_triple_point (point, nf, ns))
+        return true;
+
+    #if 0
+    if (on_interface(ibm) && cr[] >= ibm[] - 1e-3)
+        return true;
+
+    #else
     foreach_neighbor(1) {
 
         #if PRINTA
@@ -561,10 +664,14 @@ bool is_interior_cell (Point point, scalar ibm, scalar c, scalar cr)
         #endif
 
     // TODO: if cr[] != ibm[], try seeing if ibm[] == 1 instead (full fluid cell)
-        if (ibm[] && !(fabs(cr[] - ibm[]) <= 1e-3))
+        if (ibm[] && !(fabs(cr[] - ibm[]) <= 1e-2)) { // CHANGED FROM 1e-3 TEMPORARILY
             return false;
+        }
     }
+
     return true;
+    #endif
+    //return false;
 }
 
 
@@ -602,8 +709,12 @@ void immersed_reconstruction (scalar c, scalar cr, vector nf, scalar alphaf,
 
             if (is_interior_cell (point, ibm, c, cr)) {
                 c[] = 1;
+
+                #if PRINTA
                 fprintf(stderr, "(%g, %g) cell is interior cell c=%g cr=%g\n",
                     x, y, c[], cr[]);
+                #endif
+
                 continue;
             }
 
@@ -653,7 +764,6 @@ double real_volume (scalar f)
 }
 
 #if CA
-bool is_triple_point (Point point, coord nf, coord ns);
 
 double get_contact_angle (scalar f, scalar ibm)
 {
@@ -737,24 +847,24 @@ double redistribute_volume (scalar c, scalar cr, const scalar ibm)
 {
     // 0. reconstruct liquid and solid interface 
     // TODO: optimize w/rest of reconstructions to eliminate unncessary reconstructions
-    scalar alphaf[], alphas[];
-    vector nf[], ns[];
-
-    reconstruction (c, nf, alphaf);
-    reconstruction (ibm, ns, alphas);
 
     // 1. Calculate the volume error
     //    and count the number of interfacial cells that contain no solid fragment
     double verror = 0;
     int icells = 0;
     foreach(reduction (+:verror) reduction (+:icells)) {
-        if (cr[] > ibm[]) {
+        if (cr[] > ibm[]) { // cell is too full
             verror += cr[] - ibm[];
             cr[] = ibm[];
         }
-        else if (cr[] < 0) {
+        else if (cr[] < 0) { // cell is too empty
             verror += cr[];
             cr[] = 0;
+        }
+        else if (on_interface(ibm) && cr[] < ibm[] && // moving interface error
+            is_interior_cell (point, ibm, c, cr)) {
+            verror += cr[] - ibm[];
+            cr[] = ibm[];
         }
         if (on_interface(c) && ibm[] >= 1)
             icells++;
@@ -772,7 +882,7 @@ double redistribute_volume (scalar c, scalar cr, const scalar ibm)
 
     int count = 0;
 
-    foreach() {
+    foreach(reduction(max:overfill) reduction(+:count)) {
         if (on_interface(c) && ibm[] >= 1) {
 
             // cell is too full to take the additional volume, so give it to neighbors
@@ -812,7 +922,7 @@ double redistribute_volume (scalar c, scalar cr, const scalar ibm)
 
     bool fixed = overfill? false: true;
     if (overfill)
-        foreach() {
+        foreach(reduction(max:fixed)) {
             for (int i = -1; i <= 1; i += 2)
                 foreach_dimension()
                     if (id.x[i] == -i) {

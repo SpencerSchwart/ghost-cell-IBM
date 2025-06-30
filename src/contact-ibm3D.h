@@ -192,6 +192,7 @@ i.e. the liquid interface intersects the solid one, given the normals of the
 liquid and solid interfaces.
 */
 
+#if 0
 bool is_triple_point (Point point, coord nf, coord ns)
 {
     if (!(on_interface(ibm)) || !(on_interface(f)))
@@ -209,3 +210,4 @@ bool is_triple_point (Point point, coord nf, coord ns)
     return fabs(intercept) <= 0.5;
 
 }
+#endif

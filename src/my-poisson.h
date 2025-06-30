@@ -502,6 +502,8 @@ mgstats project (face vector uf, scalar p,
       double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
       foreach_dimension() {
           divg[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
+          if (uibm_x(mpx,mpy,mpz) > 0)
+            fprintf(stderr, "plate's velocity = %g @t=%g dt=%g\n", uibm_x(mpx,mpy,mpz), t, dt);
           //divg[] += virtual_merge_x (point, ibm, ibmf, uf);
       }
     }
@@ -537,9 +539,8 @@ mgstats project (face vector uf, scalar p,
   And compute $\mathbf{u}_f^{n+1}$ using $\mathbf{u}_f$ and $p$. */
 
   foreach_face() {
-#if IBM // is this correct? should uf be multiplied by ibmf?
+#if IBM
     double metric = !ibmf.x[]? 0: alpha.x[] / ibmf.x[];
-    //double metric = alpha.x[];
     uf.x[] -= dt*metric*face_gradient_x (p, 0);
 #else
     uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
@@ -550,6 +551,15 @@ mgstats project (face vector uf, scalar p,
 
   foreach() {
     divg1[] = 0;
+
+    if (on_interface(ibm)) {
+      coord midPoint, n;
+      double area = ibm_geometry (point, &midPoint, &n);
+      double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
+      foreach_dimension()
+          divg1[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
+    }
+
     foreach_dimension()
       divg1[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
     divg1[] /= Delta;

@@ -127,6 +127,7 @@ event properties (i++)
 #endif
     foreach_face() {
         double ff = (sf[] + sf[-1])/2.;
+        //double ff = (cr[] + cr[-1])/2.;
         alphav.x[] = ibmf.x[]/rho(ff);
         if (mu1 || mu2) {
           face vector muv = mu;

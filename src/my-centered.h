@@ -460,6 +460,8 @@ void centered_gradient (scalar p, vector g)
   foreach_face() {
 #if IBM
     gf.x[] = ibmf.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta; // should fm*a or ibmf*a?
+    //gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/(Delta*ibmf.x[]+SEPS); // should fm*a or ibmf*a?
+
 #else
     gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta;
 #endif
@@ -474,6 +476,8 @@ void centered_gradient (scalar p, vector g)
     foreach_dimension() {
 #if IBM
       g.x[] = (gf.x[] + gf.x[1]) / (ibmf.x[] + ibmf.x[1] + SEPS);
+      //g.x[] = (gf.x[] + gf.x[1]) / (fm.x[] + fm.x[1] + SEPS);
+
 #else
       g.x[] = (gf.x[] + gf.x[1]) / (fm.x[] + fm.x[1] + SEPS);
 #endif
@@ -488,9 +492,11 @@ next timestep). Then compute the centered gradient field *g*. */
 
 event projection (i++,last)
 {
+#if 1
   foreach_face()
     if (uf.x[] > 1e4)
       fprintf(stderr, "(%g, %g) max velocity = %g\n", x, y, uf.x[]);
+#endif
   mgp = project (uf, p, alpha, dt, mgp.nrelax);
   centered_gradient (p, g);
   

@@ -22,6 +22,14 @@ face vector ibmFaces[];
 
 // coord vc = {0,0,0};     // imposed velocity boundary condition (depreciated)
 
+#if 0
+typedef struct solidVelo {
+    void (* move_solid_x) (scalar * ibm, face vector * ibmf);
+    void (* move_solid_y) (scalar * ibm, face vector * ibmf);
+} solidVelo;
+
+solidVelo usolid;
+#endif
 
 typedef struct fragment {
     coord n;

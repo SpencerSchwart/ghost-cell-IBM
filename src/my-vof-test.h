@@ -306,14 +306,14 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl, scalar cr, scalar ccr, s
   fprintf (stderr, "(a2) post moving solid volume = %g\n", cerror1a2_x);
   #endif
 
-  //double verror = redistribute_volume (c, cr, ibm);
+  double verror = redistribute_volume (c, cr, ibm);
 
   #if VPRINT
-  //fprintf (stderr, "(a3) volume error = %0.15g\n", verror);
+  fprintf (stderr, "(a3) volume error = %0.15g\n", verror);
   #endif
 
   #endif
-  set_contact_angle(c, cr, ibm0);
+  //set_contact_angle(c, cr, ibm0);
   reconstruction (c, nf, alphaf);
   reconstruction (ibm0, ns, alphas);
 
@@ -492,6 +492,12 @@ void vof_advection (scalar * interfaces, int i)
    reconstruction (ibm, ns, alphas);
    immersed_reconstruction (c, creal, nf, alphaf, ns, alphas);
    #endif
+
+   set_contact_angle(c, cr, ibm);
+   reconstruction (c, nf, alphaf);
+   reconstruction (ibm, ns, alphas);
+ 
+   immersed_reconstruction (c, cr, nf, alphaf, ns, alphas);
 
    double cerror2a = real_volume (c);
 

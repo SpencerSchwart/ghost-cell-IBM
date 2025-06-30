@@ -23,7 +23,7 @@ event update_metric (i++)
     #if 1
     foreach_face() {
        if (is_ghost_cell (point, ibm) || ibm[] > 0 || ibm[-1] > 0)
-       // if (is_ghost_cell (point, ibm) || ibm[] > 0)
+       //if (is_ghost_cell (point, ibm) || ibm[] > 0)
             ibmFaces.x[] = 1;
        else
             ibmFaces.x[] = 0;
@@ -216,6 +216,7 @@ TODO: are all of these boundary()'s necessary?
 TODO: is assigning pressure to full ghost cells necessary?
 */
 
+#if 1
 event end_timestep (i++)
 {
     //vector normals[];
@@ -302,4 +303,4 @@ event end_timestep (i++)
     }
     boundary((scalar *){u});
 }
-
+#endif

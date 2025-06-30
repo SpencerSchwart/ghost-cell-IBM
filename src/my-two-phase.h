@@ -14,6 +14,7 @@ method. The volume fraction in fluid 1 is $f=1$ and $f=0$ in fluid
 #include "my-vof-test.h"
 #else
 #include "my-vof.h"
+//#include "my-vof-testv3.h"
 #endif
 
 scalar f[], * interfaces = {f};
