@@ -132,6 +132,29 @@ double region_check (coord pc, coord nf, double alphaf, coord ns, double alphas)
 
 
 /*
+The next few functions are to allow portablity for qsort_r
+*/
+
+typedef int (*qsort_cmp_r)(const void *a, const void *b, void *arg);
+
+static void *qsort_r_arg;
+
+static int qsort_r_trampoline(const void *a, const void *b) {
+    extern qsort_cmp_r qsort_r_func;
+    return qsort_r_func(a, b, qsort_r_arg);
+}
+
+qsort_cmp_r qsort_r_func;
+
+void qsort_r_fallback(void *base, size_t nmemb, size_t size,
+                      qsort_cmp_r compar, void *arg) {
+    qsort_r_func = compar;
+    qsort_r_arg = arg;
+    qsort(base, nmemb, size, qsort_r_trampoline);
+}
+
+
+/*
 This function uses cross products to determine the orientation of two points w.r.t
 a given center coordinate.
 
@@ -163,44 +186,6 @@ int is_behind (const void *pa, const void *pb, void *center)
     return (dista > distb) ? -1: (dista < distb);
 }
 
-struct sort_r_data
-{
-  void *arg;
-  int (*compar)(const void *a1, const void *a2, void *aarg);
-};
-
-int sort_r_arg_swap(void *s, const void *aa, const void *bb)
-{
-  struct sort_r_data *ss = (struct sort_r_data*)s;
-  return (ss->compar)(aa, bb, ss->arg);
-}
-
-void sort_r(void *base, size_t nel, size_t width,
-            int (*compar)(const void *a1, const void *a2, void *aarg), void *arg)
-{
-  #if (defined _GNU_SOURCE || defined __GNU__ || defined __linux__)
-
-    qsort_r(base, nel, width, compar, arg);
-
-  #elif (defined __APPLE__ || defined __MACH__ || defined __DARWIN__ || \
-         defined __FREEBSD__ || defined __BSD__ || \
-         defined OpenBSD3_1 || defined OpenBSD3_9)
-
-    struct sort_r_data tmp;
-    tmp.arg = arg;
-    tmp.compar = compar;
-    qsort_r(base, nel, width, &tmp, &sort_r_arg_swap);
-
-  #elif (defined _WIN32 || defined _WIN64 || defined __WINDOWS__)
-
-    struct sort_r_data tmp = {arg, compar};
-    qsort_s(*base, nel, width, &sort_r_arg_swap, &tmp);
-
-  #else
-    #error Cannot detect operating system
-  #endif
-}
-
 
 /*
 sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
@@ -220,7 +205,7 @@ void sort_clockwise (int nump, coord cf[nump], int print = 0)
    
     if (print)
         fprintf(stderr, "SORTING: pc={%g, %g} nump=%d\n", pc.x, pc.y, nump);
-    sort_r (cf, nump, sizeof(coord), is_behind, &pc);
+    qsort_r_fallback (cf, nump, sizeof(coord), is_behind, &pc);
 }
 
 
