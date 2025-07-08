@@ -48,7 +48,10 @@ void fill_fragment (double c, coord n, fragment * frag)
 
 #define distance(a,b) sqrt(sq(a) + sq(b))
 #define distance3D(a,b,c) sqrt(sq(a) + sq(b) + sq(c))
+
 #define on_interface(a) (a[] > 0+INT_TOL && a[] < 1-INT_TOL)
+//#define on_interface(a,_TOL) (a[] > 0+_TOL && a[] < 1.-_TOL)
+
 #define is_mostly_solid(a, i) (a[i] > 0+INT_TOL && a[i] <= 0.5)
 #define is_fresh_cell(a0, a) (a0[] <= 0.5 && a[] > 0.5)
 
@@ -386,22 +389,23 @@ bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL, int 
     // Look at directly adjacent neighbors (4 in 2D)
     for (int d = 0; d < dimension; d++) {
 	    for (int kk = -1; kk <= 1; kk += 2) {
-            int i = 0, j = 0, k = 0;
+            int _i = 0, _j = 0, _k = 0;
 	        if (d == 0)
-                i = kk; 
+                _i = kk; 
             else if (d == 1)
-                j = kk; 
+                _j = kk; 
             else if (d == 2)
-                k = kk;
+                _k = kk;
             // check to see if neighboring cell is inside boundary
-            if (neighbor(-i,-j,-k).pid < 0) {
+            if (neighbor(-_i,-_j,-_k).pid < 0) {
 
-                if (useri) *useri = -i;
-                if (userj) *userj = -j;
-                if (userk) *userk = -k;
+                if (useri) *useri = -_i;
+                if (userj) *userj = -_j;
+                if (userk) *userk = -_k;
 
                 return true;
             }
+            (void) _i; (void) _j; (void) _k; // to prevent unused variable warning
         }
     }
 #endif
@@ -580,7 +584,7 @@ coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints)
 {
     
     int boundaryOffsetX = 0, boundaryOffsetY = 0, boundaryOffsetZ = 0;
-    bool border = borders_boundary (point, &boundaryOffsetX, &boundaryOffsetY, &boundaryOffsetZ);
+    borders_boundary (point, &boundaryOffsetX, &boundaryOffsetY, &boundaryOffsetZ);
     
     int xOffset = 0, yOffset = 0, zOffset = 0;
     image_offsets (point, imagePoint, &xOffset, &yOffset, &zOffset);
@@ -593,13 +597,6 @@ coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints)
     int j = sign(imagePoint.y - imageCell.y);
     int k = sign(imagePoint.z - imageCell.z);
    
-    #if 0
-    if (border) {
-        fprintf (stderr, "WARNING: cell x=%g y=%g borders a boundary: %d %d %d %d\n", 
-                x, y, point.i, point.j, boundaryOffsetX, boundaryOffsetY);
-    }
-    #endif
-
     int xx = xOffset, yy = yOffset, zz = zOffset;
 
     coord velocity[(int)pow(2, dimension)]; // 4 in 2D, 8 in 3D
@@ -1062,8 +1059,10 @@ double ibm_geometry (Point point, coord * p, coord * n, double * alphau = NULL)
 {
     *n = facet_normal (point, ibm, ibmf);
     double alpha = plane_alpha (ibm[], *n);
+
     if (alphau != NULL)
         *alphau = alpha;
+
     double area = plane_area_center (*n, alpha, p);
     foreach_dimension()
         n->x *= -1;
