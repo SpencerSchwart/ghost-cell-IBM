@@ -603,6 +603,7 @@ void fluid_only (Point point, int xx, int yy, int zz, int i, int j, int k,
             velocity->x = uibm_x(mpx, mpy, mpz);
         }
     }
+    (void) off_z; // to prevent unused variable warning
 }
 
 
@@ -631,7 +632,7 @@ coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints)
     int i = sign(imagePoint.x - imageCell.x);
     int j = sign(imagePoint.y - imageCell.y);
     int k = sign(imagePoint.z - imageCell.z);
-   
+
     int xx = xOffset, yy = yOffset, zz = zOffset;
 
     coord velocity[(int)pow(2, dimension)]; // 4 in 2D, 8 in 3D
@@ -802,6 +803,9 @@ coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints)
                   coeff_z[6] * imagePoint.z +
                   coeff_z[7];
 #endif
+    
+    (void) zz; (void) k;
+
     return temp_velo;
 
 }
@@ -901,6 +905,8 @@ double image_pressure (Point point, scalar p, coord imagePoint)
                            coeff[6] * imagePoint.z +
                            coeff[7];
 #endif
+
+    (void) zz; (void) k;
 
     return temp_pressure;
 }
@@ -1375,7 +1381,7 @@ double dirichlet_gradient (Point point, scalar s, scalar ibm,
 static inline
 coord ibm_gradient (Point point, vector u, coord p, coord n)
 {
-    coord cellCenter = {x,y,z}, midPoint, dudn;
+    coord cellCenter = {x,y,z}, midPoint = {0,0,0}, dudn;
     foreach_dimension() {
         midPoint.x = cellCenter.x + p.x*Delta;
      }
