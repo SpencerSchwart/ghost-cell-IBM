@@ -207,6 +207,41 @@ double centroid_point (Point point, scalar ibm, coord * midPoint, coord * n)
 }
 
 
+/**
+reconstruction_ibm accepts an additional face vector field that represents the
+face solid volume fraction (ibmf) to be used when calculating the normal, n.
+
+TODO: what if interface perfectly cuts cell face? use interfacial() instead? must
+      be as cheap as possible.
+*/
+
+trace
+void reconstruction_ibm (const scalar c, const face vector cf, vector n, scalar alpha)
+{
+    foreach() {
+        if (c[] <= 0. || c[] >= 1.) {
+            alpha[] = 0.;
+            foreach_dimension()
+                n.x[] = 0.;
+        }
+        else {
+            coord m = facet_normal (point, c, cf);
+            foreach_dimension()
+                n.x[] = m.x;
+            alpha[] = plane_alpha(c[], m);
+        }
+    }
+
+#if TREE
+    foreach_dimension()
+        n.x.refine = n.x.prolongation = refine_injection;
+
+    alpha.n = n;
+    alpha.refine = alpha.prolongation = alpha_refine;
+#endif
+}
+
+
 /*
 The function below fills frag with the normal vector n, alpha, and the volume fraction of the
 cell that is closest to the ghost cell. It also returns the coordinates of the fragment's midpoint 
