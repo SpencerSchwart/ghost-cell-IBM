@@ -43,7 +43,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
     vector u = vector(a[0]), r = vector(b[0]), res = vector(resl[0]);
     double maxres = 0.;
 #if TREE
-    coord ind = {0,1,2};
+    //coord ind = {0,1,2};
     foreach_dimension() {
         scalar s = u.x;
         face vector g[];

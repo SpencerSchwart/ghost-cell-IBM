@@ -493,6 +493,8 @@ mgstats project (face vector uf, scalar p,
   $\mathbf{u}_f$. The divergence is scaled by *dt* so that the
   pressure has the correct dimension. */
 
+   trash({divg, divg1});
+
   foreach() {
     divg[] = 0.;
 #if IBM
@@ -502,8 +504,8 @@ mgstats project (face vector uf, scalar p,
       double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
       foreach_dimension() {
           divg[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
-          if (uibm_x(mpx,mpy,mpz) > 0)
-            fprintf(stderr, "plate's velocity = %g @t=%g dt=%g\n", uibm_x(mpx,mpy,mpz), t, dt);
+          //if (uibm_x(mpx,mpy,mpz) > 0)
+          //  fprintf(stderr, "plate's velocity = %g @t=%g dt=%g\n", uibm_x(mpx,mpy,mpz), t, dt);
           //divg[] += virtual_merge_x (point, ibm, ibmf, uf);
       }
     }

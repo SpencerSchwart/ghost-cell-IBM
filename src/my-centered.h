@@ -492,7 +492,7 @@ next timestep). Then compute the centered gradient field *g*. */
 
 event projection (i++,last)
 {
-#if 1
+#if 0
   foreach_face()
     if (uf.x[] > 1e4)
       fprintf(stderr, "(%g, %g) max velocity = %g\n", x, y, uf.x[]);

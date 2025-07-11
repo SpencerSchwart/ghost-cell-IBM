@@ -5,7 +5,7 @@
 
 #define BGHOSTS 2
 #define IBM 1
-#define LIMIT 1.e10
+#define LIMIT 1e40
 #define INT_TOL 1e-7    // tolerance used for volume fraction fields (interface tolerance)
 
 #undef SEPS
@@ -81,6 +81,17 @@ static inline double uibm_z (double x, double y, double z, double tt = t);
 #define u_z_ibm_dirichlet(expr) \
     static inline double uibm_z (double x, double y, double z, double tt = t) {return expr;} \
 
+
+// normalize() but with SEPS in the denominator
+void normalize2 (coord * n)
+{
+    double norm = 0;
+    foreach_dimension()
+        norm += sq(n->x);
+    norm = sqrt(norm);
+    foreach_dimension()
+        n->x /= norm + SEPS;
+}
 
 /*
 This function takes returns true if the given point has a direct neighbor that
@@ -339,12 +350,7 @@ coord boundary_int (Point point, fragment frag, coord fluidCell, scalar ibm)
     double mag = distance3D(frag.n.x, frag.n.y, frag.n.z) + SEPS;
     coord n = frag.n, ghostCell = {x,y,z};
 
-    double norm = 0;
-    foreach_dimension()
-        norm += sq(n.x);
-    foreach_dimension()
-        n.x /= norm + SEPS;
-    //normalize(&n);
+    normalize2(&n);
     // double mag = fabs(n.x) + fabs(n.y) + fabs(n.z);
 
     double offset = 0;
@@ -1634,6 +1640,143 @@ static inline double ibm_face_gradient_x (Point point, scalar a, int i)
 #endif
 
 
+#if 0 // testing some different interpolation functions like embed
+#define ibm_avg(a,i,j,k)							\
+  ((a[i,j,k]*(1.5 + ibm[i,j,k]) + a[i-1,j,k]*(1.5 + ibm[i-1,j,k]))/	\
+   (ibm[i,j,k] + ibm[i-1,j,k] + 3.))
+
+#if dimension == 2
+
+#define face_condition(ibmf, ibm)						\
+  (ibmf.x[i,j] > 0.5 && ibmf.y[i,j + (j < 0)] && ibmf.y[i-1,j + (j < 0)] &&	\
+   ibm[i,j] && ibm[i-1,j])
+
+foreach_dimension()
+static inline double ibm_face_gradient_x (Point point, scalar a, int i)
+{
+  int j = sign(ibmf.x[i,1] - ibmf.x[i,-1]);
+  assert (ibm[i] && ibm[i-1]);
+  if (face_condition (ibmf, ibm))
+    return ((1. + ibmf.x[i])*(a[i] - a[i-1]) +
+	    (1. - ibmf.x[i])*(a[i,j] - a[i-1,j]))/(2.*Delta);
+  return (a[i] - a[i-1])/Delta;
+}
+
+foreach_dimension()
+static inline double ibm_face_value_x (Point point, scalar a, int i)
+{
+  int j = sign(ibmf.x[i,1] - ibmf.x[i,-1]);
+  return face_condition (ibmf, ibm) ?
+    ((1. + ibmf.x[i])*ibm_avg(a,i,0,0) + (1. - ibmf.x[i])*ibm_avg(a,i,j,0))/2. :
+    ibm_avg(a,i,0,0);
+}
+
+#else // dimension == 3
+
+foreach_dimension()
+static inline coord embed_face_barycentre_z (Point point, int i)
+{
+  // Young's normal calculation
+  coord n1 = {0};
+  double nn = 0.;
+  scalar f = ibmf.z;
+  foreach_dimension(2) {
+    n1.x = (f[-1,-1,i] + 2.*f[-1,0,i] + f[-1,1,i] -
+	    f[+1,-1,i] - 2.*f[+1,0,i] - f[+1,1,i]);
+    nn += fabs(n1.x);
+  }
+  if (!nn)
+    return (coord){0.,0.,0.};
+  foreach_dimension(2)
+    n1.x /= nn;
+  // Position `p` of the face barycentre
+  coord n, p1, p;
+  ((double *)&n)[0] = n1.x, ((double *)&n)[1] = n1.y;
+  double alpha = line_alpha (f[0,0,i], n);
+  line_center (n, alpha, f[0,0,i], &p1);
+  p.x = ((double *)&p1)[0], p.y = ((double *)&p1)[1], p.z = 0.;
+  return p;
+}
+
+#define face_condition(ibmf, ibm)						\
+  (ibmf.x[i,j,k] > 0.5 && (ibmf.x[i,j,0] > 0.5 || ibmf.x[i,0,k] > 0.5) &&	\
+   ibmf.y[i,j + (j < 0),0] && ibmf.y[i-1,j + (j < 0),0] &&			\
+   ibmf.y[i,j + (j < 0),k] && ibmf.y[i-1,j + (j < 0),k] &&			\
+   ibmf.z[i,0,k + (k < 0)] && ibmf.z[i-1,0,k + (k < 0)] &&			\
+   ibmf.z[i,j,k + (k < 0)] && ibmf.z[i-1,j,k + (k < 0)] &&			\
+   ibm[i-1,j,0] && ibm[i-1,0,k] && ibm[i-1,j,k] &&				\
+   ibm[i,j,0] && ibm[i,0,k] && ibm[i,j,k])
+
+foreach_dimension()
+static inline double ibm_face_gradient_x (Point point, scalar a, int i)
+{
+  assert (ibm[i] && ibm[i-1]);
+  coord p = embed_face_barycentre_x (point, i);
+  // Bilinear interpolation of the gradient (see Fig. 1 of Schwartz et al., 2006)
+  int j = sign(p.y), k = sign(p.z);
+  if (face_condition(ibmf, ibm)) {
+    p.y = fabs(p.y), p.z = fabs(p.z);
+    return (((a[i,0,0] - a[i-1,0,0])*(1. - p.y) +
+	     (a[i,j,0] - a[i-1,j,0])*p.y)*(1. - p.z) + 
+	    ((a[i,0,k] - a[i-1,0,k])*(1. - p.y) +
+	     (a[i,j,k] - a[i-1,j,k])*p.y)*p.z)/Delta;
+  }
+  return (a[i] - a[i-1])/Delta;
+}
+
+foreach_dimension()
+static inline double ibm_face_value_x (Point point, scalar a, int i)
+{
+  coord p = embed_face_barycentre_x (point, i);
+  // Bilinear interpolation
+  int j = sign(p.y), k = sign(p.z);
+  if (face_condition(ibmf, ibm)) {
+    p.y = fabs(p.y), p.z = fabs(p.z);
+    return ((ibm_avg(a,i,0,0)*(1. - p.y) + ibm_avg(a,i,j,0)*p.y)*(1. - p.z) + 
+	    (ibm_avg(a,i,0,k)*(1. - p.y) + ibm_avg(a,i,j,k)*p.y)*p.z);
+  }
+  return ibm_avg(a,i,0,0);
+}
+#endif // dimension == 3
+
+#if 0 // TODO: try turning third on/off and include it in macros
+attribute {
+    bool third;
+}
+#endif
+
+#if 0
+#undef face_gradient_x
+#define face_gradient_x(a,i)					\
+  (ibmf.x[i] < 1. && ibmf.x[i] > 0. ?			\
+   ibm_face_gradient_x (point, a, i) :			\
+   (a[i] - a[i-1])/Delta)
+
+#undef face_gradient_y
+#define face_gradient_y(a,i)					\
+  (ibmf.y[0,i] < 1. && ibmf.y[0,i] > 0. ?		\
+   ibm_face_gradient_y (point, a, i) :			\
+   (a[0,i] - a[0,i-1])/Delta)
+
+#undef face_gradient_z
+#define face_gradient_z(a,i)					\
+  (ibmf.z[0,0,i] < 1. && ibmf.z[0,0,i] > 0. ?		\
+   embed_face_gradient_z (point, a, i) :			\
+   (a[0,0,i] - a[0,0,i-1])/Delta)
+#endif
+#undef face_value
+#define face_value(a,i)							\
+  (true && ibmf.x[i] < 1. && ibmf.x[i] > 0. ?				\
+   ibm_face_value_x (point, a, i) :					\
+   ibm_avg(a,i,0,0))
+
+#undef center_gradient
+#define center_gradient(a) (ibmf.x[] && ibmf.x[1] ? (a[1] - a[-1])/(2.*Delta) : \
+			    ibmf.x[1] ? (a[1] - a[])/Delta :		    \
+			    ibmf.x[]  ? (a[] - a[-1])/Delta : 0.)
+#endif
+
+
 /*
 The metric event is used to set the metric fields, fm and cm, to the ibmFaces and
 ibmCells field, respectively. It is also used to specifiy the prolongation and
@@ -1693,4 +1836,3 @@ event metric (i = 0)
 
     boundary(all);
 }
-
