@@ -5,7 +5,7 @@ We test embedded boundaries by solving the (Stokes) Couette flow
 between two rotating cylinders. */
 
 #include "../ibm-gcm.h"
-#define CCM 1
+#define CCM 0
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
 #include "view.h"
