@@ -1,4 +1,6 @@
 
+vector bi[];
+
 /*
 "vof" event executes at the beginning of the event loop (before advection) but
 should execute after the new volume fraction fields have been initalized.
@@ -20,7 +22,6 @@ event update_metric (i++)
             ibmCells[] = 0;
     }
 
-    #if 1
     foreach_face() {
        if (is_ghost_cell (point, ibm) || ibm[] > 0 || ibm[-1] > 0)
        //if (is_ghost_cell (point, ibm) || ibm[] > 0)
@@ -28,7 +29,11 @@ event update_metric (i++)
        else
             ibmFaces.x[] = 0;
     }
-    #endif
+#if AXI
+    cm_update (cm, ibmCells);
+    fm_update (fm, ibmFaces);
+    boundary ((scalar *){fm, cm});
+#endif
     boundary((scalar *){ibmFaces, ibmCells});
 }
 
@@ -138,11 +143,12 @@ TODO: is assigning pressure to full ghost cells necessary? probably not
 
 vector normals[];
 vector midPoints[];
+//vector bi[];
 
 #if 1
 event acceleration (i++)
 {
-
+    trash({normals, midPoints});
     // 1. Initalize fields to hold interface normals and fragment midpoints
     //    TODO: this pass can be improved, if not avoided entirely.
     foreach() {
@@ -169,26 +175,45 @@ event acceleration (i++)
     }
 
     boundary({midPoints, normals});
-   
+  
+     // ghost boundary intercepts
+    u.x.mp = bi; u.y.mp = bi; 
+#if dimension == 3
+    u.z.mp = bi;
+#endif
+
     // 2. Identify ghost cells and calculate and assign their values to enforce B.C
     foreach() {
         if (is_ghost_cell(point, ibm)) {
-           fragment interFrag;
-           coord fluidCell, ghostCell = {x,y,z};
+            fragment interFrag;
+            coord fluidCell, ghostCell = {x,y,z};
 
-           closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell);
-           coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
-           coord imagePoint = image_point (boundaryInt, ghostCell);
-    
-           coord imageVelocity = image_velocity (point, u, imagePoint, midPoints);
-           double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
-           foreach_dimension() {
-               u.x[] = 2 * uibm_x(bix, biy, biz) - imageVelocity.x;
-           }
-           if (ibm[] <= 0.) { // is pressure b.c. necessary here?
-               p[] = image_pressure (point, p, imagePoint);
-               pf[] = image_pressure (point, pf, imagePoint);
-           }
+            closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell);
+            coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
+
+            coord imagePoint = image_point (boundaryInt, ghostCell);
+
+            foreach_dimension()
+                bi.x[] = boundaryInt.x;
+
+            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints, bi);
+            //double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
+
+            foreach_dimension() {
+                bool dirichlet = false;
+                double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+                if (dirichlet) {
+                    u.x[] = 2*vb - imageVelocity.x;
+                    //u.x[] = 2 * uibm_x(bix, biy, biz) - imageVelocity.x;
+                }
+                else {
+                    u.x[] = imageVelocity.x;
+                }
+            }
+            if (ibm[] <= 0.) { // is pressure b.c. necessary here?
+                p[] = image_pressure (point, p, imagePoint);
+                pf[] = image_pressure (point, pf, imagePoint);
+            }
        }
        else if (ibm[] == 0) {
            p[] = 0; pf[] = 0;
@@ -198,7 +223,7 @@ event acceleration (i++)
        }
     }
 
-    boundary((scalar *){u, p, pf});
+    boundary((scalar *){u, p, pf, bi});
 }
 #endif
 
@@ -221,6 +246,8 @@ event end_timestep (i++)
 {
     //vector normals[];
     //vector midPoints[];
+
+    trash({normals, midPoints});
 
     // 1. Initalize fields to hold interface normals and fragment midpoints
     //    TODO: this pass can be improved, if not avoided entirely.
@@ -279,6 +306,11 @@ event end_timestep (i++)
     correction(dt);  // add new pressure to velocity field
     boundary((scalar *){u});
 
+    u.x.mp = bi; u.y.mp = bi; 
+#if dimension == 3
+    u.z.mp = bi;
+#endif
+
     // 3. Update the velocity B.C
     foreach() {
         if (is_ghost_cell(point, ibm)) {
@@ -288,12 +320,23 @@ event end_timestep (i++)
            closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell);
            coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
            coord imagePoint = image_point (boundaryInt, ghostCell);
-    
-           coord imageVelocity = image_velocity (point, u, imagePoint, midPoints);
-           double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
-           foreach_dimension() {
-               u.x[] = 2 * uibm_x(bix, biy, biz) - imageVelocity.x;
-           }
+   
+           foreach_dimension()
+             bi.x[] = boundaryInt.x;
+
+           coord imageVelocity = image_velocity (point, u, imagePoint, midPoints, bi);
+           //double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
+            foreach_dimension() {
+                bool dirichlet = false;
+                double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+                if (dirichlet) {
+                    u.x[] = 2*vb - imageVelocity.x;
+                    //u.x[] = 2 * uibm_x(bix, biy, biz) - imageVelocity.x;
+                }
+                else {
+                    u.x[] = imageVelocity.x;
+                }
+            }
        }
        else if (ibm[] == 0) {
            foreach_dimension() {
@@ -301,6 +344,6 @@ event end_timestep (i++)
            }
        }
     }
-    boundary((scalar *){u});
+    boundary((scalar *){u, bi});
 }
 #endif

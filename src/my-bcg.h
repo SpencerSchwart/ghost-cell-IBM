@@ -42,7 +42,7 @@ void tracer_fluxes (scalar f,
     conditions (when using narrow '1 ghost cell' stencils)). */
 
 #if IBM
-    double un = (fm.x[]? 1: 0)*dt*uf.x[]/(fm.x[]*Delta + SEPS), s = sign(un);
+    double un = ibmFaces.x[]*dt*uf.x[]/(fm.x[]*Delta + SEPS), s = sign(un);
 #else
     double un = dt*uf.x[]/(fm.x[]*Delta + SEPS), s = sign(un);
 #endif
@@ -99,11 +99,11 @@ void advection (scalar * tracers, face vector u, double dt,
     foreach()
       foreach_dimension() {
 #if IBM
-        f[] += cm[]*dt*(flux.x[] - flux.x[1])/(Delta*cm[]+SEPS);
+        f[] += ibmCells[]*dt*(flux.x[] - flux.x[1])/(Delta*cm[]+SEPS);
 
         if (fabs(f[]) > LIMIT)
-            fprintf(stderr, "WARNING in bcg.h: f[] = %g in (%g, %g) exceeds %g\n", f[], x, y, LIMIT);
-#else
+           fprintf(stderr, "WARNING in bcg.h: f[] = %g in (%g, %g) exceeds %g\n", f[], x, y, LIMIT);
+#else  // IBM
         f[] += dt*(flux.x[] - flux.x[1])/(Delta*cm[]);
 #endif // IBM
       }

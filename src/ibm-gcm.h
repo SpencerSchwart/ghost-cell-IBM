@@ -20,7 +20,7 @@ face vector ibmf0[];
 scalar ibmCells[];
 face vector ibmFaces[];
 
-// coord vc = {0,0,0};     // imposed velocity boundary condition (depreciated)
+double (* metric_ibm_factor) (Point, coord) = NULL; // for axi
 
 #if 0
 typedef struct solidVelo {
@@ -45,7 +45,6 @@ void fill_fragment (double c, coord n, fragment * frag)
     frag->alpha = plane_alpha (c, n);
 }
 
-
 #define distance(a,b) sqrt(sq(a) + sq(b))
 #define distance3D(a,b,c) sqrt(sq(a) + sq(b) + sq(c))
 
@@ -55,31 +54,50 @@ void fill_fragment (double c, coord n, fragment * frag)
 #define is_mostly_solid(a, i) (a[i] > 0+INT_TOL && a[i] <= 0.5)
 #define is_fresh_cell(a0, a) (a0[] <= 0.5 && a[] > 0.5)
 
+bid immersed;
 
-/*
-These functions and macros below are used to mimic Basilisk's way of specifying
-boundary condtions, e.g., u.t[embed] = dirichlet(0). For now, we only allow a
-dirichlet b.c for velocity.
+attribute {
+    vector mp; // boundary intercepts (TODO: should name this better)
+}
 
-TODO: allow neumann b.c (navier-slip b.c?)
-TODO: make other macros for p, pf, f, etc.
-TODO: use new macro feature?
-*/
+static inline
+double ibm_area_center (Point point, scalar s, double* x1, double* y1, double* z1)
+{
+    vector mp = s.mp;
+    *x1 = mp.x[], *y1 = mp.y[], *z1 = mp.z[];
+    return 1;
+}
 
-static inline double uibm_x (double x, double y, double z, double tt = t);
-static inline double uibm_y (double x, double y, double z, double tt = t);
-#if dimension == 3
-static inline double uibm_z (double x, double y, double z, double tt = t);
-#endif
+macro2
+double dirichlet (double expr, Point point = point,
+		  scalar s = _s, bool * data = data)
+{
+  
+  return data ? ibm_area_center (point, s, &x, &y, &z),
+    *((bool *)data) = true, expr : 2.*expr - s[];
+}
 
-#define u_x_ibm_dirichlet(expr) \
-    static inline double uibm_x (double x, double y, double z, double tt = t) {return expr;} \
+macro2
+double dirichlet_homogeneous (double expr, Point point = point,
+			      scalar s = _s, bool * data = data)
+{
+  return data ? *((bool *)data) = true, 0 : - s[];
+}
 
-#define u_y_ibm_dirichlet(expr) \
-    static inline double uibm_y (double x, double y, double z, double tt = t) {return expr;} \
+macro2
+double neumann (double expr, Point point = point,
+		scalar s = _s, bool * data = data)
+{
+  return data ? ibm_area_center (point, s, &x, &y, &z),
+    *((bool *)data) = false, expr : Delta*expr + s[];
+}
 
-#define u_z_ibm_dirichlet(expr) \
-    static inline double uibm_z (double x, double y, double z, double tt = t) {return expr;} \
+macro2
+double neumann_homogeneous (double expr, Point point = point,
+			    scalar s = _s, bool * data = data)
+{
+  return data ? *((bool *)data) = false, 0 : s[];
+}
 
 
 // normalize() but with SEPS in the denominator
@@ -591,9 +609,11 @@ changed to the imposed boundary condition.
 TODO: add check for completely full cells (ibm = 0)
 */
 
+extern vector u;
+
 void fluid_only (Point point, int xx, int yy, int zz, int i, int j, int k, 
                  coord * pTemp, coord * velocity, vector midPoints,
-                 int bOffset_X = 0, int bOffset_Y = 0, int bOffset_Z = 0)
+                 int bOffset_X, int bOffset_Y, int bOffset_Z, vector bi)
 {
     int off_x = xx + i, off_y = yy + j, off_z = zz + k;
     if (ibm[off_x,off_y,off_z] <= 0.5 && ibm[off_x,off_y,off_z] > 0.) {
@@ -601,13 +621,26 @@ void fluid_only (Point point, int xx, int yy, int zz, int i, int j, int k,
         pTemp->y = midPoints.y[off_x,off_y,off_z];
         pTemp->z = midPoints.z[off_x,off_y,off_z];
 
-        double mpx = pTemp->x, mpy = pTemp->y, mpz = pTemp->z;
+        //double mpx = pTemp->x, mpy = pTemp->y, mpz = pTemp->z;
+
+        coord bitemp;
+        foreach_dimension() {
+            bitemp.x = bi.x[];
+            bi.x[] = pTemp->x;
+        }
+
         foreach_dimension() {
             if (bOffset_X == off_x) {
                 pTemp->x += bOffset_X * Delta;
             }
-            velocity->x = uibm_x(mpx, mpy, mpz);
+            //velocity->x = uibm_x(mpx, mpy, mpz);
+            bool dirichlet = true;
+            velocity->x = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+            // TODO: Not able to do neumann for u (too many unknowns in interpolation)
         }
+
+        foreach_dimension()
+            bi.x[] = bitemp.x;
     }
     (void) off_z; // to prevent unused variable warning
 }
@@ -622,7 +655,7 @@ TODO: Streamline and clean-up code?
 TODO: Extend to handle higher-order interpolation schemes, i.e. larger matrices.
 */
 
-coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints)
+coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints, vector bi)
 {
     
     int boundaryOffsetX = 0, boundaryOffsetY = 0, boundaryOffsetZ = 0;
@@ -687,28 +720,28 @@ coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints)
     // make sure all points are inside the fluid domain ...
     // if not, change their coordinates to a point on the interface
     fluid_only (point, xx, yy, zz, 0, 0, 0, &p0, &velocity[0], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
 
     fluid_only (point, xx, yy, zz, i, 0, 0, &p1, &velocity[1], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
 
     fluid_only (point, xx, yy, zz, i, j, 0, &p2, &velocity[2], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
 
     fluid_only (point, xx, yy, zz, 0, j, 0, &p3, &velocity[3], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
 #if dimension == 3
     fluid_only (point, xx, yy, zz, 0, 0, k, &p4, &velocity[4], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
 
     fluid_only (point, xx, yy, zz, i, 0, k, &p5, &velocity[5], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
 
     fluid_only (point, xx, yy, zz, i, j, k, &p6, &velocity[6], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
 
     fluid_only (point, xx, yy, zz, 0, j, k, &p7, &velocity[7], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
 #endif
 
 #if dimension == 2
@@ -1207,6 +1240,7 @@ TODO: what if ghost cell has two fluid cell neighbors in one direction
       (left and right or top and bottom)?
 */
 
+#if 0
 coord ghost_fluxes (Point point, scalar ibm, face vector ibmf, face vector uf)
 {
     int xindex = is_mostly_solid (ibm, 0)? 0: borders_ghost_x (point, ibm);
@@ -1285,6 +1319,8 @@ double virtual_merge_x (Point point, scalar ibm, face vector ibmf, face vector u
     
     return mergedFlux.x;
 }
+#endif
+
 
 
 /*
@@ -1387,15 +1423,24 @@ double dirichlet_gradient (Point point, scalar s, scalar ibm,
 static inline
 coord ibm_gradient (Point point, vector u, coord p, coord n)
 {
-    coord cellCenter = {x,y,z}, midPoint = {0,0,0}, dudn;
+    #if 0
+    coord cellCenter = {x,y,z}, midPoint;
     foreach_dimension() {
         midPoint.x = cellCenter.x + p.x*Delta;
-     }
+    }
     double px = midPoint.x, py = midPoint.y, pz = midPoint.z;
+    #endif
+
+    coord dudn;
     foreach_dimension() {
-        double vb = uibm_x(px,py,pz);
-        double val;
-        dudn.x = dirichlet_gradient (point, u.x, ibm, n, p, vb, &val);
+        bool dirichlet = false;
+        double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+        if (dirichlet) {
+            double val;
+            dudn.x = dirichlet_gradient (point, u.x, ibm, n, p, vb, &val);
+        }
+        else
+            dudn.x = vb;
         if (dudn.x == nodata)
           dudn.x = 0.;
     }
@@ -1602,7 +1647,9 @@ double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
     double mpx, mpy, mpz;
     local_to_global(point, mp, &mpx, &mpy, &mpz);
 
-    double bc = uibm_x(mpx, mpy, mpz);
+    //double bc = uibm_x(mpx, mpy, mpz);
+    bool dirichlet = false;
+    double bc = s.boundary[immersed] (point, point, s, &dirichlet);
     
     double coef = 0.;
     //fprintf(stderr, "\n| ibm_flux (%g, %g) ibm=%g s=%g n.x=%g n.y=%g mp.x=%g mp.y=%g bc=%g\n",
@@ -1640,7 +1687,7 @@ static inline double ibm_face_gradient_x (Point point, scalar a, int i)
 #endif
 
 
-#if 0 // testing some different interpolation functions like embed
+#if 1 // testing some different interpolation functions like embed
 #define ibm_avg(a,i,j,k)							\
   ((a[i,j,k]*(1.5 + ibm[i,j,k]) + a[i-1,j,k]*(1.5 + ibm[i-1,j,k]))/	\
    (ibm[i,j,k] + ibm[i-1,j,k] + 3.))

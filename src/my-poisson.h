@@ -320,12 +320,6 @@ static void relax (scalar * al, scalar * bl, int l, void * data)
     else
 #endif // EMBED
         c[] = n/d;
-    if (fabs(c[]) > LIMIT) {
-        fprintf(stderr, "| WARNING in relax: c[] = %g in (%g, %g) exceeds %g\n", c[], x, y, LIMIT);
-        fprintf(stderr, "| ibmf[1]=%g alpha[1]=%g fm[1]=%g ibmf[]=%g alpha[]=%g fm[]=%g \n| n=%g d=%g ibm=%g lvl=%d a[1]=%g a[-1]=%g b[]=%g lambda[]=%g\n", 
-                         ibmf.x[1], alpha.x[1], fm.x[1], ibmf.x[], alpha.x[], fm.x[], 
-                         n, d, ibm[], l, a[1], a[-1], b[], lambda[]);
-    }
   }
 
   /**
@@ -363,8 +357,6 @@ static double residual (scalar * al, scalar * bl, scalar * resl, void * data)
   face vector g[];
   foreach_face() {
     g.x[] = alpha.x[] * face_gradient_x (a,0);
-    if (fabs(g.x[]) > LIMIT)
-        fprintf(stderr, "WARNING in res: g[] = %g in (%g, %g) exceeds %g\n", g.x[], x, y, LIMIT);
   }
   foreach (reduction(max:maxres), nowarning) {
     res[] = b[] - lambda[]*a[];
@@ -493,7 +485,7 @@ mgstats project (face vector uf, scalar p,
   $\mathbf{u}_f$. The divergence is scaled by *dt* so that the
   pressure has the correct dimension. */
 
-   trash({divg, divg1});
+  trash({divg, divg1});
 
   foreach() {
     divg[] = 0.;
@@ -501,11 +493,13 @@ mgstats project (face vector uf, scalar p,
     if (on_interface(ibm)) {
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
-      double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
+      //double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
+
       foreach_dimension() {
-          divg[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
-          //if (uibm_x(mpx,mpy,mpz) > 0)
-          //  fprintf(stderr, "plate's velocity = %g @t=%g dt=%g\n", uibm_x(mpx,mpy,mpz), t, dt);
+          bool dirichlet = false;
+          double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+          divg[] -= vb * n.x * area;
+          //divg[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
           //divg[] += virtual_merge_x (point, ibm, ibmf, uf);
       }
     }
@@ -521,9 +515,6 @@ mgstats project (face vector uf, scalar p,
     if (fabs(divg[]) > LIMIT)
         fprintf(stderr, "WARNING in proj: div[] = %g in (%g, %g) exceeds %g\n", divg[], x, y, LIMIT);
   }
-
-  //divg.restriction = restriction_ibm_linear;
-  //divg.refine = divg.prolongation = refine_ibm_linear;
 
   /**
   We solve the Poisson problem. The tolerance (set with *TOLERANCE*) is
@@ -542,7 +533,7 @@ mgstats project (face vector uf, scalar p,
 
   foreach_face() {
 #if IBM
-    double metric = !ibmf.x[]? 0: alpha.x[] / ibmf.x[];
+    double metric = !ibmf.x[]? 0: fm.x[]*alpha.x[]/ibmf.x[];
     uf.x[] -= dt*metric*face_gradient_x (p, 0);
 #else
     uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
@@ -551,21 +542,27 @@ mgstats project (face vector uf, scalar p,
         fprintf(stderr, "WARNING in proj: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
   }
 
+#if IBM
   foreach() {
     divg1[] = 0;
 
     if (on_interface(ibm)) {
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
-      double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
-      foreach_dimension()
-          divg1[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
+      //double mpx = x + midPoint.x*Delta, mpy = y + midPoint.y*Delta, mpz = z + midPoint.z*Delta;
+      foreach_dimension() {
+          bool dirichlet = false;
+          double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+          divg1[] -= vb * n.x * area;
+          //divg1[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
+      }
     }
 
     foreach_dimension()
       divg1[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
     divg1[] /= Delta;
   }
+#endif
 
   return mgp;
 }
