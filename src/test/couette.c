@@ -4,8 +4,10 @@
 We test embedded boundaries by solving the (Stokes) Couette flow
 between two rotating cylinders. */
 
+#include "grid/quadtree.h"
+//#include "../ibm-gcm-axi.h"
 #include "../ibm-gcm.h"
-#define CCM 1
+#define CCM 0
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
 #include "view.h"
@@ -17,8 +19,8 @@ int main()
   Space and time are dimensionless. This is necessary to be able to
   use the 'mu = fm' trick. */
 
-  size (1.25 [0]);
-  DT = 1. [0];
+  size (1.25);
+  DT = 1.;
   
   origin (-L0/2., -L0/2.);
   
@@ -32,8 +34,11 @@ scalar un[];
 
 #define WIDTH 0.5
 
-u_x_ibm_dirichlet (x*x + y*y > 0.14 ? 0. : - y)
-u_y_ibm_dirichlet (x*x + y*y > 0.14 ? 0. :   x)
+//u_x_ibm_dirichlet (x*x + y*y > 0.14 ? 0. : - y)
+//u_y_ibm_dirichlet (x*x + y*y > 0.14 ? 0. :   x)
+
+u.n[immersed] = dirichlet (x*x + y*y > 0.14 ? 0. : - y);
+u.t[immersed] = dirichlet (x*x + y*y > 0.14 ? 0. :   x);
 
 event init (t = 0) {
 
