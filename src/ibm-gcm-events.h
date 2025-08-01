@@ -196,20 +196,34 @@ event acceleration (i++)
             foreach_dimension()
                 bi.x[] = boundaryInt.x;
 
-            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints, bi);
-            //double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
+            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints, normals, bi);
 
+            coord n = interFrag.n, t1, t2;
+            normal_and_tangents (&n, &t1, &t2);
+
+            coord projVelocity = {dot_product(imageVelocity, n),
+                                  dot_product(imageVelocity, t1),
+                                  dot_product(imageVelocity, t2)};
+
+            coord surface[3] = {n, t1, t2};
+
+            // TODO: allow for t, n, and r instead of decaying to x, y, z
+            coord gcProjVelocity;
             foreach_dimension() {
                 bool dirichlet = false;
                 double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
                 if (dirichlet) {
-                    u.x[] = 2*vb - imageVelocity.x;
-                    //u.x[] = 2 * uibm_x(bix, biy, biz) - imageVelocity.x;
+                    gcProjVelocity.x = 2*vb - projVelocity.x;
                 }
                 else {
-                    u.x[] = imageVelocity.x;
+                    gcProjVelocity.x = projVelocity.x;
                 }
             }
+
+            double gcn = gcProjVelocity.x, gct1 = gcProjVelocity.y, gct2 = gcProjVelocity.z;
+            foreach_dimension()
+                u.x[] = gcn*n.x + gct1*t1.x + gct2*t2.x;
+
             if (ibm[] <= 0.) { // is pressure b.c. necessary here?
                 p[] = image_pressure (point, p, imagePoint);
                 pf[] = image_pressure (point, pf, imagePoint);
@@ -314,29 +328,43 @@ event end_timestep (i++)
     // 3. Update the velocity B.C
     foreach() {
         if (is_ghost_cell(point, ibm)) {
-           fragment interFrag;
-           coord fluidCell, ghostCell = {x,y,z};
+            fragment interFrag;
+            coord fluidCell, ghostCell = {x,y,z};
 
-           closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell);
-           coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
-           coord imagePoint = image_point (boundaryInt, ghostCell);
+            closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell);
+            coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
+            coord imagePoint = image_point (boundaryInt, ghostCell);
    
-           foreach_dimension()
-             bi.x[] = boundaryInt.x;
+            foreach_dimension()
+                bi.x[] = boundaryInt.x;
 
-           coord imageVelocity = image_velocity (point, u, imagePoint, midPoints, bi);
-           //double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
+            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints, normals, bi);
+
+            coord n = interFrag.n, t1, t2;
+            normal_and_tangents (&n, &t1, &t2);
+
+            coord projVelocity = {dot_product(imageVelocity, n),
+                                  dot_product(imageVelocity, t1),
+                                  dot_product(imageVelocity, t2)};
+
+            coord surface[3] = {n, t1, t2};
+
+            // TODO: allow for t, n, and r instead of decaying to x, y, z
+            coord gcProjVelocity;
             foreach_dimension() {
                 bool dirichlet = false;
                 double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
                 if (dirichlet) {
-                    u.x[] = 2*vb - imageVelocity.x;
-                    //u.x[] = 2 * uibm_x(bix, biy, biz) - imageVelocity.x;
+                    gcProjVelocity.x = 2*vb - projVelocity.x;
                 }
                 else {
-                    u.x[] = imageVelocity.x;
+                    gcProjVelocity.x = projVelocity.x;
                 }
             }
+
+            double gcn = gcProjVelocity.x, gct1 = gcProjVelocity.y, gct2 = gcProjVelocity.z;
+            foreach_dimension()
+                u.x[] = gcn*n.x + gct1*t1.x + gct2*t2.x;
        }
        else if (ibm[] == 0) {
            foreach_dimension() {

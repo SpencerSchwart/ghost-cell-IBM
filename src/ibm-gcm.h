@@ -5,7 +5,7 @@
 
 #define BGHOSTS 2
 #define IBM 1
-#define LIMIT 1e40
+#define LIMIT 1e100
 #define INT_TOL 1e-7    // tolerance used for volume fraction fields (interface tolerance)
 
 #undef SEPS
@@ -21,6 +21,8 @@ scalar ibmCells[];
 face vector ibmFaces[];
 
 double (* metric_ibm_factor) (Point, coord) = NULL; // for axi
+
+bool ibm_navier_slip = false;
 
 #if 0
 typedef struct solidVelo {
@@ -99,6 +101,69 @@ double neumann_homogeneous (double expr, Point point = point,
   return data ? *((bool *)data) = false, 0 : s[];
 }
 
+macro2
+double navier_slip (double expr, Point point = point,
+		  scalar s = _s, bool * data = data)
+{
+  ibm_navier_slip = true;
+  return data ? ibm_area_center (point, s, &x, &y, &z),
+    *((bool *)data) = true, expr : 2.*expr - s[];
+}
+
+inline coord cross_product (coord a, coord b)
+{
+    coord c = {
+        (a.y*b.z) - (a.z*b.y) ,
+      -((a.x*b.z) - (b.x*a.z)),
+        (a.x*b.y) - (a.y*b.x)
+    };
+    return c;
+}
+
+inline double determinant (coord a, coord b)
+{
+    coord c = cross_product(a,b);
+    return distance3D(c.x,c.y,c.z); // area
+}
+
+
+inline int approx_equal (coord p1, coord p2, double TOL = VTOL)
+{
+    return fabs(p1.x - p2.x) <= TOL && fabs(p1.y - p2.y) <= TOL && fabs(p1.z - p2.z) <= TOL;
+}
+
+inline int approx_equal_double (double a, double b, double TOL = VTOL)
+{
+    return fabs(a - b) <= TOL;
+}
+
+
+double dot_product_norm (coord a, coord b)
+{
+    normalize(&a); normalize(&b);
+
+    double product = 0;
+    foreach_dimension()
+        product += a.x*b.x;
+
+    return product;
+}
+
+double dot_product (coord a, coord b)
+{
+    double product = 0;
+    foreach_dimension()
+        product += a.x*b.x;
+
+    return product;
+}
+
+double dot_product_angle (coord a, coord b)
+{
+    double product = clamp(dot_product(a, b), -1, 1);
+    assert(fabs(product) <= 1);
+    return acos(dot_product(a, b));
+}
 
 // normalize() but with SEPS in the denominator
 void normalize2 (coord * n)
@@ -109,6 +174,37 @@ void normalize2 (coord * n)
     norm = sqrt(norm);
     foreach_dimension()
         n->x /= norm + SEPS;
+}
+
+/*
+normal_and_tangents accepts a normal vector and fill t1 and t2 with the 
+corresponding tangent vector(s) (one in 2D and two in 3D), all normalized.
+*/
+void normal_and_tangents (coord * n, coord * t1, coord * t2)
+{
+    normalize2(n);
+#if dimension == 2
+
+    coord t1_tmp = {-n->y, n->x};
+    *t1 = *t2 = t1_tmp;
+
+#else // dimension == 3
+
+    coord a = {0,0,1};
+    if (!fabs(dot_product(*n, a)) < 0.9) {
+        a = (coord){1,0,0};
+    }
+    coord t1_tmp = cross_product(*n, a);
+    double det = distance3D(t1_tmp.x, t1_tmp.y, t1_tmp.z); // determinant
+
+    assert(fabs(det) > 1e-15);
+
+    foreach_dimension()
+        *t1.x = t1_tmp.x/det;
+    
+    *t2 = cross_product(*n, *t1);
+
+#endif // dimension == 3
 }
 
 /*
@@ -211,7 +307,7 @@ ibm > 0.5, and the volume fraction is less than or equal to 0.5.
 
 bool is_ghost_cell (Point point, scalar ibm)
 {
-   return fluid_neighbor(point, ibm) && ibm[] <= 0.5 && match_level(point, ibm);
+   return ibm[] <= 0.5 && fluid_neighbor(point, ibm) && match_level(point, ibm);
 }
 
 
@@ -607,13 +703,15 @@ which in this case is the interfacial midpoint. The velocity for this point is t
 changed to the imposed boundary condition.
 
 TODO: add check for completely full cells (ibm = 0)
+TODO: Not able to do neumann for u right now (too many unknowns in interpolation)?
+TODO: allow for navier-slip condition!
 */
 
 extern vector u;
 
 void fluid_only (Point point, int xx, int yy, int zz, int i, int j, int k, 
                  coord * pTemp, coord * velocity, vector midPoints,
-                 int bOffset_X, int bOffset_Y, int bOffset_Z, vector bi)
+                 int bOffset_X, int bOffset_Y, int bOffset_Z, vector bi, vector normals)
 {
     int off_x = xx + i, off_y = yy + j, off_z = zz + k;
     if (ibm[off_x,off_y,off_z] <= 0.5 && ibm[off_x,off_y,off_z] > 0.) {
@@ -629,15 +727,35 @@ void fluid_only (Point point, int xx, int yy, int zz, int i, int j, int k,
             bi.x[] = pTemp->x;
         }
 
+        coord gcvelocity = {u.x[off_x, off_y, off_z],
+                            u.y[off_x, off_y, off_z],
+                            u.z[off_x, off_y, off_z]};
+        coord n = {normals.x[off_x, off_y, off_z],
+                   normals.y[off_x, off_y, off_z],
+                   normals.z[off_x, off_y, off_z]};
+        coord t1, t2;
+
+        normal_and_tangents (&n, &t1, &t2);
+        coord gcprojVelocity = {dot_product(gcvelocity, n),
+                                dot_product(gcvelocity, t1),
+                                dot_product(gcvelocity, t2)};
+
+        coord projVelocity;
         foreach_dimension() {
             if (bOffset_X == off_x) {
                 pTemp->x += bOffset_X * Delta;
             }
-            //velocity->x = uibm_x(mpx, mpy, mpz);
-            bool dirichlet = true;
-            velocity->x = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
-            // TODO: Not able to do neumann for u (too many unknowns in interpolation)
+            bool dirichlet = false;
+            double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+            if (dirichlet)
+                projVelocity.x = vb;
+            else // neumann
+                projVelocity.x = gcprojVelocity.x;
         }
+
+        double gcn = projVelocity.x, gct1 = projVelocity.y, gct2 = projVelocity.z;
+        foreach_dimension()
+            velocity->x = gcn*n.x + gct1*t1.x + gct2*t2.x;
 
         foreach_dimension()
             bi.x[] = bitemp.x;
@@ -655,7 +773,7 @@ TODO: Streamline and clean-up code?
 TODO: Extend to handle higher-order interpolation schemes, i.e. larger matrices.
 */
 
-coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints, vector bi)
+coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints, vector normals, vector bi)
 {
     
     int boundaryOffsetX = 0, boundaryOffsetY = 0, boundaryOffsetZ = 0;
@@ -720,28 +838,28 @@ coord image_velocity (Point point, vector u, coord imagePoint, vector midPoints,
     // make sure all points are inside the fluid domain ...
     // if not, change their coordinates to a point on the interface
     fluid_only (point, xx, yy, zz, 0, 0, 0, &p0, &velocity[0], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi, normals);
 
     fluid_only (point, xx, yy, zz, i, 0, 0, &p1, &velocity[1], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi, normals);
 
     fluid_only (point, xx, yy, zz, i, j, 0, &p2, &velocity[2], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi, normals);
 
     fluid_only (point, xx, yy, zz, 0, j, 0, &p3, &velocity[3], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi, normals);
 #if dimension == 3
     fluid_only (point, xx, yy, zz, 0, 0, k, &p4, &velocity[4], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi, normals);
 
     fluid_only (point, xx, yy, zz, i, 0, k, &p5, &velocity[5], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi, normals);
 
     fluid_only (point, xx, yy, zz, i, j, k, &p6, &velocity[6], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi, normals);
 
     fluid_only (point, xx, yy, zz, 0, j, k, &p7, &velocity[7], midPoints, 
-                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi);
+                boundaryOffsetX, boundaryOffsetY, boundaryOffsetZ, bi, normals);
 #endif
 
 #if dimension == 2
