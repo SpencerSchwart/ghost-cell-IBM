@@ -22,6 +22,12 @@ face vector ibmFaces[];
 
 double (* metric_ibm_factor) (Point, coord) = NULL; // for axi
 
+/**
+when true, immersed BCs will respect the n and t (and r) notation, otherwise,
+they will be decayed to n ≡ x, t ≡ y, and r ≡ z 
+*/
+bool local_bc_coordinates = true; 
+
 bool ibm_navier_slip = false;
 
 #if 0
@@ -727,36 +733,47 @@ void fluid_only (Point point, int xx, int yy, int zz, int i, int j, int k,
             bi.x[] = pTemp->x;
         }
 
-        coord gcvelocity = {u.x[off_x, off_y, off_z],
-                            u.y[off_x, off_y, off_z],
-                            u.z[off_x, off_y, off_z]};
-        coord n = {normals.x[off_x, off_y, off_z],
-                   normals.y[off_x, off_y, off_z],
-                   normals.z[off_x, off_y, off_z]};
-        coord t1, t2;
+        if (local_bc_coordinates) {
+            coord gcvelocity = {u.x[off_x, off_y, off_z],
+                                u.y[off_x, off_y, off_z],
+                                u.z[off_x, off_y, off_z]};
+            coord n = {normals.x[off_x, off_y, off_z],
+                       normals.y[off_x, off_y, off_z],
+                       normals.z[off_x, off_y, off_z]};
+            coord t1, t2;
 
-        normal_and_tangents (&n, &t1, &t2);
-        coord gcprojVelocity = {dot_product(gcvelocity, n),
-                                dot_product(gcvelocity, t1),
-                                dot_product(gcvelocity, t2)};
+            normal_and_tangents (&n, &t1, &t2);
+            coord gcprojVelocity = {dot_product(gcvelocity, n),
+                                    dot_product(gcvelocity, t1),
+                                    dot_product(gcvelocity, t2)};
 
-        coord projVelocity;
-        foreach_dimension() {
-            if (bOffset_X == off_x) {
-                pTemp->x += bOffset_X * Delta;
+            coord projVelocity;
+            foreach_dimension() {
+                if (bOffset_X == off_x) {
+                    pTemp->x += bOffset_X * Delta;
+                }
+                bool dirichlet = false;
+                double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+                if (dirichlet)
+                    projVelocity.x = vb;
+                else // neumann
+                    projVelocity.x = gcprojVelocity.x;
             }
-            bool dirichlet = false;
-            double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
-            if (dirichlet)
-                projVelocity.x = vb;
-            else // neumann
-                projVelocity.x = gcprojVelocity.x;
+
+            double gcn = projVelocity.x, gct1 = projVelocity.y, gct2 = projVelocity.z;
+            foreach_dimension()
+                velocity->x = gcn*n.x + gct1*t1.x + gct2*t2.x;
         }
-
-        double gcn = projVelocity.x, gct1 = projVelocity.y, gct2 = projVelocity.z;
-        foreach_dimension()
-            velocity->x = gcn*n.x + gct1*t1.x + gct2*t2.x;
-
+        else { // !local_bc_coordinates, i.e. use n ≡ x, t ≡ y, and r ≡ z.
+            foreach_dimension() {
+                bool dirichlet = true;
+                double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+                if (dirichlet)
+                    velocity->x = vb;
+                else
+                    velocity->x = u.x[xx + i, yy + j, zz + k];
+                }
+        }
         foreach_dimension()
             bi.x[] = bitemp.x;
     }

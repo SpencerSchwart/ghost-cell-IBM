@@ -494,11 +494,19 @@ mgstats project (face vector uf, scalar p,
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
 
-      // x ≡ n (normal direction). The tangent directions don't contribute to divergence calculation
-      bool dirichlet = false;
-      double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
-      divg[] -= vb * n.x * area;
-      //divg[] += virtual_merge_x (point, ibm, ibmf, uf);
+      if (local_bc_coordinates) {
+        // x ≡ n (normal direction). The tangent directions don't contribute to divergence calculation
+        bool dirichlet = false;
+        double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+        divg[] -= vb * area;
+      }
+      else { // !local_bc_coordinates, i.e. use n ≡ x, t ≡ y, and r ≡ z.
+        foreach_dimension() {
+            bool dirichlet = false;
+            double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+            divg[] -= vb * n.x * area;
+        }
+      }
     }
     foreach_dimension() {
       divg[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
