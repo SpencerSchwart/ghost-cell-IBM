@@ -416,11 +416,9 @@ mgstats poisson (scalar a, scalar b,
   provide $\alpha$ and $\beta$ as constant fields. */
 
   if (alpha.x.i < 0)
-    alpha = unityf;
-  if (lambda.i < 0) {
-    const scalar zeroc[] = 0.; // fixme
-    lambda = zeroc;
-  }
+    alpha[] = {1.,1.,1.};
+  if (lambda.i < 0)
+    lambda[] = 0.;
 
   /**
   We need $\alpha$ and $\lambda$ on all levels of the grid. */
@@ -473,6 +471,7 @@ $$ */
 
 scalar divg[], divg1[];
 
+
 trace
 mgstats project (face vector uf, scalar p,
 		 (const) face vector alpha = unityf,
@@ -489,7 +488,7 @@ mgstats project (face vector uf, scalar p,
 
   foreach() {
     divg[] = 0.;
-#if IBM
+#if IBM && 1
     if (on_interface(ibm)) {
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
@@ -516,9 +515,11 @@ mgstats project (face vector uf, scalar p,
       divg[] += uf.x[1] - uf.x[];
 #endif // IBM
     divg[] /= dt*Delta;
+  }
 
-    if (fabs(divg[]) > LIMIT)
-        fprintf(stderr, "WARNING in proj: div[] = %g in (%g, %g) exceeds %g\n", divg[], x, y, LIMIT);
+  face vector alpha2[];
+  foreach_face() {
+    alpha2.x[] = alpha.x[]*fm.x[];
   }
 
   /**
@@ -530,24 +531,25 @@ mgstats project (face vector uf, scalar p,
   $$ 
   Given the scaling of the divergence above, this gives */
 
-  mgstats mgp = poisson (p, divg, alpha,
+  mgstats mgp = poisson (p, divg, alpha2,
 			 tolerance = TOLERANCE/sq(dt), nrelax = nrelax);
 
   /**
   And compute $\mathbf{u}_f^{n+1}$ using $\mathbf{u}_f$ and $p$. */
 
   foreach_face() {
-#if IBM
-    double metric = !ibmf.x[]? 0: fm.x[]*alpha.x[]/ibmf.x[];
+#if IBM && 1
+    double metric = !ibmf.x[]? 0: alpha2.x[]/ibmf.x[];
+    //double metric = alpha2.x[];
     uf.x[] -= dt*metric*face_gradient_x (p, 0);
 #else
     uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
 #endif
-    if (fabs(uf.x[]) > LIMIT)
-        fprintf(stderr, "WARNING in proj: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
+    //if (fabs(uf.x[]) > LIMIT)
+    //    fprintf(stderr, "WARNING in proj: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
   }
 
-#if IBM
+#if IBM && 0
   foreach() {
     divg1[] = 0;
 
@@ -570,3 +572,4 @@ mgstats project (face vector uf, scalar p,
 
   return mgp;
 }
+

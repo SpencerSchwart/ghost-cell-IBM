@@ -24,9 +24,12 @@ Bell-Collela-Glaz advection scheme and the implicit viscosity
 solver. If embedded boundaries are used, a different scheme is used
 for viscosity. */
 
+
 #include "run.h"
 #include "timestep.h"
 #include "my-bcg.h"
+
+
 #if EMBED
 #include "viscosity-embed.h"
 #elif IBM
@@ -133,7 +136,7 @@ void pressure_embed_gradient (Point point, scalar p, coord * g)
 void pressure_ibm_gradient (Point point, scalar p, coord * g)
 {
   foreach_dimension()
-    g->x = rho[]/(cm[] + SEPS)*(a.x[] + a.x[1])/2.;
+    g->x = rho[]/(cm[] + SEPS)*(a.x[] + a.x[1])/2.; // shouldn't it be /ibm[] ?
 }
 #endif
 
@@ -342,8 +345,8 @@ void prediction()
     }
     #endif
     uf.x[] *= fm.x[];
-    if (fabs(uf.x[]) > LIMIT)
-        fprintf(stderr, "WARNING: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
+    //if (fabs(uf.x[]) > LIMIT)
+    //    fprintf(stderr, "WARNING: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
   }
 
   delete ((scalar *){du});
@@ -373,6 +376,7 @@ event advection_term (i++,last)
   }
 }
 
+
 /**
 ### Viscous term
 
@@ -384,7 +388,7 @@ static void correction (double dt)
   foreach()
     foreach_dimension()
 #if IBM
-      u.x[] += cm[]*dt*g.x[];
+      u.x[] += ibmCells[]*dt*g.x[];
 #else
       u.x[] += dt*g.x[];
 #endif
@@ -459,9 +463,7 @@ void centered_gradient (scalar p, vector g)
   face vector gf[];
   foreach_face() {
 #if IBM
-    gf.x[] = ibmf.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta; // should fm*a or ibmf*a?
-    //gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/(Delta*ibmf.x[]+SEPS); // should fm*a or ibmf*a?
-
+    gf.x[] = fm.x[]*ibmf.x[]*a.x[] - fm.x[]*alpha.x[]*(p[] - p[-1])/Delta;
 #else
     gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta;
 #endif
@@ -475,9 +477,7 @@ void centered_gradient (scalar p, vector g)
   foreach() {
     foreach_dimension() {
 #if IBM
-      g.x[] = (gf.x[] + gf.x[1]) / (ibmf.x[] + ibmf.x[1] + SEPS);
-      //g.x[] = (gf.x[] + gf.x[1]) / (fm.x[] + fm.x[1] + SEPS);
-
+      g.x[] = (gf.x[] + gf.x[1]) / (fm.x[]*ibmf.x[] + fm.x[1]*ibmf.x[1] + SEPS);
 #else
       g.x[] = (gf.x[] + gf.x[1]) / (fm.x[] + fm.x[1] + SEPS);
 #endif
@@ -492,11 +492,6 @@ next timestep). Then compute the centered gradient field *g*. */
 
 event projection (i++,last)
 {
-#if 0
-  foreach_face()
-    if (uf.x[] > 1e4)
-      fprintf(stderr, "(%g, %g) max velocity = %g\n", x, y, uf.x[]);
-#endif
   mgp = project (uf, p, alpha, dt, mgp.nrelax);
   centered_gradient (p, g);
   
@@ -530,10 +525,6 @@ event adapt (i++,last) {
   foreach_face()
     if (uf.x[] && (!fm.x[] || !ibmf.x[]))
       uf.x[] = 0.;
-  //mpi_boundary_update_buffers();
-  //ibmf.x.dirty = true;
-  //boundary ({ibmf});
-  //mpi_boundary_update({ibmf});
   #endif
   event ("properties");
 }

@@ -398,7 +398,7 @@ coord closest_interface (Point point, vector midPoints, scalar ibm, vector norma
     fragment temp_frag;
     coord temp_midPoint, temp_fluidCell = {0,0};
     coord n;
-    PointIBM ptemp;
+    PointIBM ptemp = {0,0,0};
 
     double min_distance = 1e6;
 
@@ -595,10 +595,10 @@ bool borders_mpi_boundary (Point point)
                 j = kk; 
             else if (d == 2)
                 k = kk;
-
             // check to see if neighboring cell is outside the current MPI rank/processor
             if (neighbor(-i,-j,-k).pid != pid())
                 return true;
+            (void) k;
         }
     }
 #endif
@@ -1235,8 +1235,8 @@ void get_interpolation_matrix (Point point, int m, int n, double matrix[m][n], c
     // 4.b Assemble matrix row by row
     for (int row = 0; row < m; ++row) {
 
-        // i. If a cell for interpolating is a ghost cell, move the point to the
-        //    interface and change the velocity to the correct boundary condition
+        // If a cell for interpolating is a ghost cell, move the point to the
+        // interface and change the velocity to the correct boundary condition
         fluid_only2(point, n, matrix[row], poff, pnodes[row], pbound, dir, 
                     &pints[row], velo[row], ipoint, midPoints, normals, alphas);
     }
@@ -1926,7 +1926,7 @@ void ibm_force (scalar p, vector u, face vector mu, coord * Fp, coord * Fmu)
         if (ibm[] > 0. && ibm[] < 1.) {
             coord midPoint, n, b;
             double area = ibm_geometry (point, &b, &n);
-            area *= pow (Delta, dimension - 1);
+            area *= cm[]*pow (Delta, dimension - 1); // is cm[]* right.. for axi?
 
             
             coord cellCenter = {x,y,z};
@@ -2170,28 +2170,6 @@ double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
     return - mua/(fa + SEPS)*coef*area/Delta;
 }
 
-
-#if 0 // this seems to not have any major effect, despite its use in embed
-#define face_condition(ibmf, ibm)						\
-  (ibmf.x[i,j] > 0.5 && ibmf.y[i,j + (j < 0)] && ibmf.y[i-1,j + (j < 0)] &&	\
-   ibm[i,j] && ibm[i-1,j])
-
-foreach_dimension()
-static inline double ibm_face_gradient_x (Point point, scalar a, int i)
-{
-  if (ibmf.x[i] < 1. && ibmf.x[i] > 0.) {
-    int j = sign(ibmf.x[i,1] - ibmf.x[i,-1]);
-    assert (ibm[i] && ibm[i-1]);
-    if (face_condition (ibmf, ibm))
-      return ((1. + ibmf.x[i])*(a[i] - a[i-1]) +
-	          (1. - ibmf.x[i])*(a[i,j] - a[i-1,j]))/(2.*Delta);
-  }
-  else
-    return (a[i] - a[i-1])/Delta;
-}
-#endif
-
-
 #if 1 // testing some different interpolation functions like embed
 #define ibm_avg(a,i,j,k)							\
   ((a[i,j,k]*(1.5 + ibm[i,j,k]) + a[i-1,j,k]*(1.5 + ibm[i-1,j,k]))/	\
@@ -2343,6 +2321,7 @@ ibmFaces = 0 if it borders two solid cells and 1 if it borders two fluid cells
 #if TREE
 #include "ibm-tree.h"
 #endif
+#if 1
 event metric (i = 0)
 {
     if (is_constant (fm.x)) {
@@ -2383,8 +2362,27 @@ event metric (i = 0)
         ibmf.x.prolongation = ibm_face_fraction_refine_x;
         ibmFaces.x.restriction = restriction_face_metric; // is this really necessary?
     }
+
+#if 0
+    ibm[left] = neumann(0);
+    ibm[right] = neumann(0);
+    ibm[top] = neumann(0);
+    ibm[bottom] = neumann(0);
+
+    ibmf.n[left] = neumann(0);
+    ibmf.n[right] = neumann(0);
+    ibmf.n[top] = neumann(0);
+    ibmf.n[bottom] = neumann(0);
+
+    ibmf.t[left] = neumann(0);
+    ibmf.t[right] = neumann(0);
+    ibmf.t[top] = neumann(0);
+    ibmf.t[bottom] = neumann(0);
+#endif
+
 #endif
     restriction ({ibm, ibmf, ibmFaces, ibmCells});
 
     boundary(all);
 }
+#endif

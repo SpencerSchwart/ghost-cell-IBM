@@ -24,7 +24,6 @@ event update_metric (i++)
 
     foreach_face() {
        if (ibm[] > 0 || ibm[-1] > 0 || is_ghost_cell (point, ibm))
-       //if (is_ghost_cell (point, ibm) || ibm[] > 0)
             ibmFaces.x[] = 1;
        else
             ibmFaces.x[] = 0;
@@ -191,7 +190,7 @@ event acceleration (i++)
         if (is_ghost_cell(point, ibm)) {
             fragment interFrag;
             coord fluidCell, ghostCell = {x,y,z};
-            PointIBM bioff;
+            PointIBM bioff = {0,0,0};
 
             closest_interface (point, midPoints, ibm, normals, &interFrag, &fluidCell, &bioff);
             coord boundaryInt = boundary_int (point, interFrag, fluidCell, ibm);
@@ -321,7 +320,6 @@ event end_timestep (i++)
 #endif
 
     correction(-dt);  // remove old pressure from velocity field
-    //boundary((scalar *){u});
 
     // 2. Apply the pressure B.C
     foreach() {
@@ -346,7 +344,7 @@ event end_timestep (i++)
     
     boundary({u, p, pf});
     centered_gradient (p, g);
-    boundary({g});
+    //boundary({g}); // is this necessary?
 
     correction(dt);  // add new pressure to velocity field
     boundary({u});
