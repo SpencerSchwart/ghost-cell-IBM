@@ -194,9 +194,7 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
   $\alpha$ for each cell. Then we go through each (vertical) face of
   the grid. */
 
-  //reconstruction_contact (c, n, alpha);
   reconstruction (c, n, alpha);
-  //reconstruction_contact_vof (c, n, alpha);
   foreach_face(x, reduction (max:cfl)) {
 
     /**
@@ -204,11 +202,7 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
     component normal to the face and compute the index `i` of the
     corresponding *upwind* cell (either 0 or -1). */
 
-#if IBM
-    double un = fm.x[]*uf.x[]*dt/(Delta*fm.x[] + SEPS), s = sign(un);
-#else
     double un = uf.x[]*dt/(Delta*fm.x[] + SEPS), s = sign(un);
-#endif
     int i = -(s + 1.)/2.;
 
     /**
@@ -315,7 +309,8 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
   conservation of the total tracer mass (if it is computed also
   ignoring the volume occupied by the solid in partial cells). */
   
-  foreach()
+  double csum = 0, csumclamp = 0;
+  foreach(reduction(+:csum) reduction(+:csumclamp))
     if (cs[] > 0.) {
       c[] += dt*cs[]*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[]))/(cm[]*Delta);
 #if NO_1D_COMPRESSION
@@ -326,21 +321,33 @@ static void sweep_x (scalar c, scalar cc, scalar * tcl)
       for (t, tc, tflux in tracers, tcl, tfluxl)
 	t[] += dt*cs[]*(tflux[] - tflux[1] + tc[]*(uf.x[1] - uf.x[]))/(cm[]*Delta);
 #endif // !NO_1D_COMPRESSION
+    
+      csum += c[]*pow(Delta, dimension)*cm[];
+      csumclamp += clamp(c[], 0, 1)*pow(Delta, dimension)*cm[];
+
     }
 #elif IBM
-  foreach()
+  double csum = 0, csumclamp = 0;
+  foreach(reduction(+:csum) reduction(+:csumclamp))
     if (ibm[] > 0.) {
-      c[] += dt*ibm[]*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(ibm[]*Delta);
+      c[] += dt*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(cm[]*Delta);
 #if NO_1D_COMPRESSION
       for (t, tflux in tracers, tfluxl)
-	t[] += dt*ibm[]*(tflux[] - tflux[1])/(ibm[]*Delta);
+	t[] += dt*(tflux[] - tflux[1])/(ibm[]*Delta);
 #else // !NO_1D_COMPRESSION
       scalar t, tc, tflux;
       for (t, tc, tflux in tracers, tcl, tfluxl)
-	t[] += dt*ibm[]*(tflux[] - tflux[1] + tc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(ibm[]*Delta);
+	t[] += dt*(tflux[] - tflux[1] + tc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(cm[]*Delta);
 #endif // !NO_1D_COMPRESSION
+    csum += c[]*pow(Delta, dimension)*cm[];
+    csumclamp += clamp(c[], 0, 1)*pow(Delta, dimension)*cm[];
     }
 #endif // IBM || EMBED
+
+   if (csum != csumclamp) {
+    //fprintf (stderr, "WARNING: csum != csumclamp. csum=%0.15g csumclamp=%0.15g err=%g\n", 
+    //    csum, csumclamp, (csum - csumclamp));
+   }
 
   delete (tfluxl); free (tfluxl);
 }
