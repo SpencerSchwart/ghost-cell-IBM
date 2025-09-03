@@ -488,7 +488,7 @@ mgstats project (face vector uf, scalar p,
 
   foreach() {
     divg[] = 0.;
-#if IBM && 1
+#if IBM
     if (on_interface(ibm)) {
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
@@ -538,7 +538,7 @@ mgstats project (face vector uf, scalar p,
   And compute $\mathbf{u}_f^{n+1}$ using $\mathbf{u}_f$ and $p$. */
 
   foreach_face() {
-#if IBM && 1
+#if IBM
     double metric = !ibmf.x[]? 0: alpha2.x[]/ibmf.x[];
     //double metric = alpha2.x[];
     uf.x[] -= dt*metric*face_gradient_x (p, 0);
@@ -549,7 +549,7 @@ mgstats project (face vector uf, scalar p,
     //    fprintf(stderr, "WARNING in proj: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
   }
 
-#if IBM && 0
+#if IBM && 1
   foreach() {
     divg1[] = 0;
 

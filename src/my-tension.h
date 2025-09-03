@@ -13,7 +13,12 @@ with $\sigma$ the (constant) surface tension coefficient and $\kappa$
 the interface mean curvature. */
 
 #include "my-iforce.h"
+
+#if DROP_TOWER
+#include "shakib-curvature.h"
+#else
 #include "curvature.h"
+#endif
 
 /**
 The surface tension coefficient is associated to each VOF tracer. */
@@ -76,14 +81,19 @@ event stability (i++)
 We overload the acceleration event to define the potential
 $\phi=\sigma\kappa$. */
 
+
 event acceleration (i++)
 {
-#if 0
+#if CA
   scalar f0[];
-  foreach() 
-    f0[] = f[];
+  f0.refine = f0.prolongation = fraction_refine;
 
-  impose_contact_angle (f, ibm);
+  foreach() {
+    f0[] = f[];
+    f[] = ch[];
+  }
+
+  boundary({f});
 #endif
   /**
   We check for all VOF interfaces for which $\sigma$ is non-zero. */
@@ -104,8 +114,9 @@ event acceleration (i++)
 	f.phi = phi;
       }
     }
-#if 0
-    foreach()
+#if CA
+    foreach() 
         f[] = f0[];
+  boundary({f});
 #endif
 }

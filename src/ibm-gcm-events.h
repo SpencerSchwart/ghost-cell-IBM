@@ -28,12 +28,14 @@ event update_metric (i++)
        else
             ibmFaces.x[] = 0;
     }
+
 #if AXI
     cm_update (cm, ibmCells);
     fm_update (fm, ibmFaces);
-    boundary ((scalar *){fm, cm});
+    boundary ({fm, cm, ibmFaces, ibmCells});
+#else
+    boundary({ibmFaces, ibmCells});
 #endif
-    boundary((scalar *){ibmFaces, ibmCells});
 }
 
 
@@ -286,39 +288,6 @@ TODO: is assigning pressure to full ghost cells necessary?
 #if 1
 event end_timestep (i++)
 {
-    //vector normals[];
-    //vector midPoints[];
-
-#if 0
-    trash({normals, midPoints});
-
-    // 1. Initalize fields to hold interface normals and fragment midpoints
-    //    TODO: this pass can be improved, if not avoided entirely.
-    foreach() {
-        coord midPoint, n;
-        if (on_interface(ibm)) {
-            centroid_point (point, ibm, &midPoint, &n);
-            foreach_dimension() {
-                midPoints.x[] = midPoint.x;
-                normals.x[] = -n.x;
-            }
-        }
-        else if (ibm[] == 1 && empty_neighbor (point, &midPoint, &n, ibm)) {
-            foreach_dimension() {
-                midPoints.x[] = midPoint.x;
-                normals.x[] = -n.x;
-            }
-        }
-        else {
-            foreach_dimension() {
-                midPoints.x[] = 0;
-                normals.x[] = 0;
-            }
-        }
-    }
-    boundary((scalar *){midPoints, normals});
-#endif
-
     correction(-dt);  // remove old pressure from velocity field
 
     // 2. Apply the pressure B.C
@@ -378,7 +347,6 @@ event end_timestep (i++)
                 coord projVelocity = {dot_product(imageVelocity, n),
                                       dot_product(imageVelocity, t1),
                                       dot_product(imageVelocity, t2)};
-
                 coord gcProjVelocity = {0,0,0};
                 foreach_dimension() {
                     bool bctype[2] = {false, false};

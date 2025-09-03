@@ -11,10 +11,10 @@ method. The volume fraction in fluid 1 is $f=1$ and $f=0$ in fluid
 *mu1*, *rho2*, *mu2*, respectively. */
 
 #if CA
-#include "my-vof-test.h"
+#include "my-vof-testv2.h"
+//#include "my-vof-testv3.h"
 #else
 #include "my-vof.h"
-//#include "my-vof-testv3.h"
 #endif
 
 scalar f[], * interfaces = {f};

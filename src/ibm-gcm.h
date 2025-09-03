@@ -1,5 +1,4 @@
-#undef dv
-#define dv() (pow(Delta,dimension)*ibm[])
+#define dv2() (pow(Delta,dimension)*ibm[]*cm[])
 
 #include "fractions.h"
 
@@ -79,8 +78,6 @@ double ibm_area_center (Point point, scalar s, double* x1, double* y1, double* z
     *x1 = mp.x[], *y1 = mp.y[], *z1 = mp.z[];
     return 1;
 }
-
-// data[0] = dirichlet true/false, data[1] = navier slip true/false (assumed false)
 
 macro2
 double dirichlet (double expr, Point point = point,
@@ -406,7 +403,8 @@ coord closest_interface (Point point, vector midPoints, scalar ibm, vector norma
         double dx = midPoints.x[i] - x;
         double dy = midPoints.y[i] - y;
         double dz = midPoints.z[i] - z;
-        if (midPoints.x[i] && distance3D(dx, dy, dz) < min_distance) {
+        if ((midPoints.x[i] || midPoints.y[i] || midPoints.z[i]) && 
+             distance3D(dx, dy, dz) < min_distance) {
             temp_midPoint.x = midPoints.x[i];
             temp_midPoint.y = midPoints.y[i];
             temp_midPoint.z = midPoints.z[i];
@@ -426,7 +424,8 @@ coord closest_interface (Point point, vector midPoints, scalar ibm, vector norma
         double dx = midPoints.x[0,j] - x;
         double dy = midPoints.y[0,j] - y;
         double dz = midPoints.z[0,j] - z;
-        if (midPoints.x[0,j] && distance3D(dx, dy, dz) < min_distance) {
+        if ((midPoints.x[0,j] || midPoints.y[0,j] || midPoints.z[0,j]) &&
+             distance3D(dx, dy, dz) < min_distance) {
             temp_midPoint.x = midPoints.x[0,j];
             temp_midPoint.y = midPoints.y[0,j];
             temp_midPoint.z = midPoints.z[0,j];
@@ -446,7 +445,8 @@ coord closest_interface (Point point, vector midPoints, scalar ibm, vector norma
         double dx = midPoints.x[0,0,k] - x;
         double dy = midPoints.y[0,0,k] - y;
         double dz = midPoints.z[0,0,k] - z;
-        if (midPoints.x[0,0,k] && distance3D(dx, dy, dz) < min_distance) {
+        if ((midPoints.x[0,0,k] || midPoints.y[0,0,k] || midPoints.z[0,0,k]) &&
+             distance3D(dx, dy, dz) < min_distance) {
             temp_midPoint.x = midPoints.x[0,0,k];
             temp_midPoint.y = midPoints.y[0,0,k];
             temp_midPoint.z = midPoints.z[0,0,k];
@@ -462,6 +462,7 @@ coord closest_interface (Point point, vector midPoints, scalar ibm, vector norma
         }
      }
 #endif
+
     *fluidCell = temp_fluidCell;
     *frag = temp_frag;
     *bioff = ptemp;

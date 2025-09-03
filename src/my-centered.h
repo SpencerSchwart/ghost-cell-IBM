@@ -33,11 +33,8 @@ for viscosity. */
 #if EMBED
 #include "viscosity-embed.h"
 #elif IBM
-#if !CCM
-#include "my-viscosity-gcm.h"
-#else  // CCM
-#include "my-viscosity-ccm.h"
-#endif // CCM
+#include "my-viscosity-gcm-old.h"
+//#include "my-viscosity-gcm.h"
 #else
 #include "viscosity.h"
 #endif // EMBED
@@ -366,11 +363,6 @@ event advection_term (i++,last)
 
   if (!stokes) {
     prediction();
-    #if 0
-    foreach_face()
-        if (uf.x[] > 1000)
-            fprintf(stderr, "WARNING (%g,%g) uf=%g\n",x,y, uf.x[]);
-    #endif
     mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);
     advection ((scalar *){u}, uf, dt, (scalar *){g});
   }

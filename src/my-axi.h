@@ -43,7 +43,7 @@ static void refine_cm_axi (Point point, scalar cm)
       cm[] = y*cs[];
 #elif IBM
   foreach_child()
-    cm[] = y*(ibm[] > 0.5);
+    cm[] = y*(ibm[] > 0);
 #endif // !EMBED && !IBM
 }
 
@@ -181,7 +181,7 @@ double axi_factor (Point point, coord p) {
 void cm_update (scalar cm, scalar ibmCells)
 {
   foreach() {
-    cm[] = y*ibmCells[];
+    cm[] = y*(ibm[] > 0);
   }
   cm[top] = dirichlet(y*ibm[]);
   cm[bottom] = dirichlet(y*ibm[]);
