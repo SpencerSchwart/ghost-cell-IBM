@@ -323,11 +323,11 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cr, sc
       crsum += cr[]*pow(Delta, dimension)*cm[];
       crsumclamp += clamp(cr[], 0, ibm0[])*pow(Delta, dimension)*cm[];
     }
-
+#if 0
   if (!approx_equal_double (crsum, crsumclamp, 1e-14))
     fprintf (stderr, "WARNING %g: crsum != crsumclamp. crsum=%0.15g crsumclamp=%0.15g err=%g\n", 
         indicator.x, crsum, crsumclamp, get_percent_error(crsum, crsumclamp));
-
+#endif
 #if VPRINT
   double cerror2 = 0;
   foreach(reduction(+:cerror2))
