@@ -186,7 +186,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cr, sc
         cf = 0;
     else if (ibm0[i] >= 1.) {
     //else if (ibm0[i]) {
-        cf = (c[i] <= 0. || c[i] >= 1.)? c[i] : rectangle_fraction (tempnf, alphaf[i], lhs, rhs);
+        cf = (cr[i] <= 0. || cr[i] >= 1.)? cr[i] : rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
     }
     #if 1
     else if (ibm0[i] > 0. && ibm0[i] < 1.) {
@@ -234,7 +234,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cr, sc
                 cf = 0;
             }
             else {
-                double alphacr = immersed_alpha (c[i], ibm[i], tempnfh, alphaf[i], tempns, alphas[i], cr[i]);
+                double alphacr = immersed_alpha (ch[i], ibm[i], tempnfh, alphafh[i], tempns, alphas[i], cr[i]);
                 double newc = plane_volume (tempnfh, alphacr);
                 cf = immersed_fraction (newc, tempnfh, alphacr, tempns, alphas[i], lhs, rhs, advVolume, 0);
                 
@@ -274,7 +274,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cr, sc
     }
   }
   delete (gfl); free (gfl);
- 
+
+  boundary({ctid, ct, flux});
+
   /**
   We warn the user if the CFL condition has been violated. */
 
@@ -320,8 +322,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cr, sc
                          " flux[]=%g flux[1]=%g div=%g\n",
                          indicator.x, x, y, z, c[], cr[], cc[], flux[], flux[1], divg1[]);
 #endif
-      crsum += cr[]*pow(Delta, dimension)*cm[];
-      crsumclamp += clamp(cr[], 0, ibm0[])*pow(Delta, dimension)*cm[];
+      crsum += cr[]*pow(Delta, dimension)*val;
+      crsumclamp += clamp(cr[], 0, ibm0[])*pow(Delta, dimension)*val;
+
     }
 #if 0
   if (!approx_equal_double (crsum, crsumclamp, 1e-14))
@@ -364,9 +367,12 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cr, sc
   foreach() {
     if (cr[] < 1e-11)
         cr[] = c[] = 0;
+    if (on_interface(ibm) && cr[] > ibm[] - 1e-10)
+        cr[] = ibm[];
   }
 
-  reconstruction (c, nf, alphaf);
+  boundary({c, cr});
+  //reconstruction (c, nf, alphaf);
 
 #if VPRINT
   fprintf(stderr, "%g SETTING CONTACT ANGLE TENSION\n", indicator.x);
@@ -374,12 +380,14 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cr, sc
 
   trash({ch});
   foreach() {
-    if (ibm[] > 0 && ibm[] < 1 && cr[] >= ibm[]-1e-10)
+    if (ibm[] > 0 && ibm[] < 1 && cr[] >= ibm[]-1e-6)
         ch[] = 1.;
     else
         ch[] = cr[];
+    // c[] = cr[];
   }
   boundary({ch});
+  reconstruction (ch, nf, alphaf);
   set_contact_angle_tension(ch, cr, ibm0, nf, alphaf, ns, alphas);
 
   //reconstruction (ch, nf, alphaf);
@@ -388,6 +396,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cr, sc
       reconstruction (ch, nfh, alphafh);
 
   delete (tfluxl); free (tfluxl);
+
 }
 
 
@@ -522,6 +531,8 @@ void vof_advection (scalar * interfaces, int i)
 
     foreach_face()
         uf.x[] /= (ibmf_temp.x[] + SEPS);
+
+    boundary({uf});
 
     //foreach()
     //    c[] = cr[];

@@ -348,7 +348,6 @@ TODO: what if interface perfectly cuts cell face? use interfacial() instead? mus
       be as cheap as possible.
 */
 
-trace
 void reconstruction_ibm (const scalar c, const face vector cf, vector n, scalar alpha)
 {
     foreach() {
@@ -1111,6 +1110,10 @@ void get_interpolation_points (Point point, const int m, coord pints[m],
 #define cols ((int)pow(2,dimension) + 1)
 
 // takes in a row
+// TODO: does the projected velocity hold true when using another ghost cell's interface coordinate system?
+// e.g., when the left cell is a ghost cell, do we project u according to that cells n,t1,and t2? or keep it
+// with the "home/center" ghost cell.
+
 void fluid_only2 (Point point, const int n, double rmatrix[n],
                   PointIBM poff, PointIBM pnode, PointIBM pbound, 
                   char dir, coord * pcell, coord velocity, coord ipoint,
@@ -1202,12 +1205,12 @@ void fluid_only2 (Point point, const int n, double rmatrix[n],
         coord d = direction_vector(gc, *pcell);
         double dmag = distance3D(d.x, d.y, d.z); // distance from ghost cell to boundary intercept
         double term = (1 - dmag/(val + SEPS));
-
+        double usolid = 0.0*dmag/(val + SEPS);  // navier b.c only works for stationary solids right now
 #if dimension == 2
         memcpy(rmatrix, (double[]){gc.x*gc.y - (pcell->x*pcell->y)*term,
                                    gc.x - pcell->x*term,
                                    gc.y - pcell->y*term,
-                                   1 - term, 0}, cols*sizeof(double));
+                                   1 - term, usolid}, cols*sizeof(double));
 #else // dimension == 3
         memcpy(rmatrix, (double[]){gc.x*gc.y*gc.z - pcell->x*pcell->y*pcell->z*term,
                                    gc.x*gc.y - pcell->x*pcell->y*term,
@@ -1216,7 +1219,7 @@ void fluid_only2 (Point point, const int n, double rmatrix[n],
                                    gc.x - pcell->x*term,
                                    gc.y - pcell->y*term,
                                    gc.z - pcell->z*term,
-                                   1 - term, 0}, cols*sizeof(double));
+                                   1 - term, usolid}, cols*sizeof(double));
 #endif // dimension == 2
     }
 
