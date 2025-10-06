@@ -9,7 +9,7 @@
 
 (const) scalar contact_angle;
 
-extern scalar f;
+//extern scalar f;
 
 typedef struct proj_coord {
     coord og;
@@ -298,6 +298,7 @@ static coord cube_vertices[8] = {
         {-0.5,-0.5,-0.5}
 };
 
+#if 0
 /*
 This function returns true if there exists a triple points within the cell, 
 i.e. the liquid interface intersects the solid one, given the normals of the
@@ -336,7 +337,7 @@ bool is_triple_point (Point point, coord nf, coord ns)
     return plane_intersect (plf, pls, padv, pint);
 #endif
 }
-
+#endif
 
 /*
 boundary_points is used to find the intersecting points of the fluid interface
@@ -787,9 +788,11 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     if (lhs.x == rhs.x || c <= 0)
         return 0;
 
+#if 1
     if (rhs.x < 0.5 && advVolume) {
         rhs.x = fit_volume (advVolume, pls.n, pls.alpha, rhs.x);
     }
+#endif
 
     double ufdt = rhs.x; // advection plane is always the +x plane
     const plane padv = {{1,0,0}, ufdt};
@@ -1340,7 +1343,7 @@ double get_real_error (const void* data, double alpha)
 }
 
 
-extern scalar f;
+//extern scalar f;
 
 
 double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int * numitr = NULL)
@@ -1466,13 +1469,8 @@ TODO: make a formal definition of what an interior cell is (full cells along the
       any full cell that would not contain an extrapolated interface for CAs?)
 */
 
-bool is_interior_cell (Point point, scalar ibm, scalar c, scalar cr)
+bool is_interior_cell (Point point, scalar ibm, scalar cr)
 {
-    #if PRINTA && 0
-    fprintf(stderr, "checking if (%g, %g) is an interior cell ibm=%g cr=%g c=%g \n",
-        x, y, ibm[], cr[], c[]);
-    #endif
-
     //if ((ibm[] == 1 && cr[] == ibm[]) || cr[] == 0)
     //    return false;
 
@@ -1491,11 +1489,6 @@ bool is_interior_cell (Point point, scalar ibm, scalar c, scalar cr)
 
     #else
     foreach_neighbor() { // was (1)
-
-        #if PRINTA && 0
-        fprintf (stderr, "  || (%g, %g) ibm=%g cr=%g c=%g |cr - ibm| = %g\n",
-            x, y, ibm[], cr[], c[], fabs(cr[] - ibm[]));
-        #endif
 
     // TODO: if cr[] != ibm[], try seeing if ibm[] == 1 instead (full fluid cell)
         if (ibm[] && fabs(cr[] - ibm[]) > INT_TOL) { // CHANGED FROM 1e-3 TEMPORARILY
@@ -1550,7 +1543,7 @@ void immersed_reconstruction (scalar c, scalar cr, vector nf, scalar alphaf,
                 //id[] = -1;
                 continue;
             }
-            else if (is_interior_cell(point, ibm, c, cr)) {
+            else if (is_interior_cell(point, ibm, cr)) {
                 cr[] = ibm[];
                 c[] = 1;
                 continue;
@@ -1799,6 +1792,7 @@ double real_volume (scalar f)
     return volume;
 }
 
+#if 0
 #if CA
 
 double get_contact_angle (scalar f, scalar ibm)
@@ -1832,7 +1826,7 @@ double get_contact_angle (scalar f, scalar ibm)
         return 0;
 }
 #endif 
-
+#endif
 
 /*
 redistribute_volume calculates the volume loss caused by imprecise movement of the
@@ -1845,7 +1839,7 @@ each cell will get the same amount of volume.
 TODO: improve weighting function by maybe including distance from interface?
 */
 
-double redistribute_volume (scalar c, scalar cr, const scalar ibm)
+double redistribute_volume (scalar cr, const scalar ibm)
 {
     // 1. Calculate the volume error
     //    and count the number of interfacial cells that contain no solid fragment
@@ -1853,22 +1847,29 @@ double redistribute_volume (scalar c, scalar cr, const scalar ibm)
     int icells = 0;
     foreach(reduction (+:verror) reduction (+:icells)) {
         if (cr[] > ibm[]) { // cell is too full
+#if AXI
             verror += (cr[] - ibm[])*dv();
+#else
+            verror += (cr[] - ibm[])*pow(Delta, dimension);
+#endif
             cr[] = ibm[];
-            c[] = 1;
         }
         else if (cr[] < 0) { // cell is too empty
+#if AXI
             verror += cr[]*dv();
-            c[] = cr[] = 0;
+#else
+            verror += cr[]*pow(Delta, dimension);
+#endif
+            cr[] = 0;
         }
         #if MOVING
         else if (on_interface(ibm) && cr[] < ibm[] && // moving interface error
-            is_interior_cell (point, ibm, c, cr)) {
-            verror += cr[] - ibm[]*dv();
+            is_interior_cell (point, ibm, cr)) {
+            verror += (cr[] - ibm[])*dv();
             cr[] = ibm[];
         }
         #endif
-        if (on_interface(c) && ibm[] >= 1)
+        if (cr[] > 0 && cr[] < ibm[]-1e-10 && ibm[] >= 1)
             icells++;
     }
    
@@ -1882,10 +1883,15 @@ double redistribute_volume (scalar c, scalar cr, const scalar ibm)
     int count = 0, overfill = 0;
 
     foreach(reduction(max:overfill) reduction(+:count)) {
-        if (on_interface(c) && ibm[] >= 1) {
+        if (cr[] > 0 && cr[] < ibm[]-1e-10 && ibm[] >= 1) {
 
             // cell is too full to take the additional volume, so give it to neighbors
-            if (cr[] + (verror/(icells*dv())) > ibm[]) {
+#if AXI
+            double vol = dv();
+#else
+            double vol = pow(Delta, dimension);
+#endif
+            if (cr[] + (verror/(icells*vol)) > ibm[]) {
                 overfill = 1;
 
                 count++;
@@ -1893,19 +1899,23 @@ double redistribute_volume (scalar c, scalar cr, const scalar ibm)
                 // check for left/right neighbors
                 bool done = false;
                 for (int i = -1; i <= 1; i += 2)
-                    if (cr[i] + 2*(verror/(icells*dv())) < ibm[i] && ibm[i]) // 2* because cell may be a recipient for multiple cells (temp fix)
+                    if (cr[i] + 2*(verror/(icells*vol)) < ibm[i] && ibm[i]) // 2* because cell may be a recipient for multiple cells (temp fix)
                         id.x[] = i, done = true;
 
                 // then check for top/bottom neighbors
                 if (!done)
                    for (int j = -1; j <= 1; j += 2)
+#if AXI
                        if (cr[0,j] + 2*(verror/(pow(Delta,dimension)*cm[0,j]*icells)) < ibm[0,j] && ibm[0,j])
+#else
+                       if (cr[0,j] + 2*(verror/(icells*vol)) < ibm[0,j] && ibm[0,j])
+#endif
                            id.y[] = j, done = true;
 
 #if dimension == 3
                 if (!done)
                    for (int k = -1; k <= 1; k += 2)
-                       if (cr[0,0,k] + 2*(verror/(icells*dv())) < ibm[0,0,k] && ibm[0,0,k])
+                       if (cr[0,0,k] + 2*(verror/(icells*vol)) < ibm[0,0,k] && ibm[0,0,k])
                            id.z[] = k, done = true;
 #endif
                 
@@ -1915,12 +1925,11 @@ double redistribute_volume (scalar c, scalar cr, const scalar ibm)
             else {
 
                 cr[] += verror/(icells*dv());
-                c[]  += verror/(icells*dv());
             }
         }
         else {
             foreach_dimension()
-                id.x[] = 0;       
+                id.x[] = 0;
         }
     }
 
@@ -1932,24 +1941,22 @@ double redistribute_volume (scalar c, scalar cr, const scalar ibm)
         foreach(reduction(max:fixed)) {
             for (int i = -1; i <= 1; i += 2)
                 foreach_dimension()
-                    if (id.x[i] == -i) {
+                    if (id.x[i] == -i && cm[i]) {
                         //double cr0 = cr[];
                         cr[] += verror/(icells*pow(Delta,dimension)*cm[i]);
-                        c[]  += verror/(icells*pow(Delta,dimension)*cm[i]);
                         fixed = 1;
                         #if 0
                         fprintf(stderr, "OVERFILL FIX:(%g, %g) cr0=%g cr[]=%g id=%g i=%d\n",
                             x, y, cr0, cr[], id.x[i], i);
                         #endif
                         cr[] = clamp (cr[], 0, ibm[]);
-                        c[] = clamp (c[], 0, 1);
                     }
         }
 #if PRINTA
     fprintf (stderr, "verror=%g icells=%d overfill=%d fixed=%d count=%d\n",
         verror, icells, overfill, fixed, count);
 #endif
-    boundary ({cr, c});
+    boundary ({cr});
     (void) fixed; // to prevent unused variable warning
 
     return verror;

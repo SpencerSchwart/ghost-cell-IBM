@@ -183,6 +183,15 @@ void normalize2 (coord * n)
         n->x /= norm + SEPS;
 }
 
+void normalize_sum (coord * n)
+{
+    double norm = 0;
+    foreach_dimension()
+        norm += fabs(n->x);
+    foreach_dimension()
+        n->x /= norm + SEPS;
+}
+
 /*
 normal_and_tangents accepts a normal vector and fill t1 and t2 with the 
 corresponding tangent vector(s) (one in 2D and two in 3D), all normalized.
@@ -2366,24 +2375,6 @@ event metric (i = 0)
         ibmf.x.prolongation = ibm_face_fraction_refine_x;
         ibmFaces.x.restriction = restriction_face_metric; // is this really necessary?
     }
-
-#if 0
-    ibm[left] = neumann(0);
-    ibm[right] = neumann(0);
-    ibm[top] = neumann(0);
-    ibm[bottom] = neumann(0);
-
-    ibmf.n[left] = neumann(0);
-    ibmf.n[right] = neumann(0);
-    ibmf.n[top] = neumann(0);
-    ibmf.n[bottom] = neumann(0);
-
-    ibmf.t[left] = neumann(0);
-    ibmf.t[right] = neumann(0);
-    ibmf.t[top] = neumann(0);
-    ibmf.t[bottom] = neumann(0);
-#endif
-
 #endif
     restriction ({ibm, ibmf, ibmFaces, ibmCells});
 

@@ -1,10 +1,5 @@
 #include "fractions.h"
 
-#define VPRINT 0
-
-// TODO: use ibmf to calculate ibm normal during reconstruction!!!
-//      - reconstruction uses MYC, while ibm_geomtry uses ibmf to find n
-
 attribute {
   scalar * tracers, c;
   bool inverse;
@@ -109,6 +104,8 @@ void move_solid_x(scalar ibm, face vector ibmf);
 void move_solid_y(scalar ibm, face vector ibmf);
 void move_solid_z(scalar ibm, face vector ibmf);
 
+static inline bool interfacial (Point point, scalar c);
+
 scalar ft[];
 
 foreach_dimension()
@@ -135,21 +132,10 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
     }
   }
   
-#if VPRINT
-  double cerror1 = 0;
-  foreach(reduction(+:cerror1))
-    cerror1 += c[]*dv();
-  fprintf (stderr, "initial sweep volume = %0.15g\n", cerror1);
-#endif
-
   scalar ct[];   // adjusted volume of three phase cells
   scalar ctid[]; // corresponding id field
 
-#if _OPENMP
-  foreach_face(x, serial) {
-#else
   foreach_face(x, reduction (max:cfl)) {
-#endif
 
 #if IBM
     double un = uf.x[]*dt/(Delta*fm.x[]*ibmf_temp.x[] + SEPS), s = sign(un);
@@ -170,7 +156,6 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
       cfl = un*fm.x[]*s/(cm[] + SEPS);
 
     double cf = 0;
-    //coord tempnf = {-s*nf.x[i], nf.y[i], nf.z[i]};
     coord tempnf = {-s*nfh.x[i], nfh.y[i], nfh.z[i]};
     coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
 
@@ -180,43 +165,18 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
     if (un == 0)
         cf = 0;
     else if (ibm0[i] >= 1.) {
-    //else if (ibm0[i]) {
         cf = (c[i] <= 0. || c[i] >= 1.)? c[i] : rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
     }
-    #if 1
     else if (ibm0[i] > 0. && ibm0[i] < 1.) {
         coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
 
         double advVolume = fabs(un)*ibmf_temp.x[];
-        #if VPRINT && 0
-        if (c[i] && advVolume > cm[i]*ibm0[i]*pow(Delta, dimension))
-            fprintf(stderr, "WARNING: (%g, %g, %g) advected area > real area! A_adv = %g A_real = %g\n",
-                x, y, z, advVolume, ibm0[i]*pow(Delta, dimension));
-        #endif
-
-        //advVolume /= cm[i]*pow(Delta, dimension); // normalize with cell volume
-
         if (c[i] <= 0.)
             cf = 0.;
         else if (c[i] >= ibm0[i]-1e-10) { // interfacial cell is full
-
-            #if VPRINT
-            fprintf(stderr, "advected volume_b = %g\n", advVolume);
-            #endif
-
             cf = 1;
-            
-            #if VPRINT
-            fprintf(stderr, "VOF (b): %g (%g, %g, %g) ibm[%d]=%g cf=%0.15g"
-                            " c[%d]=%0.15g c[%d]=%0.15g un=%g, uf=%g\n", 
-                             indicator.x, x, y, z, i, ibm[i], cf, i, c[i], i, c[i], 
-                             un, uf.x[]);
-            #endif
         }
         else if (c[i] > 0. && c[i] < ibm0[i]-1e-10) {
-            #if VPRINT
-            fprintf(stderr, "advected volume_c = %g\n", advVolume);
-            #endif
             coord tempnfh = {-s*nfh.x[i], nfh.y[i], nfh.z[i]};
             
             if (ch[i] >= 1 && !tempnfh.x && !tempnfh.y && !tempnfh.z) {
@@ -238,18 +198,10 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
                 ct[] = newc;
                 ctid[] = i;
             }
-
-            #if VPRINT
-            fprintf(stderr, "VOF (c): %g (%g, %g, %g) ibm[%d]=%g cf=%0.15g"
-                            " c[%d]=%0.15g c[%d]=%0.15g un=%0.15g, uf=%g ch=%g\n", 
-                             indicator.x, x, y, z, i, ibm[i], cf, i, c[i], i, c[i], 
-                             un, uf.x[], ch[i]);
-            #endif // VPRINT
        }
        else
            cf = 0;
     }
-    #endif
     else {
         cf = 0;
     }
@@ -286,14 +238,6 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   foreach(reduction (+:crsum) reduction (+:crsumclamp))
     if (ibm0[] > 0) {
 
-#if VPRINT
-      if ((on_interface(ibm) && c[]) || c[] > ibm0[] || c[] < 0)
-        fprintf (stderr, "F* W/O FLUX: %g (%g, %g, %g) c[]=%0.15g c[]=%0.15g"
-                         " ibmf[]=%g ibmf[1]=%g ibm[]=%g uf[]=%g uf[1]=%g dx=%g\n",
-                         indicator.x, x, y, z, c[], c[], ibmf0.x[], ibmf0.x[1], ibm0[],
-                         uf.x[], uf.x[1], Delta);
-#endif
-
 #if 1
       if (ibm0[] > 0. && ibm0[] < 1. && c[] > 0. && c[] < ibm0[]-1e-10) { // three-phase cell
         for (int _i = -1; _i <= 1; _i += 1) 
@@ -310,62 +254,35 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
       double val = 1;
 #endif
 
-      ft[] += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
-      c[]  += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
+      double frain = 0;
+
+      if (interfacial(point, c))
+      {
+        coord n = interface_normal (point, c), p;
+        double alpha = plane_alpha (c[], n);
+        plane_area_center (n, alpha, &p);
+        coord pc = {x, y, z};
+        foreach_dimension() // put the midpoint in local coordinates
+            pc.x += p.x*Delta;
+
+        frain = -c.urain.x * c.rvf * rain_probability(point, pc, c);
+      }
+
+      ft[] += dt*(flux[] - flux[1] + frain + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
+      c[]  += dt*(flux[] - flux[1] + frain + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
 
       scalar t, tc, tflux;
       for (t, tc, tflux in tracers, tcl, tfluxl)
         t[] += dt*(tflux[] - tflux[1] + tc[]*(uf.x[1] - uf.x[]))/(val*Delta);
-
-#if VPRINT
-      if ((on_interface(ibm) && c[]) || c[] > ibm0[] || c[] < 0)
-        fprintf (stderr, "F* W/FLUX: %g (%g, %g, %g) c[]=%0.15g c[]=%0.15g cc[]=%g"
-                         " flux[]=%g flux[1]=%g div=%g\n",
-                         indicator.x, x, y, z, c[], c[], cc[], flux[], flux[1], divg1[]);
-#endif
+      
       crsum += c[]*pow(Delta, dimension)*val;
       crsumclamp += clamp(c[], 0, ibm0[])*pow(Delta, dimension)*val;
 
     }
-#if 0
-  if (!approx_equal_double (crsum, crsumclamp, 1e-14))
-    fprintf (stderr, "WARNING %g: crsum != crsumclamp. crsum=%0.15g crsumclamp=%0.15g err=%g\n", 
-        indicator.x, crsum, crsumclamp, get_percent_error(crsum, crsumclamp));
-#endif
-#if VPRINT
-  double cerror2 = 0;
-  foreach(reduction(+:cerror2))
-    cerror2 += c[]*dv();
-  fprintf (stderr, "(a) post sweep volume = %g cr_sum=%0.15g cr_sumclamp=%0.15g\n", cerror2, crsum, crsumclamp);
-#endif
-
-  // update c to conserve cr
-#if MOVING
-  move_solid_x(ibm0, ibmf0);
-  reconstruction_ibm (ibm0, ibmf0, ns, alphas);
-
-  double cerror1a2_x = real_volume(c);
-
-  #if VPRINT
-  fprintf (stderr, "(a2) post moving solid volume = %0.15g\n", cerror1a2_x);
-  #endif
-
-#endif
-
+  
   // TODO: only call this function when crsum != crsumclamp!
   redistribute_volume (c, ibm);
-
-  #if VPRINT
-  double verror = 0;
-  //double verror = redistribute_volume (c, cr, ibm);
-  fprintf (stderr, "(a3) volume error = %0.15g\n", verror);
-  double cerror3 = 0;
-  foreach(reduction(+:cerror3))
-    cerror3 += c[]*dv();
-  fprintf (stderr, "(b) post sweep volume = %0.15g\n", cerror3);
-  (void) verror;
-  #endif
-
+  
   foreach() {
     if (c[] < 1e-11)
         c[] = 0;
@@ -374,10 +291,6 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   }
 
   boundary({c});
-
-#if VPRINT
-  fprintf(stderr, "%g SETTING CONTACT ANGLE TENSION\n", indicator.x);
-#endif
 
   trash({ch});
   reconstruction (c, nf, alphaf);
@@ -486,21 +399,8 @@ void vof_advection (scalar * interfaces, int i)
         cc[] = (c[] > 0.5*ibm[]);
 
         if (on_interface(ibm)) {
-#if MOVING
-            coord mp, n;
-            //double area = ibm0_geometry (point, &mp, &n);
-            double area = ibm_geometry (point, &mp, &n);
-            double mpx, mpy, mpz;
-            local_to_global (point, mp, &mpx, &mpy, &mpz);
-
-            // NOTE: t - dt because uibm_x functions have t + dt, so this is
-            // essentially (t - dt) + dt, which cancels out the dt's.
-            foreach_dimension()
-                divs.x[] = uibm_x(mpx,mpy,mpz, t - dt) * n.x * area;
-#else
             foreach_dimension()
                   divs.x[] = 0;
-#endif
         }
         else {
             foreach_dimension()
@@ -514,13 +414,6 @@ void vof_advection (scalar * interfaces, int i)
     }
 
     boundary({uf});
-   
-#if VPRINT
-    double cerror0 = 0;
-    foreach(reduction(+:cerror0))
-      cerror0 += c[]*dv();
-    fprintf(stderr, "initial real volume c = %g\n", cerror0);
-#endif
 
     void (* sweep[dimension]) (scalar, scalar, scalar, scalar *, scalar, 
                                face vector, vector, scalar, vector, scalar, int);
@@ -528,12 +421,6 @@ void vof_advection (scalar * interfaces, int i)
     foreach_dimension()
       sweep[d++] = sweep_x;
     for (d = 0; d < dimension; d++) {
-
-        #if VPRINT
-        char ind = (i + d) % dimension == 0? 'x':
-                   (i + d) % dimension == 1? 'y': 'z';
-        fprintf(stderr, "\n=== %c SWEEP (i = %d) ===\n", ind, i);
-        #endif
 
         int last = (d == dimension - 1);
         sweep[(i + d) % dimension] (c, ch, cc, tcl, ibm, ibmf, ns, alphas, nfh, alphafh, last);
@@ -544,11 +431,6 @@ void vof_advection (scalar * interfaces, int i)
         uf.x[] /= (ibmf_temp.x[] + SEPS);
 
     boundary({uf, c});
-
-#if 0
-   reconstruction (c, nfg, alphafg);
-   reconstruction (ibm, nsg, alphasg);
-#endif
   }
 }
 

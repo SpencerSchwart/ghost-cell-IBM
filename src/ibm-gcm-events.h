@@ -367,7 +367,7 @@ event end_timestep (i++)
                         else
                             gcProjVelocity.x = 2*vb - projVelocity.x;
                     }
-                    else {
+                    else { // neumann
                         gcProjVelocity.x = projVelocity.x;
                     }
                 }

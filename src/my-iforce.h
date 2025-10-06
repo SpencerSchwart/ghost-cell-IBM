@@ -45,7 +45,8 @@ the centered Navier--Stokes solver. */
 
 event acceleration (i++)
 {
-  
+ 
+
   /**
   We check for all VOF interfaces for which $\phi$ is allocated. The
   corresponding volume fraction fields will be stored in *list*. */
@@ -60,8 +61,9 @@ event acceleration (i++)
       values of the volume fraction larger than one or smaller than
       zero. */
 
-      foreach()
-	f[] = clamp (f[], 0., 1.);
+      foreach() {
+	    f[] = clamp (f[], 0., ibm[]);
+      }
     }
 
   /**
@@ -85,16 +87,11 @@ event acceleration (i++)
   \phi\mathbf{n}\delta_s/\rho \approx \alpha\phi\nabla f
   $$ 
   */
-#if 0
-  scalar f0[];
-  foreach()
-    f0[] = f[];
-  impose_contact_angle(f, ibm);
-#endif
+
   face vector ia = a;
   foreach_face()
     for (scalar f in list)
-      if (f[] != f[-1] && fm.x[] > 0.) {
+      if (ft[] != ft[-1] && fm.x[] > 0.) {
 
 	/**
 	We need to compute the potential *phif* on the face, using its
@@ -113,15 +110,12 @@ event acceleration (i++)
 	  0.;
 
 #if IBM
-	ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
+	ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(ft[] - ft[-1])/Delta;
 #else
 	ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
 #endif
       }
-#if 0
-  foreach()
-    f[] = f0[];
-#endif
+
   /**
   On trees, we need to restore the prolongation values for the
   volume fraction field. */
@@ -132,7 +126,7 @@ event acceleration (i++)
     f.dirty = true; // boundary conditions need to be updated
   }
 #endif
-  
+
   /**
   Finally we free the potential fields and the list of volume
   fractions. */

@@ -84,39 +84,23 @@ $\phi=\sigma\kappa$. */
 
 event acceleration (i++)
 {
-#if CA
-  scalar f0[];
-  f0.refine = f0.prolongation = fraction_refine;
-
-  foreach() {
-    f0[] = f[];
-    f[] = ch[];
-  }
-
-  boundary({f});
-#endif
   /**
   We check for all VOF interfaces for which $\sigma$ is non-zero. */
 
-  for (scalar f in interfaces)
-    if (f.sigma) {
+  for (scalar c in interfaces)
+    if (c.sigma) {
       
       /**
       If $\phi$ is already allocated, we add $\sigma\kappa$, otherwise
       we allocate a new field and set it to $\sigma\kappa$. */
 
-      scalar phi = f.phi;
+      scalar phi = c.phi;
       if (phi.i)
-	curvature (f, phi, f.sigma, add = true);
+    	curvature (ch, phi, c.sigma, add = true);
       else {
-	phi = new scalar;
-	curvature (f, phi, f.sigma, add = false);
-	f.phi = phi;
+	    phi = new scalar;
+    	curvature (ch, phi, c.sigma, add = false);
+    	c.phi = phi;
       }
     }
-#if CA
-    foreach() 
-        f[] = f0[];
-  boundary({f});
-#endif
 }
