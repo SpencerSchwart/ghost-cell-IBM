@@ -1939,7 +1939,12 @@ void ibm_force (scalar p, vector u, face vector mu, coord * Fp, coord * Fmu)
         if (ibm[] > 0. && ibm[] < 1.) {
             coord midPoint, n, b;
             double area = ibm_geometry (point, &b, &n);
-            area *= cm[]*pow (Delta, dimension - 1); // is cm[]* right.. for axi?
+#if AXI
+            double val = cm[];
+#else
+            double val = 1;
+#endif
+            area *= val*pow (Delta, dimension - 1); // is cm[]* right.. for axi?
 
             
             coord cellCenter = {x,y,z};
