@@ -92,6 +92,10 @@ event acceleration (i++)
   foreach_face()
     for (scalar f in list)
       if (ft[] != ft[-1] && fm.x[] > 0.) {
+      //if (ch[] != ch[-1] && fm.x[] > 0.) {
+      //if (f[]/(ibm[]+SEPS) != f[-1]/(ibm[-1]+SEPS) && fm.x[] > 0.) {
+      //if (f[] != f[-1] && fm.x[] > 0.) {
+      //if (!approx_equal_double(f[], f[-1]) && fm.x[] > 0.) {
 
 	/**
 	We need to compute the potential *phif* on the face, using its
@@ -110,7 +114,17 @@ event acceleration (i++)
 	  0.;
 
 #if IBM
-	ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(ft[] - ft[-1])/Delta;
+	//ia.x[] += alpha.x[]*phif*(ft[] - ft[-1])/Delta;
+	//ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(ch[] - ch[-1])/Delta;
+	//ia.x[] += alpha.x[]*phif*(ch[] - ch[-1])/Delta;
+	//ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(f[]/(ibm[]+SEPS) - f[-1]/(ibm[-1]+SEPS))/Delta;
+    //ia.x[] += alpha.x[]*phif*(f[] - f[-1])/Delta;
+    //ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
+    double val1 = f[]? ch[]: 0;
+    double val2 = f[-1]? ch[-1]: 0;
+    //ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(val1 - val2)/Delta;
+    //ia.x[] += alpha.x[]*phif*(val1 - val2)/Delta;
+	//ia.x[] += alpha.x[]*phif*(f[]/(ibm[]+SEPS) - f[-1]/(ibm[-1]+SEPS))/Delta;
 #else
 	ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
 #endif

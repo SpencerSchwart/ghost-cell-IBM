@@ -1,4 +1,5 @@
 
+
 #define PRINTCA 0
 
 #undef INT_TOL
@@ -56,7 +57,7 @@ static inline coord normal_contact (coord ns, coord nf, double angle)
 }
 
 
-void clean_fluid (scalar f, scalar ibm)
+void clean_fluid (scalar f, scalar fr, scalar ibm)
 {
     foreach() {
         if (ibm[] == 0. && f[]) {
@@ -103,45 +104,30 @@ clean_fluid is used to remove any fluid inside the solid boundary that is
 not necessary in enforcing the contact angle.
 */
 
-
-void reconstruction_contact_test (scalar c, scalar cr, vector n, scalar alpha, 
+void reconstruction_contact_test (scalar f, scalar fr, vector n, scalar alpha, 
                                   vector ns, scalar alphas, scalar inter, 
                                   scalar ghostInter, scalar extra)
 {
-    scalar c0[];
+    scalar f0[];
     foreach() {
-        if (ibm[] > 0 && ibm[] < 1 && (cr[] <= 1e-10 || cr[] >= ibm[] - 1e-10) &&
-            !is_interior_cell(point, ibm, cr) && level == depth())
+        if (ibm[] > 0 && ibm[] < 1 && (fr[] <= 1e-10 || fr[] >= ibm[] - 1e-10) &&
+            !is_interior_cell(point, ibm, fr) && level == depth())
         {
             int near = 0;
             foreach_neighbor() //TODO: this is probably not necessary
-                if (c[] > 0 && ibm[]) { near = 1; break; }
+                if (f[] > 0 && ibm[]) { near = 1; break; }
             ghostInter[] = near;
         }
         else
             ghostInter[] = 0;
     }
 
-    foreach() {
+    foreach(serial) {
 
-        inter[] = c[] > 0 && c[] < 1;
-        extra[] = inter[] && ibm[] > 0 && ibm[] < 1;
+        inter[] = f[] < 1 && f[] > 0;
+        extra[] = inter[] && ibm[] > 0 && ibm[] < 1 && !ghostInter[] && fr[] < ibm[]-1e-10;
 
-#if 0
-        if (extra[]) {
-            bool caCell = false;
-            foreach_neighbor() {
-                if (ibm[] && cr[]/ibm[] < 0.9) {
-                  caCell = true;
-                  break;
-                }
-            }
-            extra[] = caCell;
-        }
-#endif
-
-        //if (on_interface(ibm) && c[] > 1e-10 && c[] < 1 - 1e-10) {
-        if (extra[]) {
+        if (on_interface(ibm) && f[] > 1e-10 && f[] < 1 - 1e-10) {
             coord ns = facet_normal (point, ibm, ibmf);
             double alphas = line_alpha (ibm[], ns);
             coord nf;
@@ -160,25 +146,78 @@ void reconstruction_contact_test (scalar c, scalar cr, vector n, scalar alpha,
                 nc.x /= mag + SEPS;
                 n.x[] = nc.x;
             }
-            alpha[] = immersed_alpha_temp (c[], ibm[], nc, alpha[], ns, alphas, cr[]);
+            alpha[] = immersed_alpha_temp (f[], ibm[], nc, alpha[], ns, alphas, fr[]);
             if (extra[]) {
-                c[] = plane_volume (nc, alpha[]);
-                if (c[] <= 0) { // so ch and cr are consistent! prevents sudden removal of gginter
-                    cr[] = 0;
-                    if (!is_interior_cell(point, ibm, cr) && level == depth()) {
+                f[] = plane_volume (nc, alpha[]);
+                if (f[] <= 0) { // so ch and cr are consistent! prevents sudden removal of gginter
+                    fr[] = 0;
+                    if (!is_interior_cell(point, ibm, fr) && level == depth()) {
                         int near = 0;
                         foreach_neighbor() //TODO: this is probably not necessary
-                            if (c[] > 0 && ibm[]) { near = 1; break; }
+                            if (f[] > 0 && ibm[]) { near = 1; break; }
                         ghostInter[] = near;
                     }
                 }
-                inter[] = c[] > 0 && c[] < 1;
-                extra[] = inter[] && ibm[] > 0 && ibm[] < 1 && !ghostInter[] && cr[] < ibm[]-1e-10;
+                inter[] = f[] < 1 && f[] > 0;
+                extra[] = inter[] && ibm[] > 0 && ibm[] < 1 && !ghostInter[] && fr[] < ibm[]-1e-10;
             }
         }
     }
 
-    boundary ({c, cr, n, alpha, inter, ghostInter, extra});
+    boundary ({f, fr, n, alpha, inter, ghostInter, extra});
+}
+
+scalar gftest[];
+
+void set_contact_angle_solid (scalar f, const scalar ibm, vector nf, scalar alphaf, 
+                              vector ns, scalar alphas, scalar extra)
+{
+    foreach() {
+        if (ibm[] <= 0. && level == depth()) {  // pure solid cell
+            double ghostf = 0., totalWeight = 0., alphaf1; // ghostf = volume fraction of ghost cell
+            coord ghostCell = {x,y,z}, nf2;
+            int count = 0;
+
+            // 3.a. Calculate weights
+            foreach_neighbor() {
+
+                if (extra[]) {
+                    double cellWeight = ibm[] * (1. - ibm[]) * f[] * (1. - f[]);
+
+                    totalWeight += cellWeight;
+
+                    coord leftPoint = {x, y, z}, rightPoint;
+                    foreach_dimension() {
+                        leftPoint.x = (ghostCell.x - leftPoint.x) / Delta - 0.5;
+                        rightPoint.x = leftPoint.x + 1.;
+                    }
+
+                    coord nf1 = {nf.x[], nf.y[], nf.z[]}, ns1 = {ns.x[], ns.y[], ns.z[]};
+
+                    //double alphatmp = immersed_alpha_temp (f[], ibm[], nf1, alphaf[], ns1, alphas[], fr0[]);
+
+                    ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+
+                    #if PRINTCA && 0
+                    double gf = rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+                    fprintf(stderr, " 1st pre (%g, %g, %g) f = %g ibm = %g gf = %g\n", 
+                        x, y, z, f[], ibm[], gf);
+                    #endif
+
+                    nf2 = nf1;
+                    alphaf1 = alphaf[];
+                    count++;
+                }
+            }
+            
+            // 3.b. Assign volume fraction in ghost/solid cell
+            if (totalWeight > 0.) 
+                f[] = ghostf / totalWeight;
+            else
+                f[] = 0;
+        }
+        gftest[] = f[];
+    }
 }
 
 /*
@@ -191,19 +230,18 @@ surface tension force calculation which takes place in the acceleration event.
 
 
 scalar gginter[];
-scalar gf00[], gf0[], gf1[], gf2[], gf3[], gf4[];
-
-    scalar inter[];
-    scalar ghostInter[];
-    scalar extra[];
+scalar gf0[], gf1[], gf2[], gf3[], gf4[];
 
 trace
-void set_contact_angle_tension (scalar c, scalar cr0, const scalar ibm,
+void set_contact_angle_tension (scalar f, scalar fr0, const scalar ibm,
                                 vector nf, scalar alphaf, vector ns, scalar alphas)
 {
     #if PRINTCA
     fprintf (stderr, "\n=== SETTING TENSION C.A. ===\n");
     #endif
+    scalar inter[];
+    scalar ghostInter[];
+    scalar extra[];
 
     // 1. get real portion of fluid, fr (now a func. parameter)
 
@@ -211,19 +249,15 @@ void set_contact_angle_tension (scalar c, scalar cr0, const scalar ibm,
     #if PRINTCA
     fprintf(stderr, "starting reconstruction contact test\n");
     #endif
-    foreach() {
-        gf00[] = c[];
-    }
-
-    reconstruction_contact_test (c, cr0, nf, alphaf, ns, alphas, inter, ghostInter, extra);
+    reconstruction_contact_test (f, fr0, nf, alphaf, ns, alphas, inter, ghostInter, extra);
 #if 1
-    scalar c0[];
+    scalar f0[];
     foreach() {
         gginter[] = ghostInter[];
-        c0[] = c[];
-        gf0[] = c0[];
+        f0[] = f[];
+        gf0[] = f0[];
     }
-    boundary({c0});
+    boundary({f0});
 #endif
     #if PRINTCA
     fprintf(stderr, "starting main contact loop\n");
@@ -231,17 +265,16 @@ void set_contact_angle_tension (scalar c, scalar cr0, const scalar ibm,
 
     // 3. look for ghost and pure solid cells near triple point to enforce B.C
     foreach() {
+        #if 1
         if (ibm[] <= 0. && level == depth()) {  // pure solid cell
-            double ghostf = 0., totalWeight = 0.;
-            coord ghostCell = {x,y,z};
+            double ghostf = 0., totalWeight = 0., alphaf1;
+            coord ghostCell = {x,y,z}, nf2;
             int count = 0;
 
             // 3.a. Calculate weights
             foreach_neighbor() {
                 if (extra[]) {
-                    // why fr0? to mitigate problems for a very slow moving contact line and
-                    // a new cell only gets a little bit of f (due to the low velocity/flux)
-                    double cellWeight = ibm[] * (1. - ibm[]) * cr0[] * (ibm[] - cr0[]);
+                    double cellWeight = ibm[] * (1. - ibm[]) * f0[] * (1. - f0[]);
 
                     totalWeight += cellWeight;
 
@@ -251,16 +284,18 @@ void set_contact_angle_tension (scalar c, scalar cr0, const scalar ibm,
                         rightPoint.x = leftPoint.x + 1.;
                     }
 
-                    coord nf1 = {nf.x[], nf.y[], nf.z[]};
+                    coord nf1 = {nf.x[], nf.y[], nf.z[]}, ns1 = {ns.x[], ns.y[], ns.z[]};
 
                     ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
 
                     #if PRINTCA && 0
                     double gf = rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
                     fprintf(stderr, " 1st pre (%g, %g, %g) f = %g ibm = %g gf = %g\n", 
-                        x, y, z, c[], ibm[], gf);
+                        x, y, z, f[], ibm[], gf);
                     #endif
 
+                    nf2 = nf1;
+                    alphaf1 = alphaf[];
                     count++;
                 }
             }
@@ -270,84 +305,54 @@ void set_contact_angle_tension (scalar c, scalar cr0, const scalar ibm,
                 #if PRINTCA && 0
                 fprintf (stderr, "0th %d (%g, %g, %g) nf ={%g,%g} f[]=%0.15g fr0[]=%0.15g tw=%g gf=%g ", 
                                   count, x, y, z, nf2.x, nf2.y, f[], fr0[], totalWeight, ghostf);
-                fprintf (stderr, "gf/tw=%g\n", ghostf/totalWeight);
+                fprintf (stderr, "gf/tw=%g alphaf1=%g\n", ghostf/totalWeight, alphaf1);
                 #endif
-                c[] = ghostf / (totalWeight + SEPS);
+                f[] = ghostf / (totalWeight + SEPS);
             }
-            #if 0 // TODO: is this better than the other one?
+            #if 1
             else {
                 bool check = false;
                 foreach_neighbor(1) {
-                    if (ibm[] && cr0[] >= ibm[] - 1e-6)
+                    if (ibm[] && fr0[] >= ibm[] - 1e-6)
                         check = true;
-                    else if (ibm[] && cr0[] < ibm[] - 1e-6) {
+                    else if (ibm[] && fr0[] < ibm[] - 1e-6) {
                         check = false;
                         break;
                     }
                 }
-                if (check)
-                    c[] = 1;
-                #if 1
-                else {
-                    foreach_neighbor() {
-                        if (ibm[] && cr0[] >= ibm[] - 1e-6)
-                            check = true;
-                        else if (ibm[] && cr0[] < ibm[] - 1e-6) {
-                            check = false;
-                            break;
-                        }
-                    }
-                    if (check)
-                        c[] = 1;
+                if (check) {
+                    f[] = 1;
                 }
-                #endif
-            }
-            #else
-            else if (contact_angle[] <= 0.5*pi) {
-                bool check = false;
-                foreach_neighbor(1) {
-                    if (ibm[] && cr0[] && !extra[])
+                foreach_neighbor() {
+                    if (ibm[] && fr0[] >= ibm[] - 1e-6)
                         check = true;
-                    else if (ibm[] && extra[] ) {
+                    else if (ibm[] && fr0[] < ibm[] - 1e-6) {
                         check = false;
                         break;
                     }
                 }
-                if (check)
-                    c[] = 1;
-                #if 1
-                else {
-                    foreach_neighbor() {
-                        if (ibm[] && cr0[] && !extra[])
-                            check = true;
-                        else if (ibm[] && extra[]) {
-                            check = false;
-                            break;
-                        }
-                    }
-                    if (check)
-                        c[] = 1;
+                if (check) {
+                    f[] = 1;
                 }
-                #endif
             }
             #endif
         }
+        #endif
+        #if 1
         if (ghostInter[])
         {
-            double ghostf = 0., totalWeight = 0.;
-            coord ghostCell = {x,y,z};
+            double ghostf = 0., totalWeight = 0., alphaf1 = 0;
+            coord ghostCell = {x,y,z}, nf2;
             int count = 0;
 
             // 3.c. extrapolate f from direct neighbors to get initial guess
-            int cond0 = cr0[] <= 1e-10;
-            //int cond1 = cr0[] >= ibm[] - 1e-10;
-            coord ns0 = {-ns.x[], -ns.y[], -ns.z[]}, nf1;
+            int cond0 = fr0[] <= 1e-10;
+            //int cond1 = fr0[] >= ibm[] - 1e-10;
+            coord ns0 = {-ns.x[], -ns.y[], -ns.z[]};
             foreach_neighbor() {
                 if (extra[]) {
-                    nf1 = (coord){nf.x[], nf.y[], nf.z[]};
-
-                    if ((contact_angle[] > 3.*pi/4. || contact_angle[] < pi/4.) &&
-                        cond0 && dot_product_norm(nf1, ns0) <= 0) // TODO: more robust fix?
+                    coord nf1 = {nf.x[], nf.y[], nf.z[]}, ns1 = {-ns.x[], -ns.y[], -ns.z[]};
+                    if (cond0 && dot_product_norm(nf1, ns0) < 0)
                         continue;
                     //if (cond1 && dot_product(nf1, ns0) > 0)
                     //    continue;
@@ -358,111 +363,93 @@ void set_contact_angle_tension (scalar c, scalar cr0, const scalar ibm,
                         rightPoint.x = leftPoint.x + 1.;
                     }
                     
-                    double cellWeight = ibm[] * (1. - ibm[]) * cr0[] * (ibm[] - cr0[]);
+                    double cellWeight = ibm[] * (1. - ibm[]) * f0[] * (1. - f0[]);
 
                     totalWeight += cellWeight;
 
                     ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
 
-                    #if PRINTCA && 1
+                    nf2 = nf1;
+                    alphaf1 = alphaf[];
+                    #if PRINTCA && 0
                     double product = dot_product_norm(nf1, ns0);
                     double angle = dot_product_angle(nf1, ns0);
-                    fprintf(stderr, "extrapolate: (%g, %g, %g) nf={%g, %g, %g} ns={%g, %g, %g}"
-                                    " alphaf=%g cw=%g ghostf=%g prod=%g angle=%g cond0=%d cond1=%d\n",
-                                    x, y, z, nf1.x, nf1.y, nf1.z, ns0.x, ns0.y, ns0.z, alphaf[], 
-                                    cellWeight, ghostf, product, angle, cond0, cond1);
+                    fprintf(stderr, "extrapolate: (%g, %g, %g) nf={%g, %g, %g} ns={%g, %g, %g} alphaf=%g cw=%g ghostf=%g prod=%g angle=%g cond0=%d cond1=%d\n",
+                        x, y, z, nf1.x, nf1.y, nf1.z, ns0.x, ns0.y, ns0.z, alphaf[], cellWeight, ghostf, product, angle, cond0, cond1);
                     #endif
 
                     count++;
                 }
             }
 
-            #if PRINTCA && 1
-            fprintf(stderr, " 1st pre (%g, %g, %g) tw = %g gf = %g cond0=%d dot=%g\n", 
-                            x, y, z, totalWeight, ghostf, cond0, dot_product_norm(nf1, ns0));
+            #if PRINTCA && 0
+            fprintf(stderr, " 1st pre (%g, %g, %g) tw = %g gf = %g\n", x, y, z, totalWeight, ghostf);
             #endif
 
             // 3.d. if extrapolation results in f inside the interface cell, adjust it to preserve fr
             if (totalWeight > 0.) {
-                #if PRINTCA && 1
+                #if PRINTCA && 0
                 coord ns1 = {ns.x[], ns.y[], ns.z[]}, nf1 = {nf.x[], nf.y[], nf.z[]};
-                fprintf (stderr, "1st %d (%g, %g, %g) f[]=%0.15g fr0[]=%0.15g tw=%g gf=%g ", 
-                                  count, x, y, z, c[], cr0[], totalWeight, ghostf);
-                fprintf (stderr, "gf/tw=%g\n", ghostf/totalWeight);
+                fprintf (stderr, "1st %d (%g, %g, %g) nf ={%g,%g} f[]=%0.15g fr0[]=%0.15g tw=%g gf=%g ", 
+                                  count, x, y, z, nf2.x, nf2.y, f[], fr0[], totalWeight, ghostf);
+                fprintf (stderr, "gf/tw=%g alphaf1=%g\n", ghostf/totalWeight, alphaf1);
                 #endif
 
-                c[] = ghostf / totalWeight;
-                if (c[] > 1 - INT_TOL) c[] = 1; // is this good?
+                f[] = ghostf / totalWeight;
+                if (f[] > 1 - INT_TOL) f[] = 1;
 
                 #if PRINTCA
-                fprintf (stderr, "  f`[]=%0.15g \n", c[]);
+                fprintf (stderr, "  f`[]=%0.15g \n", f[]);
                 #endif
             }
             // 3.e otherwise, cell should not be used to enforce C.A.
-            else if (ghostf <= 0 && cr0[] <= 1e-10 ) {
-                c[] = 0; // was 1 instead of fr0!
+            else if (ghostf <= 0 && fr0[] <= 1e-10 ) {
+                f[] = 0; // was 1 instead of fr0!
             }
         }
+        #endif
     }
 
-    scalar ctmp[];
+    boundary({f});
+    reconstruction(f,nf,alphaf); // this isn't necessary or even used!
+
+    scalar ftmp[];
     foreach() {
-        ctmp[] = c[];
+        ftmp[] = f[];
     }
-    boundary({ctmp,cr0,c});
+    boundary({ftmp,fr0});
 
 #if PRINTCA
     fprintf(stderr, "Starting full ghost cell correction\n");
 #endif
 #if 1
-    foreach() {
-        gf1[] = c[];
-        // make full cells with fractional ch conserve cr
-        #if 1
-        if (ghostInter[] && cr0[] >= ibm[] - 1e-10 && c[] != c0[] && c[] != 1.) {
+    foreach(serial) {
+        //gf2[] = f[];
+        if (ghostInter[] && fr0[] >= ibm[] - 1e-10 && f[] != f0[] && f[] != 1.) {
             #if 1
-            coord mf = interface_normal(point, ctmp);
+            coord mf = interface_normal(point, ftmp);
             if (!mf.x && !mf.y && !mf.z) {
-                double ctemp = ctmp[];
-                ctmp[] = 0.5;
-                mf = interface_normal(point, ctmp);
-                ctmp[] = ctemp;
+                double ftemp = ftmp[];
+                ftmp[] = 0.5;
+                mf = interface_normal(point, ftmp);
+                ftmp[] = ftemp;
             }
             #endif
             coord ns1 = {ns.x[], ns.y[], ns.z[]};
-            double alpha = plane_alpha(ctmp[], mf);           
-            double fr = immersed_fraction(ctmp[], mf, alpha, ns1, alphas[], 
+            double alpha = plane_alpha(ftmp[], mf);           
+            double fr = immersed_fraction(ftmp[], mf, alpha, ns1, alphas[], 
                                          (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5})*ibm[];
-            
-            if (!approx_equal_double(fr, cr0[])) {
-                const tripoint tcell = fill_tripoint (cr0[], mf, alpha, ns1, alphas[], c[], ibm[]);
+            if (!approx_equal_double(fr, fr0[])) {
+                const tripoint tcell = fill_tripoint (fr0[], mf, alpha, ns1, alphas[], f[], ibm[]);
                 double alphatmp = ghost_alpha(tcell, -0.6, 0.6);
-                c[] = plane_volume(mf, alphatmp);
+                f[] = plane_volume(mf, alphatmp);
             }
         #if PRINTCA
             fprintf(stderr, "(%g, %g, %g) f=%g fr=%g ibm=%g n={%g, %g, %g} ns={%g, %g, %g} as=%g\n",
-                x, y, z, c[], cr0[], ibm[], mf.x, mf.y, mf.z, ns1.x, ns1.y, ns1.z, alphas[]);
+                x, y, z, f[], fr0[], ibm[], mf.x, mf.y, mf.z, ns1.x, ns1.y, ns1.z, alphas[]);
         #endif
         }
-        #endif
-        #if 1
-        //if ((ghostInter[] && cr0[] <= 1e-10)) {
-        if (extra[]) {
-            coord nf1 = interface_normal(point, ctmp);
-            if (!nf1.x && !nf1.y && !nf1.z) {
-              c[] = 0;
-              continue;
-            }
-            coord ns1 = {ns.x[], ns.y[], ns.z[]};
-            double alpha = immersed_alpha_temp (c[], ibm[], nf1, alphaf[], ns1, alphas[], cr0[]);
-            c[] = plane_volume(nf1, alpha);
-        }
-        #endif
     }
-
-#if 0
-#if 0
-
     foreach() {
         ftmp[] = f[];
     }
@@ -471,9 +458,9 @@ void set_contact_angle_tension (scalar c, scalar cr0, const scalar ibm,
 #if PRINTCA
     fprintf(stderr, "Starting three phase cell correction\n");
 #endif
+#if 1
     foreach(serial) {
-        gf2[] = f[];
-        if (extra[] && !ghostInter[]) {
+        if (extra[]) {
             coord nf1 = interface_normal(point, ftmp);
             if (!nf1.x && !nf1.y && !nf1.z) {
               f[] = 0;
@@ -488,7 +475,7 @@ void set_contact_angle_tension (scalar c, scalar cr0, const scalar ibm,
 #if PRINTCA
     fprintf(stderr, "Starting three phase cell correction done\n");
 #endif
-#endif
-    clean_fluid (c, ibm);
-    boundary ({c});
+
+    boundary ({f});
 }
+

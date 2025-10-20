@@ -2188,7 +2188,7 @@ double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
     return - mua/(fa + SEPS)*coef*area/Delta;
 }
 
-#if 1 // testing some different interpolation functions like embed
+#if 0 // testing some different interpolation functions like embed
 #define ibm_avg(a,i,j,k)							\
   ((a[i,j,k]*(1.5 + ibm[i,j,k]) + a[i-1,j,k]*(1.5 + ibm[i-1,j,k]))/	\
    (ibm[i,j,k] + ibm[i-1,j,k] + 3.))
