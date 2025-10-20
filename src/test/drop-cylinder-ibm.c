@@ -1,31 +1,38 @@
 #include "../ibm-gcm.h"
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
+#include "../contact-ibm.h"
 #include "../my-two-phase.h"
 #include "../my-tension.h"
-#include "../contact-ibm.h"
 #include "view.h"
 
-#define R0 0.5
+#define MAXLEVEL 7
+#define MINLEVEL 3
+
+#define R0 0.50
 #define xc 0.
 #define yc 0.575 
 
-const double t_end = 15.;
+double t_end = 10;
 double theta0;
 
-u_x_ibm_dirichlet (0)
-u_y_ibm_dirichlet (0)
 
+u.t[immersed] = dirichlet(0);
+u.n[immersed] = dirichlet(0);
+
+pf[bottom] = dirichlet(0);
+p[bottom] = dirichlet(0);
 
 int main() {
-  size (2.);
+  //size (2.5);
+  size(4.);
 
   /**
   We set the origin */
 
-  origin (-1, 0);
+  origin (-L0/2., 0);
 
-  init_grid (64);
+  init_grid (1 << MAXLEVEL);
   /**
   We use a constant viscosity. */
 
@@ -35,16 +42,20 @@ int main() {
   We set the surface tension coefficient. */
   
   f.sigma = 1.;
-
+  TOLERANCE = 1e-5;
   /**
   We vary the contact_angle. */
-#if 0
-  for (theta0 = 30; theta0 <= 150; theta0 += 30) {
-  	const scalar c[] = theta0*pi/180.;
+#if 1
+  const double angles[9] = {5,15,30,60,90,120,135,150,165};
+  for (int i = 0; i < 9; ++i) {
+    theta0 = angles[i];
+  	const scalar c[] = angles[i]*pi/180.;
   	contact_angle = c;
+    t_end = theta0 == 5? 60: theta0 == 15? 20: 15;
   	run();
   }
 #else
+    t_end = 15;
     theta0 = 90;
     const scalar c[] = theta0*pi/180.;
     contact_angle = c;
@@ -59,9 +70,11 @@ event init (t = 0)
   We define the cylinder and the initial (half)-circular
   interface. */
   solid (ibm, ibmf, (sq(x - xc) + sq(y - yc) - sq(R0)));
-
-  fraction (f, - (sq(x - xc) + sq(y - (yc+sqrt(2)/2)) - sq(R0)));
-  v0 = real_volume(f);
+  fractions_cleanup(ibm, ibmf, 1e-6);
+  fraction (f, - (sq(x - xc) + sq(y - (yc + sqrt(2)/2)) - sq(R0)));
+  fraction (ch, - (sq(x - xc) + sq(y - (yc + sqrt(2)/2)) - sq(R0)));
+  foreach(reduction(+:v0))
+    v0 += f[]*dv3();
 }
 
 event logfile (i++; t <= t_end)
@@ -69,35 +82,26 @@ event logfile (i++; t <= t_end)
   /**
   If the curvature is almost constant, we stop the computation
   (convergence has been reached). */
-  
+ 
+ #if 0
   scalar kappa[];
-  curvature (f, kappa);
+  curvature (ch, kappa);
   foreach()
     if (ibm[] < 1.)
       kappa[] = nodata;
-  if (statsf (kappa).stddev < 1e-6)
+  if (statsf (kappa).stddev < 5e-6)
     return true;
-
-  double vreal = real_volume(f), vreal2 = 0;
-  foreach()
-    vreal2 += cr[]*sq(Delta);
-
-  fprintf(stderr, "%d %g %g %g %g %g\n", i, t, theta0, v0, vreal, vreal2);
-}
-
-#if 0
-event volume (i++, t<=T){
-  if (t==0) volume_vof_init = statsf (f).sum;
-
-  char name[80];
-  sprintf (name, "volume-mesh%d-angle%g.dat", N, theta0);
-  static FILE * fp = fopen (name,"w");
-  stats s = statsf (f);
-  double erreur = ((volume_vof_init - s.sum)/volume_vof_init)*100;
-  fprintf (fp, "%g %.5g %.5g\n", t, erreur, dt); 
-}
 #endif
 
+  double vreal = i == 0? v0: 0;
+  foreach(reduction(+:vreal))
+    vreal += f[]*sq(Delta);
+
+  double verr = i == 0? 0: (vreal - v0)/v0 * 100;
+
+  fprintf(stderr, "%d %g %g %g %g %g\n", i, t, theta0, v0, vreal, verr);
+  fprintf(stdout, "%d %g %g %g %g %g\n", i, t, theta0, v0, vreal, verr);
+}
 
 event end (t = end)
 {
@@ -107,19 +111,26 @@ event end (t = end)
   char name[80];
   sprintf (name, "shape-%g", theta0);
   FILE * fp = fopen (name, "w");
-  output_facets (f, fp);
+  output_facets (ch, fp);
 
  /**
   We compute the curvature only in full cells. */
   scalar kappa[];
-  curvature (f, kappa);
+  curvature (ch, kappa);
   foreach()
     if (ibm[] < 1.)
       kappa[] = nodata;
   
   stats s = statsf (kappa);
-  double R = s.volume/s.sum, V = real_volume(f);
-  fprintf (stderr, "%d %g %.5g %.5g %.3g %g %g\n", N, theta0, R, R/sqrt(V/pi), s.stddev, v0, V);
+  double R = s.volume/s.sum, V = statsf(f).sum;
+
+  static FILE * fp2 = fopen("results", "w");
+
+  fprintf (fp2, "%d %g %.5g %.5g %.3g %g %g\n", N, theta0, R, R/sqrt(V/pi), s.stddev, v0, V);
+
+  fflush(fp2);
+  if (theta0 == 165)
+      fclose(fp2);
 }
 
 #if 0
@@ -131,6 +142,18 @@ event movie(i+=10,last){
     draw_vof("ibm", "ibmf",filled=-1);
     squares("f", linear = true, min = 0, max = 1);
     save(name);
+}
+#endif
+
+#if 1
+event adapt (i++) {
+  scalar f1[], ibm1[];
+  foreach() {
+    f1[] = f[];
+    ibm1[] = ibm[];
+  }
+  adapt_wavelet ({ibm1, f1}, (double[]){1e-3, 1e-3}, 
+    maxlevel = MAXLEVEL, minlevel = MINLEVEL);
 }
 #endif
 

@@ -1,58 +1,70 @@
+#define CA 1
+
 #include "../ibm-gcm.h"
+#include "../my-axi.h"
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
-#include "../contact-ibm.h"
+#include "../ibm-gcm-vof-test.h"
 #include "../my-two-phase.h"
 #include "../my-tension.h"
+#include "../contact-ibm.h"
 
 #define D0 1.
 
-const int maxlevel = 7;
-const int minlevel = 3;
+const int maxlevel = 6;
 
-double t_end = 15.;
-double theta0;
+double t_end = 15;
+double theta0, Oh = 0.05;
 
-//u.t[immersed] = neumann(0);
 u.t[immersed] = dirichlet(0);
-//u.t[immersed] = navier_slip(0.25);
 u.n[immersed] = dirichlet(0);
+
+u.n[bottom] = dirichlet(0);
+
+//scalar ch[], cr[];
 
 int main()
 {
-  size (4.);
-  origin (-L0/2., -L0/2.);
+  size (2.);
+
+  /**
+  We shift the bottom boundary. */
+
+  origin (-0.26, 0);
   init_grid (1 << maxlevel);
   
-  /**
-  We use a constant viscosity. */
-
-  mu1 = mu2 = 0.1;
-  
-  /**
-  We set the surface tension coefficient. */
-  
-  f.sigma = 1.;
-
-  /**
-  We vary the contact_angle. */
   TOLERANCE = 1e-5;
 
+  /**
+  We use a constant viscosity. */
 #if 1
-  double angles[11] = {15,30,45.05,60,75,90,105,120,135.05,150,165};
+  rho1 = rho2 = 1;
+  mu1 = mu2 = 0.1;
+  f.sigma = 1.;
+#else
+  rho1 = rho2 = 1;
+  f.sigma = 0.1;
+  mu1 = mu2 = Oh * sqrt(rho1 * f.sigma * D0);
+
+#endif
+  /**
+  We vary the contact_angle. */
+
+#if 1
+  double angles[11] = {15,30,45,60,75,90.05,105,120,135,150,165};
   for (int i = 0; i < 11; i++) {
     theta0 = angles[i];
-    t_end = theta0 == 15? 70: 15;
+    t_end = theta0 == 15? 50: 15;
     const scalar c[] = theta0*pi/180.;
     contact_angle = c;
     run();
   }
 #else
-  t_end = 15;
-  theta0 = 90;
-  const scalar c[] = theta0*pi/180.;
-  contact_angle = c;
-  run();
+    t_end = 40;
+    theta0 = 15;
+    const scalar c[] = theta0*pi/180.;
+    contact_angle = c;
+    run();
 #endif
 }
 
@@ -60,20 +72,20 @@ double v0 = 0;
 
 event init (t = 0)
 {
-  /**
-  We define the inclined wall and the initial (half)-circular
-  interface. */
 
+  /**
+  We define the horizontal bottom wall and the initial (half)-circular
+  interface. */
+  
   vertex scalar phi[];
   foreach_vertex()
-    phi[] = (y - x - 0.001);
+    phi[] = x;
   boundary ({phi});
-
   fractions (phi, ibm, ibmf);
-  fraction (f, - (sq(x - 0) + sq(y - 0.) - sq(D0/2.)));
+  fraction (f, - (sq(x) + sq(y) - sq(D0/2.)));
+  fraction (ch, - (sq(x) + sq(y) - sq(D0/2.)));
 
-  foreach(reduction(+:v0))
-    v0 += f[]*dv3();
+  v0 = real_volume(f);
 }
 
 event logfile (i++; t <= t_end)
@@ -82,7 +94,7 @@ event logfile (i++; t <= t_end)
   /**
   If the curvature is almost constant, we stop the computation
   (convergence has been reached). */
- #if 0 
+  
   scalar kappa[];
   curvature (ch, kappa);
   foreach()
@@ -90,10 +102,10 @@ event logfile (i++; t <= t_end)
       kappa[] = nodata;
   if (statsf (kappa).stddev < 1e-6)
     return true;
-#endif
+
   double vreal = 0;
   foreach(reduction(+:vreal))
-    vreal += f[]*sq(Delta);
+    vreal += cr[]*sq(Delta)*cm[];
 
 #if 0
   scalar pos[];
@@ -152,26 +164,15 @@ event end (t = end)
       kappa[] = nodata;
 
   stats s = statsf (kappa);
-  double R = s.volume/s.sum, V = statsf(f).sum;
+  double R = s.volume/s.sum, V = 2*pi*statsf(cr).sum;
 
   static FILE * fp2 = fopen ("results", "w");
 
-  fprintf (fp2, "%d %g %.5g %.3g %.4g %g %g\n", N, theta0, R/sqrt(V/pi), s.stddev,
+  fprintf (fp2, "%d %g %.5g %.3g %.4g %g %g\n", N, theta0, R, s.stddev,
 	   equivalent_contact_angle (R, V)*180./pi, v0, V);
 
   fflush(fp2);
   if (theta0 == 165) // last case
       fclose (fp2);
-}
-
-event adapt(i++)
-{
-  scalar f1[], ibm1[];
-  foreach() {
-    f1[] = ch[];
-    ibm1[] = ibm[];
-  }
-  adapt_wavelet({ibm1,f1, u}, (double[]){1e-3, 1e-3, 1e-3, 1e-3}, 
-                maxlevel = maxlevel, minlevel = minlevel);
 }
 

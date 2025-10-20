@@ -1,16 +1,20 @@
+#define CA 1
 #include "../ibm-gcm.h"
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
+#include "../contact-ibm.h"
 #include "../my-two-phase.h"
 #include "../my-tension.h"
-#include "../contact-ibm.h"
 
-const double t_end = 30.;
-double theta0;
+#define D0 1.
 
-u_x_ibm_dirichlet (0)
-u_y_ibm_dirichlet (0)
+const int maxlevel = 6;
 
+double t_end = 15;
+double theta0, Oh = 0.05;
+
+u.t[immersed] = dirichlet(0);
+u.n[immersed] = dirichlet(0);
 
 int main()
 {
@@ -19,29 +23,37 @@ int main()
   /**
   We shift the bottom boundary. */
 
-  origin (0, - 0.26);
-  init_grid (64);
+  origin (0, -0.26);
+  init_grid (1 << maxlevel);
   
+  TOLERANCE = 1e-5;
+
   /**
   We use a constant viscosity. */
-
+#if 1
   mu1 = mu2 = 0.1;
-  
-  /**
-  We set the surface tension coefficient. */
-  
   f.sigma = 1.;
+#else
+  rho1 = rho2 = 1;
+  f.sigma = 0.1;
+  mu1 = mu2 = Oh * sqrt(rho1 * f.sigma * D0);
 
+#endif
   /**
   We vary the contact_angle. */
 
 #if 1
-  for (theta0 = 15; theta0 <= 165; theta0 += 15) {
+  double angles[11] = {15,30,45,60,75,90.05,105,120,135,150,165};
+  //double angles[10] = {30,45,60,75,90.05,105,120,135,150,165};
+  for (int i = 0; i < 11; i++) {
+    theta0 = angles[i];
+    t_end = theta0 == 15? 50: 15;
     const scalar c[] = theta0*pi/180.;
     contact_angle = c;
     run();
   }
 #else
+    t_end = 15;
     theta0 = 165;
     const scalar c[] = theta0*pi/180.;
     contact_angle = c;
@@ -63,7 +75,8 @@ event init (t = 0)
     phi[] = y;
   boundary ({phi});
   fractions (phi, ibm, ibmf);
-  fraction (f, - (sq(x) + sq(y) - sq(0.5)));
+  fraction (f, - (sq(x) + sq(y) - sq(D0/2.)));
+  fraction (ch, - (sq(x) + sq(y) - sq(D0/2.)));
 
   v0 = real_volume(f);
 }
@@ -76,20 +89,29 @@ event logfile (i++; t <= t_end)
   (convergence has been reached). */
   
   scalar kappa[];
-  curvature (f, kappa);
+  curvature (ch, kappa);
   foreach()
     if (ibm[] < 1.)
       kappa[] = nodata;
   if (statsf (kappa).stddev < 1e-6)
     return true;
 
-  double vreal = real_volume(f), vreal2 = 0;
-  foreach()
-    vreal2 += fr[]*sq(Delta);
+  double vreal = 0;
+  foreach(reduction(+:vreal))
+    vreal += f[]*sq(Delta);
 
-  double thetar = get_contact_angle(f, ibm);
+#if 0
+  scalar pos[];
+  position (cr, pos, {0,1});
+  double hmax = statsf(pos).max;
+#else
+  double hmax = 0;
+#endif
 
-  fprintf(stderr, "%d %g %g %g %g %g %g\n", i, t, theta0, v0, vreal, vreal2, thetar);
+  double perror = i == 0? 0: (vreal - v0)/v0 * 100;
+
+  fprintf(stderr, "%d %g %g %g %g %g %g\n", i, t, theta0, v0, vreal, perror, hmax);
+  fprintf(stdout, "%d %g %g %g %g %g %g\n", i, t, theta0, v0, vreal, perror, hmax);
 }
 
 /**
@@ -123,25 +145,27 @@ event end (t = end)
   char name[80];
   sprintf (name, "shape-%g", theta0);
   FILE * fp = fopen (name, "w");
-  output_facets (f, fp);
+  output_facets (ch, fp);
 
   /**
   We compute the curvature only in full cells. */
   
   scalar kappa[];
-  curvature (f, kappa);
+  curvature (ch, kappa);
   foreach()
     if (ibm[] < 1.)
       kappa[] = nodata;
 
   stats s = statsf (kappa);
-  double R = s.volume/s.sum, V = 2.*real_volume(f);
+  double R = s.volume/s.sum, V = 2.*statsf(f).sum;
 
-  //V = statsf(f).sum;
+  static FILE * fp2 = fopen ("results", "w");
 
-  double thetar = get_contact_angle(f, ibm);
+  fprintf (fp2, "%d %g %.5g %.3g %.4g %g %g\n", N, theta0, R/sqrt(V/pi), s.stddev,
+	   equivalent_contact_angle (R, V)*180./pi, v0, V);
 
-  fprintf (stdout, "%d %g %.5g %.3g %.4g %g %g %g\n", N, theta0, R/sqrt(V/pi), s.stddev,
-	   equivalent_contact_angle (R, V)*180./pi, v0, V, thetar);
+  fflush(fp2);
+  if (theta0 == 165) // last case
+      fclose (fp2);
 }
 

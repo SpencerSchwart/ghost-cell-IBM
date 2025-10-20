@@ -1,20 +1,20 @@
 //#include "navier-stokes/centered.h"
 #include "../ibm-gcm.h"
-#define CCM 1
+#define CCM 0
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
 #include "view.h"
 
 #define L0 10
-int maxlevel = 6;
+const int l0 = 10;
+const int maxlevel = 6;
+//const double delta = l0/pow(2,maxlevel);
 
 const double U0 = 5;
 double Re = 50;
 double t_end = 100;
 double H = 10;
-double offset = 2.3;
-// coord vc = {0, 0};
-const double delta = 10./pow(2,7);
+double offset = 2.4;
 
 face vector muv[];
 
@@ -33,8 +33,10 @@ u.t[bottom] = neumann (0);
 p[bottom] = neumann (0);
 pf[bottom] = neumann (0);
 
-u_x_ibm_dirichlet(0)
-u_y_ibm_dirichlet(0)
+//u.t[immersed] = neumann(0);
+//u.t[immersed] = navier_slip(0.2);
+u.t[immersed] = dirichlet(0);
+u.n[immersed] = dirichlet(0);
 
 int main() {
   size(L0);
@@ -42,28 +44,15 @@ int main() {
   mu = muv;
   // TOLERANCE = 1.e-6;
   // TOLERANCE_MU = 1.e-5;
-  //stokes = true;
+  stokes = true;
   DT = 0.1;
 
   run();
 }
 
-double mm = 0.05;
-
 event wall (i = 0) {
-  // solid (ibm, ibmf, y > (1.5) );
-  //solid (ibm, ibmf, y > 2.55 && y < 7.45);
   solid (ibm, ibmf, y - offset);
 }
-
-/*
-event ibm_advect (i++)
-{
-    solid (vof, sf, y > 1.5 + (t * 0.001));
-}
-*/
-
-
 
 event properties (i++) {
     foreach_face() {
@@ -101,15 +90,6 @@ event logfile (i++, t <= t_end) {
   fprintf (stderr, "%d %g %d %d %d %d %g\n", i, t,
            mgp.i, mgp.nrelax, mgu.i, mgu.nrelax, TOLERANCE);
 }
-
-/*
-event adapt (i++) {
-  adapt_wavelet ({vof,u}, (double[]){1.e-2,3e-3,3e-3},
-		 maxlevel = maxlevel, minlevel = maxlevel - 2);
-}
-*/
-
-
 
 event stop (t = t_end) {
   static FILE * fp = fopen("perf", "w");

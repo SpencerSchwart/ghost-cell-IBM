@@ -1,27 +1,44 @@
+#define CA 1
 #include "../ibm-gcm.h"
 #include "../my-centered.h"
 #include "../ibm-gcm-events.h"
-#include "../contact-ibm.h"
+#include "../ibm-gcm-vof-test.h"
 #include "../my-two-phase.h"
 #include "../my-tension.h"
+#include "../contact-ibm.h"
 
 #define D0 1.
 
-const int maxlevel = 7;
+const int maxlevel = 8;
 const int minlevel = 3;
+const double L = 4.;
 
 double t_end = 15.;
 double theta0;
 
-//u.t[immersed] = neumann(0);
 u.t[immersed] = dirichlet(0);
-//u.t[immersed] = navier_slip(0.25);
 u.n[immersed] = dirichlet(0);
+
+u.n[top] = neumann(0);
+p[top]  = dirichlet(0);
+pf[top] = dirichlet(0);
+
+u.n[right] = neumann(0);
+p[right]  = dirichlet(0);
+pf[right] = dirichlet(0);
+
+u.n[left] = neumann(0);
+p[left]  = dirichlet(0);
+pf[left] = dirichlet(0);
+
+u.n[bottom] = neumann(0);
+p[bottom]  = dirichlet(0);
+pf[bottom] = dirichlet(0);
 
 int main()
 {
-  size (4.);
-  origin (-L0/2., -L0/2.);
+  size (L);
+  origin (-3*L/4.,-L/4., 0);
   init_grid (1 << maxlevel);
   
   /**
@@ -38,11 +55,11 @@ int main()
   We vary the contact_angle. */
   TOLERANCE = 1e-5;
 
-#if 1
+#if 0
   double angles[11] = {15,30,45.05,60,75,90,105,120,135.05,150,165};
   for (int i = 0; i < 11; i++) {
     theta0 = angles[i];
-    t_end = theta0 == 15? 70: 15;
+    t_end = theta0 == 15? 60: 15;
     const scalar c[] = theta0*pi/180.;
     contact_angle = c;
     run();
@@ -63,17 +80,26 @@ event init (t = 0)
   /**
   We define the inclined wall and the initial (half)-circular
   interface. */
-
+  
   vertex scalar phi[];
   foreach_vertex()
-    phi[] = (y - x - 0.001);
+    phi[] = (y - x + 0.03);
   boundary ({phi});
-
   fractions (phi, ibm, ibmf);
   fraction (f, - (sq(x - 0) + sq(y - 0.) - sq(D0/2.)));
+  fraction (ch, - (sq(x - 0) + sq(y - 0.) - sq(D0/2.)));
 
-  foreach(reduction(+:v0))
-    v0 += f[]*dv3();
+  v0 = real_volume(f);
+}
+
+
+event acceleration (i++)
+{
+    foreach_face(y)
+      a.y[] += -0.1;
+
+    foreach_face(x)
+      a.x[] +=  0.1;
 }
 
 event logfile (i++; t <= t_end)
@@ -82,7 +108,7 @@ event logfile (i++; t <= t_end)
   /**
   If the curvature is almost constant, we stop the computation
   (convergence has been reached). */
- #if 0 
+  
   scalar kappa[];
   curvature (ch, kappa);
   foreach()
@@ -90,10 +116,10 @@ event logfile (i++; t <= t_end)
       kappa[] = nodata;
   if (statsf (kappa).stddev < 1e-6)
     return true;
-#endif
+
   double vreal = 0;
   foreach(reduction(+:vreal))
-    vreal += f[]*sq(Delta);
+    vreal += cr[]*sq(Delta);
 
 #if 0
   scalar pos[];
@@ -152,7 +178,7 @@ event end (t = end)
       kappa[] = nodata;
 
   stats s = statsf (kappa);
-  double R = s.volume/s.sum, V = statsf(f).sum;
+  double R = s.volume/s.sum, V = statsf(cr).sum;
 
   static FILE * fp2 = fopen ("results", "w");
 
@@ -171,7 +197,6 @@ event adapt(i++)
     f1[] = ch[];
     ibm1[] = ibm[];
   }
-  adapt_wavelet({ibm1,f1, u}, (double[]){1e-3, 1e-3, 1e-3, 1e-3}, 
-                maxlevel = maxlevel, minlevel = minlevel);
+  adapt_wavelet({ibm1,f1, u}, (double[]){1e-3, 1e-3, 1e-4, 1e-4}, maxlevel = maxlevel, minlevel = minlevel);
 }
 
