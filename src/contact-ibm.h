@@ -9,11 +9,7 @@
 normal_contact returns the properly-oriented normal of an interface touching the 
 immersed boundary. ns is the normal to the immersed solid boundary and nf is the
 normal to the VOF interface not taking into account the contact angle boundary
-condition. angle is the imposed static contact angle.
-
-TODO: show derivation better
-TODO: 3D extension
-*/
+condition. angle is the imposed static contact angle. */
 
 static inline coord normal_contact (coord ns, coord nf, double angle)
 {
@@ -55,9 +51,6 @@ static inline coord normal_contact (coord ns, coord nf, double angle)
 
     return n;
 }
-
-
-
 
 /**
 clean_fluid is used to remove any fluid inside the solid boundary that is
@@ -126,7 +119,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
         inter[] = c[] > 0 && c[] < 1;
         extra[] = inter[] && ibm[] > 0 && ibm[] < 1;
 
-#if 0
+#if 1 // Make sure that extrapolation cells isn't an interior cell
         if (extra[]) {
             bool caCell = false;
             foreach_neighbor() {

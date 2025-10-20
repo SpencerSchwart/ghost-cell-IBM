@@ -1,4 +1,9 @@
+#if !AXI
+#undef dv
+#define dv()  (pow(Delta,dimension))
+#endif
 #define dv2() (pow(Delta,dimension)*ibm[]*cm[])
+#define dv3() (pow(Delta,dimension)*ibm[])
 
 #include "fractions.h"
 

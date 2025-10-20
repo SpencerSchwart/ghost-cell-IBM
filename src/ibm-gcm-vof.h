@@ -855,30 +855,19 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
             ps[i].x = nodata;
         }
 
-    int numpf = boundary_points(nf, alphaf, lhs, rhs, pf);
-    int numps = boundary_points(ns, alphas, lhs, rhs, ps);
+    
+    boundary_points(nf, alphaf, lhs, rhs, pf);
+    boundary_points(ns, alphas, lhs, rhs, ps);
 
     // 3. find the intersecting point of the two interfaces (if there is one)
     coord pint = {nodata,nodata,nodata};
-    int numpi = interface_intersect (nf, alphaf, ns, alphas, lhs, rhs, &pint);
+    interface_intersect (nf, alphaf, ns, alphas, lhs, rhs, &pint);
 
 
     // 4. find which points create the polygon defining the real fluid region
     //    9 possible points
-    coord poly[9] = {
-        pf[0],
-        pf[1],
-        ps[0],
-        ps[1],
-        pint,
-        lhs,
-        rhs,
-        lhst,
-        rhsb
-    };
-    //poly[0] = pf[0], poly[1] = pf[1], poly[2] = ps[0], poly[3] = ps[1], poly[4] = pint;
-    //poly[5] = lhs, poly[6] = rhs, poly[7] = lhst, poly[8]= rhsb;
-
+    coord poly[9] = {pf[0], pf[1], ps[0], ps[1], pint, lhs, rhs, lhst, rhsb};
+    
     int nump = 0; // # of real points
     for (int i = 0; i < 9; ++i) {
         double placement = region_check2((plane){nf, alphaf}, (plane){ns, alphas}, poly[i]);
@@ -933,17 +922,6 @@ double immersed_fraction (double c, coord nf, double alphaf, coord ns, double al
     return immersed_volume(c, liquid, solid, lhs, rhs, advVolume, print);
 #endif
 }
-
-
-
-/*
-immersed_line_alpha calculates the alpha value that conserves the volume of
-real fluid, given in freal. We find the root of a function using the iterative
-bisection method to obtain alpha.
-
-The solver converges after about 20 iterations if tolerance = 1e-7
-*/
-
 
 typedef struct tripoint
 {
@@ -1078,7 +1056,6 @@ int rsolver_brent (double* result, double a, double b, const void* data, double 
 /** 
 adjust x coordinate (rhsx) to conserve area
     lhsb = left-hand-side bottom, rhst = right-hand-side top. */
-
 double fit_volume_error (const void* data, double newx)
 {
     const tripoint tcell = (*(tripoint*)data);
@@ -1224,6 +1201,13 @@ bool is_interior_cell (Point point, scalar ibm, scalar cr)
     return true;
 }
 
+/**
+immersed_line_alpha calculates the alpha value that conserves the volume of
+real fluid, given in freal. We find the root of a function using the iterative
+bisection method to obtain alpha.
+
+The solver converges after about 10 iterations if tolerance = 1e-9 using Brent's method,
+and a little more than twice that for the normal bisection method. */
 trace
 double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, double alphas,
                             double freal, double tolerance = BI_TOL, int * numitr = NULL)
@@ -1278,19 +1262,11 @@ double redistribute_volume (scalar cr, const scalar ibm)
     int icells = 0;
     foreach(reduction (+:verror) reduction (+:icells)) {
         if (cr[] > ibm[]) { // cell is too full
-#if AXI
             verror += (cr[] - ibm[])*dv();
-#else
-            verror += (cr[] - ibm[])*pow(Delta, dimension);
-#endif
             cr[] = ibm[];
         }
         else if (cr[] < 0) { // cell is too empty
-#if AXI
             verror += cr[]*dv();
-#else
-            verror += cr[]*pow(Delta, dimension);
-#endif
             cr[] = 0;
         }
         #if MOVING
@@ -1317,11 +1293,7 @@ double redistribute_volume (scalar cr, const scalar ibm)
         if (cr[] > 0 && cr[] < ibm[]-1e-10 && ibm[] >= 1) {
 
             // cell is too full to take the additional volume, so give it to neighbors
-#if AXI
             double vol = dv();
-#else
-            double vol = pow(Delta, dimension);
-#endif
             if (cr[] + (verror/(icells*vol)) > ibm[]) {
                 overfill = 1;
 
