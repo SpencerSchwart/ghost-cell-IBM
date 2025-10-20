@@ -28,15 +28,6 @@ they will be decayed to n ≡ x, t ≡ y, and r ≡ z
 */
 bool local_bc_coordinates = true; 
 
-#if 0
-typedef struct solidVelo {
-    void (* move_solid_x) (scalar * ibm, face vector * ibmf);
-    void (* move_solid_y) (scalar * ibm, face vector * ibmf);
-} solidVelo;
-
-solidVelo usolid;
-#endif
-
 typedef struct fragment {
     coord n;
     double alpha;

@@ -33,8 +33,7 @@ for viscosity. */
 #if EMBED
 #include "viscosity-embed.h"
 #elif IBM
-#include "my-viscosity-gcm-old.h"
-//#include "my-viscosity-gcm.h"
+#include "my-viscosity-gcm.h"
 #else
 #include "viscosity.h"
 #endif // EMBED

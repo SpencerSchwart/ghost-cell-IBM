@@ -109,7 +109,7 @@ event properties (i++)
 #if !CA
     rhov[] = ibm[]*rho(sf[]);
 #else
-    rhov[] = rho(sf[]);
+    rhov[] = rho(sf[]); // TODO: try ibm[]*rho(sf[])
 #endif // CA
 
 #else // !IBM

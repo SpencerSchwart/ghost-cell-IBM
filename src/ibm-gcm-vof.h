@@ -2,7 +2,6 @@
 ###### TWO PHASE FUNCTIONS FOR IBM ######
 */
 
-#define PRINTA 0
 #define BI_TOL 1e-9 // TODO: standardize tolerance for root solvers
 
 #include "fractions.h"
@@ -222,24 +221,11 @@ const coord cubeface[6] = {
 int plane_intersect (plane pl1, plane pl2, plane padv, coord pint[2], int print = 0)
 {
     if (determinant(pl1.n, pl2.n) <= 1e-15) {
-        #if PRINTA
-        fprintf(stderr, "planes are parallel\n");
-        #endif
         return 0;   // planes are parallel
     }
 
     coord d = cross_product(pl1.n, pl2.n);
     coord p0 = plane_p0 (pl1, pl2, d);
-
-#if PRINTA
-if (print) {
-    fprintf(stderr, "d = \n");
-    print_coord_list(1, &d);
-
-    fprintf(stderr, "p0 = \n");
-    print_coord_list(1, &p0);
-}
-#endif
 
     coord cubeface_copy[6];
     memcpy(cubeface_copy, cubeface, sizeof(cubeface));
@@ -254,27 +240,7 @@ if (print) {
 
         coord pit = {p0.x + t*d.x, p0.y + t*d.y, p0.z + t*d.z};
 
-#if PRINTA
-if (print) {
-        fprintf(stderr, "pi = \n");
-        print_coord_list(1, &pit);
-}
-#endif
-
-        //if (approx_equal (pit, p0, VTOL))
-        //    continue;
-
-#if PRINTA
-if (print) {
-        fprintf(stderr, "point != p0\n");
-
-        fprintf(stderr, "bounds_check = %d, unique = %d\n", 
-            bounds_check(pit, padv.alpha), point_is_unique(2, pint, pit));
-}
-#endif
-
         if (bounds_check(pit, padv.alpha) && point_is_unique(2, pint, pit)) {
-            //assert(count < 2);
             if (count > 2)
                 fprintf(stderr, "WARNING: count > 2 in plane_intersect!\n");
             else {
@@ -298,51 +264,10 @@ static coord cube_vertices[8] = {
         {-0.5,-0.5,-0.5}
 };
 
-#if 0
-/*
-This function returns true if there exists a triple points within the cell, 
-i.e. the liquid interface intersects the solid one, given the normals of the
-liquid and solid interfaces.
-*/
 
-bool is_triple_point (Point point, coord nf, coord ns)
-{
-    if (!(on_interface(ibm)) || !(on_interface(f)))
-        return false;
-    if ((ns.x == 0 && ns.y == 0 && ns.z == 0) || (nf.x == 0 && nf.y == 0 && nf.z == 0))
-        return false;
-
-    double alphas = plane_alpha (ibm[], ns);
-
-    double alphaf = plane_alpha (f[], nf);
-
-    #if 0
-    double intercept = ((alphas/(ns.y+SEPS)) - (alphaf/(nf.y+SEPS))) /
-                       ((ns.x/(ns.y+SEPS)) - (nf.x/(nf.y+SEPS)) + SEPS);
-    #endif
-
-#if dimension == 2
-    coord pt_int = {0,0};
-    pt_int.x = ((alphas/(ns.y+SEPS)) - (alphaf/(nf.y+SEPS))) /
-                  ((ns.x/(ns.y+SEPS)) - (nf.x/(nf.y+SEPS)) + SEPS);
-    pt_int.y = (alphaf/(nf.y + SEPS)) - (nf.x*pt_int.x)/(nf.y + SEPS);
-
-    return (fabs(pt_int.x) <= 0.5 && fabs(pt_int.y) <= 0.5);
-#else
-    plane plf = {nf, alphaf};
-    plane pls = {ns, alphas};
-    plane padv = {{1,0,0}, 0.5};
-    coord pint[2];
-
-    return plane_intersect (plf, pls, padv, pint);
-#endif
-}
-#endif
-
-/*
+/**
 boundary_points is used to find the intersecting points of the fluid interface
-within the area being advected.
-*/
+within the area being advected. */
 
 int boundary_points (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
 {
@@ -378,14 +303,13 @@ int boundary_points (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
 }
 
 
-/*
+/**
 this function checks to see if the two interfaces intersect each other. If they
 do, and it is within the bounds of the region, the coordinates is stored in pi.
 It also returns 1 or 0 based on if the lines intersect each other or not.
 
 TODO: do we need another case when ns.y || nf.y = 0? or does this code
-      handle everything ok?
-*/
+      handle everything ok? */
 
 int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
                          coord lhs, coord rhs, coord * pint = NULL)
@@ -408,7 +332,7 @@ int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
     return 1;
 }
 
-/*
+/**
 this function checks to see if a given point, pc, is inside the region
 containing only real fluid and not inside the immersed boundary.
 
@@ -416,8 +340,7 @@ Note: ns is the inward pointing normal for the solid boundary while
       nf is the outward pointing normal for the fluid boundary.
 
 returns
-    + if inside, - if outisde, and 0 if the points is on the interface
-*/
+    + if inside, - if outisde, and 0 if the points is on the interface */
 
 double region_check2(plane plf, plane pls, coord pc)
 {
@@ -537,9 +460,8 @@ int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump]
     return planeCount;
 }
 
-/*
-The next few functions are to allow portablity for qsort_r
-*/
+/**
+The next few functions are to allow portablity for qsort_r. */
 
 typedef int (*qsort_cmp_r)(const void *a, const void *b, void *arg);
 
@@ -560,7 +482,7 @@ void qsort_r_fallback(void *base, size_t nmemb, size_t size,
 }
 
 
-/*
+/**
 This function uses cross products to determine the orientation of two points w.r.t
 a given center coordinate.
 
@@ -569,8 +491,7 @@ is_begin will return
     false if a is in front of b, i.e. a is already in clockwise order with b.
 
 in degenerate cases where a and b lay along the same line (a x b = 0) we return
-true if a is further from the center than b.
-*/
+true if a is further from the center than b. */
 
 int is_behind (const void *pa, const void *pb, void *center)
 {
@@ -592,7 +513,8 @@ int is_behind (const void *pa, const void *pb, void *center)
     return (dista > distb) ? -1: (dista < distb);
 }
 
-int compare_projected(const void *a, const void *b) {
+int compare_projected(const void *a, const void *b)
+{
     const proj_coord *pa = a;
     const proj_coord *pb = b;
     double angle_a = atan2(pa->y, pa->x);
@@ -617,14 +539,11 @@ coord face_normal(coord a, coord b, coord c)
 }
 
 
-/*
+/**
 sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
-clockwise order (or counter-clockwise if y-advection).
+clockwise order (or counter-clockwise if y-advection). */
 
-TODO: make custome qsort_r function to allow compatiblity with Mac compilers
-*/
-
-void sort_clockwise (int nump, coord cf[nump], int print = 0)
+void sort_clockwise (int nump, coord cf[nump])
 {
     double xsum = 0, ysum = 0;
     for (int i = 0; i < nump; ++i) {
@@ -632,9 +551,6 @@ void sort_clockwise (int nump, coord cf[nump], int print = 0)
         ysum += cf[i].y;
     }
     coord pc = {xsum/nump, ysum/nump}; // center coordinate is average of all points
-   
-    if (print)
-        fprintf(stderr, "SORTING: pc={%g, %g} nump=%d\n", pc.x, pc.y, nump);
     qsort_r_fallback (cf, nump, sizeof(coord), is_behind, &pc);
 }
 
@@ -673,15 +589,7 @@ void sort_clockwise3 (int nump, coord cf[nump], coord n = {0,0,0})
 
     for (int i = 0; i < nump; ++i) {
         cf[i] = cfp[i].og;
-
-        #if PRINTA
-        //fprintf(stderr, "cf = {%g, %g, %g} cfp = {%g, %g}\n",
-        //cf[i].x, cf[i].y, cf[i].z, cfp[i].x, cfp[i].y);
-        #endif
     }
-    #if PRINTA
-    //fprintf(stderr, "\n");
-    #endif
 }
 
 void triangulate_planes(int plcount, plane * planes)
@@ -788,11 +696,9 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     if (lhs.x == rhs.x || c <= 0)
         return 0;
 
-#if 1
     if (rhs.x < 0.5 && advVolume) {
         rhs.x = fit_volume (advVolume, pls.n, pls.alpha, rhs.x);
     }
-#endif
 
     double ufdt = rhs.x; // advection plane is always the +x plane
     const plane padv = {{1,0,0}, ufdt};
@@ -853,24 +759,6 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
         advVolume = liquidVolume*totalVolume;
 
     double vf = clamp (realVolume/advVolume, 0., 1.);
-
-    #if PRINTA
-    if (advVolume && !approx_equal_double(liquidVolume*totalVolume, advVolume))
-        fprintf(stderr, "WARNING: advected volumes do not equal eachother! given = %g calc = %g\n",
-            advVolume, liquidVolume*totalVolume);
-    #endif
-
-//#if PRINTA
-    if (print) {
-      fprintf(stderr, "fluid = ({%0.15g, %0.15g, %0.15g}, %0.15g)\nsolid = ({%g, %g, %g}, %g) adv=%g\n\n",
-            plf.n.x, plf.n.y, plf.n.z, plf.alpha, pls.n.x, pls.n.y, pls.n.z, pls.alpha, ufdt);
-        print_coord_list(rcount, tp);
-        print_plane_points(planeCount, planes);
-        //print_plane_triangles(planeCount, planes);
-        fprintf(stderr, "real volume = %g, total volume = %g, liquid volume = %g, advVolume=%g, vf=%g\n",
-            realVolume, totalVolume, liquidVolume, advVolume, vf);
-    }
-//#endif
 
     for (int i = 0; i < planeCount; ++i) {
         if (planes[i].p) free (planes[i].p);
@@ -939,17 +827,8 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     double areaTotal = polygon_area (4, rect); // total area being considered for advection (uf*dt*h)
     double areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs); // volume fraction that isn't solid
 
-    // TODO: temp fix when flux area > fluid area (small cell problem)
-    #if 0
-    if (alphas - ns.x*rhs.x - ns.y*rhs.y < 0 && alphas - ns.x*rhsb.x - ns.y*rhsb.y < 0)
-        areaLiquid = 1.;
-    #endif
-
-    //#if PRINTA
     double cvy = line_intersect (alphas, ns, x = -0.5); // intercept of solid interface on left face
-    //#endif
 
-    #if 1 // temporarily off
     double rhsx = 0;
     if (rhs.x < 0.5 && areaLiquid < 1 && advVolume) {
         cvy = clamp(cvy, -0.5, 0.5);
@@ -960,24 +839,12 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
         areaTotal = polygon_area (4, rect0);
         areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs);
     }
-    #endif
 
     double areaAdv = 0;
-
-    #if 1
     if (!advVolume)
         areaAdv = areaTotal*areaLiquid; // = uf*dt*ibmf*dx
     else
         areaAdv = advVolume;
-    #else
-        areaAdv = areaTotal*areaLiquid; // = uf*dt*ibmf*dx
-    #endif
-
-    #if PRINTA
-    if (advVolume && !approx_equal_double(areaTotal*areaLiquid, advVolume))
-        fprintf(stderr, "WARNING: advected volumes do not equal eachother! given = %g calc = %g\n",
-            advVolume, areaTotal*areaLiquid);
-    #endif
 
     // 2. find the intersection points, pf & ps, of the fluid and solid interface
     //    with the enclosed region
@@ -998,9 +865,19 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
 
     // 4. find which points create the polygon defining the real fluid region
     //    9 possible points
-    coord poly[9];
-    poly[0] = pf[0], poly[1] = pf[1], poly[2] = ps[0], poly[3] = ps[1], poly[4] = pint;
-    poly[5] = lhs, poly[6] = rhs, poly[7] = lhst, poly[8]= rhsb;
+    coord poly[9] = {
+        pf[0],
+        pf[1],
+        ps[0],
+        ps[1],
+        pint,
+        lhs,
+        rhs,
+        lhst,
+        rhsb
+    };
+    //poly[0] = pf[0], poly[1] = pf[1], poly[2] = ps[0], poly[3] = ps[1], poly[4] = pint;
+    //poly[5] = lhs, poly[6] = rhs, poly[7] = lhst, poly[8]= rhsb;
 
     int nump = 0; // # of real points
     for (int i = 0; i < 9; ++i) {
@@ -1009,24 +886,6 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
             nump++;
         else 
             poly[i].x = nodata, poly[i].y = nodata;
-    }
-
-    if (print == 1) {
-        fprintf(stderr, "||  pf1=(%g,%g) pf2(%g,%g) ps1=(%g,%g) ps2=(%g,%g) pint=(%g,%g)\n",
-                        pf[0].x, pf[0].y, pf[1].x, pf[1].y, ps[0].x, ps[0].y, ps[1].x, 
-                        ps[1].y, pint.x, pint.y);
-   
-        fprintf(stderr, "|| p0=(%g,%g) p1=(%g,%g) p2=(%g,%g) p3=(%g,%g) p4=(%g,%g)"
-                        "   p5=(%g,%g) p6=(%g,%g) p7=(%g,%g) p8=(%g,%g)\n", 
-                        poly[0].x, poly[0].y, poly[1].x, poly[1].y,poly[2].x, poly[2].y, 
-                        poly[3].x, poly[3].y, poly[4].x, poly[4].y, poly[5].x, poly[5].y, 
-                        poly[6].x, poly[6].y, poly[7].x, poly[7].y, poly[8].x, poly[8].y);
-
-        fprintf(stderr, "||  lhs=(%g,%g) rhs=(%g,%g) lhst=(%g,%g) rhsb=(%g,%g)\n",
-                        lhs.x, lhs.y, rhs.x, rhs.y, lhst.x, lhst.y, rhsb.x, rhsb.y);
-                        
-        fprintf(stderr, "||  nf=(%g,%g) alphaf=%g ns=(%g,%g) alphas=%g c=%g %d %d %d %d\n",
-                        nf.x, nf.y, alphaf, ns.x, ns.y, alphas, c, numpf, numps, numpi, nump);
     }
 
     if (nump == 0) // we don't do anything if the region has no interface fragments
@@ -1040,31 +899,11 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
             count++;
         }
 
-    if (print == 1) 
-        for (int i = 0; i < nump; ++i) 
-            fprintf(stderr, "cf[%d] = (%g,%g)\n", i, cf[i].x, cf[i].y);
-
     // 5. sort the real points in clockwise order
-    sort_clockwise (nump, cf, print);
+    sort_clockwise (nump, cf);
 
     // 6. use the shoelace formula to find the area
     double area = polygon_area (nump, cf);
-
-    #if PRINTA
-    if (print == 1) {
-        fprintf (stderr, "AFTER SORTING\n");
-        for (int i = 0; i < nump; ++i) {
-            fprintf(stderr, "cf[%d] = (%g,%g)\n",
-                         i, cf[i].x, cf[i].y);
-        }
-        // get f[] w/o considering immersed boundary
-        double f0 = rectangle_fraction(nf, alphaf, lhs, rhs);
-        fprintf (stderr, "area=%0.15g  areaTotal=%0.15g areaLiquid=%0.15g "
-                         "areaf=%0.15g f0=%0.15g areaAdv=%g cvy=%g vf=%g\n", 
-                          area, areaTotal, areaLiquid, area/(areaTotal*areaLiquid), 
-                          f0, areaAdv, cvy, area/areaAdv);
-    }
-    #endif
 
     double vf = clamp(area/(areaAdv+SEPS), 0., 1.);
     return vf;
@@ -1091,12 +930,6 @@ double immersed_fraction (double c, coord nf, double alphaf, coord ns, double al
 #else
     plane liquid = {nf, alphaf};
     plane solid = {ns, alphas};
-
-    if (print)
-    fprintf(stderr, "Immersed_fraction: nf={%0.15g, %0.15g, %0.15g} alphaf=%0.15g ns={%g, %g, %g} alphas=%g\n",
-                nf.x, nf.y, nf.z, alphaf, ns.x, ns.y, ns.z, alphas);
-
-
     return immersed_volume(c, liquid, solid, lhs, rhs, advVolume, print);
 #endif
 }
@@ -1128,12 +961,13 @@ tripoint fill_tripoint (double fr, coord nf, double alphaf, coord ns, double alp
     return tcell;
 }
 
-// generic root solver using the bisection method
+/**
+generic root solver using the bisection method */
 int rsolver_bisection (double* a, double amin, double amax, const void* data, double (*func)(const void*, double),
-                       double tolerance = BI_TOL, int maxitr = 50, int print = 0)
+                       double tolerance = BI_TOL, int maxitr = 50)
 {
     double errmax = (*func)(data, amax);
-    if (fabs(errmax) < tolerance) { // problematic for receding, hydrophobic CAs?
+    if (fabs(errmax) < tolerance) {
         *a = amax;
         return 0;
     }
@@ -1160,9 +994,10 @@ int rsolver_bisection (double* a, double amin, double amax, const void* data, do
     return itr;
 }
 
-// generic root solver using Brent's method
+/**
+generic root solver using Brent's method */
 int rsolver_brent (double* result, double a, double b, const void* data, double (*func)(const void*, double),
-                   double tolerance = BI_TOL, int maxitr = 50, int print = 0, int warning = 1)
+                   double tolerance = BI_TOL, int maxitr = 50, int warning = 1)
 {
     double fa = (*func)(data, a);
     if (fabs(fa) < tolerance) {
@@ -1179,12 +1014,6 @@ int rsolver_brent (double* result, double a, double b, const void* data, double 
     if (fa * fb >= 0) {
         if (warning)
             fprintf(stderr, "WARNING: range in Brent's solver does not contain root!\n");
-
-    #if PRINTA
-        fprintf(stderr, "    f(%g) = %0.15g, f(%g) = %0.15g\n",
-            a, fa, b, fb);
-    #endif
-
         return -1;
     }
 
@@ -1195,7 +1024,6 @@ int rsolver_brent (double* result, double a, double b, const void* data, double 
 
     double c = a, fc = fa, d = b - a; 
     int iter = 0, mflag = 1;
-    //while (fabs(fb) > tolerance && fabs(fa) > tolerance && iter < maxitr) {
     while (fabs(b - a) > tolerance && fabs(fb) > tolerance && fabs(fa) > tolerance && iter < maxitr) {
 
         double s;
@@ -1249,8 +1077,7 @@ int rsolver_brent (double* result, double a, double b, const void* data, double 
 
 /** 
 adjust x coordinate (rhsx) to conserve area
-    lhsb = left-hand-side bottom, rhst = right-hand-side top
-*/
+    lhsb = left-hand-side bottom, rhst = right-hand-side top. */
 
 double fit_volume_error (const void* data, double newx)
 {
@@ -1266,11 +1093,6 @@ double fit_volume_error (const void* data, double newx)
 #endif
     double vfrac = rectangle_fraction (tcell.ns, tcell.alphas, lhs, rhs);
     double vreal = vtotal * vfrac;
-
-#if PRINTA && 0
-    fprintf(stderr, "newx=%0.15g vtotal=%0.15g vfrac=%0.15g vreal=%0.15g tcell.fr=%0.15g err=%g\n",
-        newx, vtotal, vfrac, vreal, tcell.fr, (vreal - tcell.fr));
-#endif
 
     // TODO: divide by dv() or something to allow for scalability
     return (vreal - tcell.fr); // in this case, tcell.fr holds advVolume
@@ -1293,7 +1115,6 @@ double fit_volume (double advVolume, coord ns, double alphas, double ufdt)
     int itr = rsolver_brent (&newx, xmin, xmax, &tcell, fit_volume_error, 
                              tolerance = 1e-14, maxitr = maxitr, warning = 0);
     
-    #if 1
     bool smallcell = false;
     if (itr == -1) { // small cell problem, use maximum x anyways
         smallcell = true;
@@ -1302,15 +1123,6 @@ double fit_volume (double advVolume, coord ns, double alphas, double ufdt)
         itr = rsolver_brent (&newx, xmin, xmax, &tcell, fit_volume_error, 
                              tolerance = 1e-14, maxitr = maxitr);
     }
-    #else
-    if (itr == -1)
-        return oldx;
-    #endif
-    
-    #if PRINTA
-    fprintf(stderr, "AREA SOLVER done after %d itrs: oldx=%g newx=%g small cell = %d\n", 
-        itr, oldx, newx, smallcell);
-    #endif
 
     (void) smallcell;
     if (itr == maxitr || (itr == 0 && newx == HUGE)) {
@@ -1330,20 +1142,9 @@ double get_real_error (const void* data, double alpha)
 
     double fa = rectangle_fraction (tcell.nf, alpha, lhs, rhs);
     double frcalc = tcell.s*immersed_fraction (fa, tcell.nf, alpha, tcell.ns, 
-                                              tcell.alphas, lhs, rhs, print = 0);
-    #if PRINTA
-    #if 1
-    double err = frcalc - clamp(tcell.fr, 0, tcell.s);
-    fprintf(stderr, "alpha = %0.15g fa = %0.15g frcalc = %0.15g tcell.fr = %0.15g err=%g tcell.s=%g\n", 
-        alpha, fa, frcalc, tcell.fr, err, tcell.s);
-    #endif
-    #endif
-
+                                               tcell.alphas, lhs, rhs);
     return frcalc - clamp(tcell.fr, 0, tcell.s);
 }
-
-
-//extern scalar f;
 
 
 double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int * numitr = NULL)
@@ -1368,14 +1169,8 @@ double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int 
                                                 tcell.ns, tcell.alphas, lhs, rhs);
     }
 
-    for (int i = 0; i < dp; ++i) { // TODO: is there a better check than this?
-        //if (approx_equal_double (frArray[i], tcell.fr, INT_TOL));
+    for (int i = 0; i < dp; ++i) {
         if (frArray[i] >= tcell.fr - INT_TOL && frArray[i] <= tcell.fr + INT_TOL) {
-        //if (frArray[i] >= tcell.fr - 1e-10 && frArray[i] <= tcell.fr + 1e-10) {
-        #if PRINTA
-            fprintf(stderr, "ghost_alpha: fr = %g alpha = %g fr0 = %g\n", 
-                frArray[i], alphaArray[i], tcell.fr);
-        #endif
             return alphaArray[i];
         }
     }
@@ -1390,60 +1185,9 @@ double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int 
     return alpha;
 }
 
-
-trace
-double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, double alphas,
-                       double freal, double tolerance = BI_TOL, int * numitr = NULL)
-{
-    if ((freal <= VTOL || freal >= 1-VTOL) && !nf.x && !nf.y && !nf.z)
-        return alphaf;
-
-    //coord lhs = {-0.5,-0.5,-0.5}, rhs = {0.5,0.5,0.5}; // bottom-left & top-right points, resp.
-
-    double alphaMin = -0.6, alphaMax = 0.6, alpha = 0; // are there better values?
- 
-    double f0 = clamp(f, 0., 1.);
-    //double ibm0 = rectangle_fraction (ns, alphas, lhs, rhs);
-    double ibm0 = ibm;
-    freal = clamp(freal, 0., ibm0);
-    const tripoint tcell = fill_tripoint (freal, nf, alphaf, ns, alphas, f0, ibm0);
-
-    int maxitr = 50;
-
-#if PRINTA
-    fprintf(stderr, "|| A.S: nf={%g, %g, %g} ns={%g, %g, %g} alphas=%g\n",
-        nf.x, nf.y, nf.z, ns.x, ns.y, ns.z, alphas);
-#endif
-
-    if (!nf.x && !nf.y && !nf.z)
-        fprintf(stderr, "WARNING: all components of nf are 0 in alpha solver!\n");
-
-#if 1
-    // the cell is full or empty, but we want to change f to set C.A while conserving freal
-      if ((nf.x || nf.y || nf.z) && (freal >= ibm0 - VTOL || freal <= 0 + VTOL)) {
-        return ghost_alpha (tcell, alphaMin, alphaMax, numitr);
-    }
-#endif
-
-    #if PRINTA
-    fprintf (stderr, "|| A.S: f0=%0.15g alphaf=%0.15g freal=%0.15g ibm=%g\n", 
-                      f0, alphaf, freal, ibm0);
-    #endif
-
-    //int itr = rsolver_bisection (&alpha, alphaMin, alphaMax, &tcell, get_real_error, maxitr = maxitr);
-    int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, 
-                             maxitr = maxitr, tolerance = 1e-12);
-    if (numitr)
-        *numitr = itr;
-
-    return alpha;
-}
-
-
-/*
+/**
 this function fills fr with only the real volume fraction of f that lays 
-outside of the solid immersed boundary, ibm.
-*/
+outside of the solid immersed boundary, ibm. */
 
 void real_fluid (scalar f, scalar fr, vector nf, scalar alphaf, vector ns, scalar alphas)
 {
@@ -1454,185 +1198,34 @@ void real_fluid (scalar f, scalar fr, vector nf, scalar alphaf, vector ns, scala
                                            (coord){-0.5,-0.5,-0.5},
                                            (coord){ 0.5, 0.5, 0.5}) * ibm[];
         else
-            fr[] = clamp(f[], 0., 1.) * ibm[];
+            fr[] = f[] * ibm[];
     }
 }
 
 
-/*
+/**
 interior cells are cells along the solid interface that
     1. are full before and after the advection step
     2. do not contribute to the contact angle imposition
     3. are exempt from the special three-phase advection treatment
 
 TODO: make a formal definition of what an interior cell is (full cells along the solid interface?
-      any full cell that would not contain an extrapolated interface for CAs?)
-*/
+      any full cell that would not contain an extrapolated interface for CAs?) */
 
 bool is_interior_cell (Point point, scalar ibm, scalar cr)
 {
-    //if ((ibm[] == 1 && cr[] == ibm[]) || cr[] == 0)
-    //    return false;
-
     if (ibm[] <= 0 || ibm[] >= 1 || cr[] == 0)
         return false;
-
-    //coord nf = interface_normal (point, c);
-    //coord ns = interface_normal (point, ibm);
-
-    //if (on_interface(ibm) && cr[] >= ibm[] - 1e-3 && !is_triple_point (point, nf, ns))
-    //    return true;
-
-    #if 0
-    if (on_interface(ibm) && cr[] >= ibm[] - 1e-10)
-        return true;
-
-    #else
-    foreach_neighbor() { // was (1)
-
-    // TODO: if cr[] != ibm[], try seeing if ibm[] == 1 instead (full fluid cell)
-        if (ibm[] && fabs(cr[] - ibm[]) > INT_TOL) { // CHANGED FROM 1e-3 TEMPORARILY
+    foreach_neighbor() {
+        if (ibm[] && fabs(cr[] - ibm[]) > INT_TOL) {
             return false;
         }
     }
-
     return true;
-    #endif
-    //return false;
 }
 
-
-/* 
-Some of the advected fluid gets reconstructed in the solid region of a cell.
-immersed_reconstruction changes c to enforce volume/mass conservation (according
-to cr) considering the immersed boundary. In other words, this function brings any
-fluid otherwise reconstructed inside the solid region up in the real fluid portion
-of interface cells
-
-cr is the total real fluid in a cell after the unidimensional advection.
-
-nf and ns are the liquid and solid normals (resp.). Likewise, alphas and alphaf
-are the corresponding alpha values.
-*/
-
-double avgitr = 0;
-int g_count = 0;
-
 trace
-void immersed_reconstruction (scalar c, scalar cr, vector nf, scalar alphaf, 
-                              vector ns, scalar alphas, scalar id, int * fix = NULL)
-{
-    double error_sum = 0;
-    int itrsum = 0, count = 0;
-    foreach(reduction(+:error_sum) reduction(+:itrsum) reduction(+:count)) {
-        c[] = clamp(c[], 0, 1);
-        if (on_interface(ibm) && c[]) {
-
-            #if PRINTA
-            fprintf(stderr, "(%g, %g, %g) cr[] = %g c[] = %g ibm[] = %g\n", x, y, z, cr[], c[], ibm[]);
-            #endif
-
-            //if (cr[] < 1e-14 && c[] < 1e-14) {
-            if (cr[] < 1e-12) {
-                cr[] = c[] = 0;
-                //id[] = -1;
-                continue;
-            }
-            else if (approx_equal_double (cr[], ibm[]) && c[] >= 1.) {
-                cr[] = ibm[];
-                //id[] = -1;
-                continue;
-            }
-            else if (is_interior_cell(point, ibm, cr)) {
-                cr[] = ibm[];
-                c[] = 1;
-                continue;
-            }
-
-            cr[] = clamp(cr[], 0, ibm[]);
-
-            coord nsolid = {ns.x[], ns.y[], ns.z[]}, nfluid = {nf.x[], nf.y[], nf.z[]};
-
-            if (!nfluid.x && !nfluid.y && !nfluid.z) {
-                c[] = 0.9999;
-                nfluid = interface_normal (point, c);
-            }
-
-#if PRINTA
-            fprintf(stderr, "nf={%g, %g, %g} af=%g ns={%g, %g, %g} as=%g c=%g cr=%g\n",
-                nfluid.x, nfluid.y, nfluid.z, alphaf[], nsolid.x, nsolid.y, nsolid.z, 
-                alphas[], c[], cr[]);
-#endif
-
-            double freal = immersed_fraction (c[], nfluid, alphaf[], nsolid, alphas[],
-                                              (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5},0)*ibm[];
-            //freal = clamp (freal, 0, ibm[]);
-
-#if 0
-            if (is_interior_cell (point, ibm, c, cr)) {
-                c[] = 1;
-
-                #if PRINTA
-                fprintf(stderr, "(%g, %g) cell is interior cell c=%g cr=%g\n",
-                    x, y, c[], cr[]);
-                #endif
-
-                continue;
-            }
-#endif
-            error_sum += fabs(cr[] - freal) * pow(Delta, dimension);
-
-            if (approx_equal_double (cr[], freal, 1e-10)) {
-                //id[] = -1;
-                continue;
-            }
-
-            int iter = 0;
-            double alpha = immersed_alpha (c[], ibm[], nfluid, alphaf[], nsolid, alphas[], cr[], numitr = &iter);
-
-            #if PRINTA
-            double c0 = c[];
-            #endif
-
-            c[] = plane_volume (nfluid, alpha);
-            alphaf[] = alpha;
-
-            //id[] = 1;
-
-            #if PRINTA
-            fprintf(stderr, "(%g, %g, %g) c[]_before = %0.15f, c[]_after = %0.15f | cr[] = %0.15f crcalc =%0.15f\n",
-                           x, y, z, c0, c[], cr[], freal);
-            #endif
-
-            itrsum += iter;
-            count++;
-        }
-        if (cr[] < 1e-12 && ibm[] == 1) {
-            cr[] = c[] = 0;
-            //id[] = -1;
-            continue;
-        }
-        //else
-        //    id[] = -1;
-    }
-
-    boundary({id});
-
-#if PRINTA
-    fprintf(stderr, "error_sum = %g average # of iteration = %g count = %d\n", error_sum, ((double)itrsum)/(count+SEPS), count);
-#endif
-
-    avgitr = ((double)itrsum)/(count+SEPS);
-    g_count = count;
-
-    if (fix)
-        *fix = error_sum > 1e-10? 1: 0;
-}
-
-
-
-trace
-double immersed_alpha_temp (double f, double ibm, coord nf, double alphaf, coord ns, double alphas,
+double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, double alphas,
                             double freal, double tolerance = BI_TOL, int * numitr = NULL)
 {
     if ((freal <= VTOL || freal >= 1-VTOL) && !nf.x && !nf.y && !nf.z)
@@ -1649,26 +1242,13 @@ double immersed_alpha_temp (double f, double ibm, coord nf, double alphaf, coord
 
     int maxitr = 40;
 
-#if PRINTA
-    fprintf(stderr, "|| A.S: nf={%g, %g, %g} ns={%g, %g, %g} alphas=%g\n",
-        nf.x, nf.y, nf.z, ns.x, ns.y, ns.z, alphas);
-#endif
-
     if (!nf.x && !nf.y && !nf.z)
         fprintf(stderr, "WARNING: all components of nf are 0 in alpha solver!\n");
 
-#if 1
     // the cell is full or empty, but we want to change f to set C.A while conserving freal
-      //if ((nf.x || nf.y || nf.z) && (freal >= ibm0 - INT_TOL || freal <= 0 + INT_TOL)) {
       if ((nf.x || nf.y || nf.z) && (freal <= 0 + VTOL || freal >= ibm0 - VTOL)) {
         return ghost_alpha (tcell, alphaMin, alphaMax, numitr);
     }
-#endif
-
-    #if PRINTA
-    fprintf (stderr, "|| A.S: f0=%0.15g alphaf=%0.15g freal=%0.15g ibm=%g\n", 
-                      f0, alphaf, freal, ibm0);
-    #endif
 
     //int itr = rsolver_bisection (&alpha, alphaMin, alphaMax, &tcell, get_real_error, maxitr = maxitr);
     int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, maxitr = maxitr);
@@ -1679,156 +1259,7 @@ double immersed_alpha_temp (double f, double ibm, coord nf, double alphaf, coord
 }
 
 
-trace
-void immersed_reconstruction_temp (scalar c, scalar cr, vector nf, scalar alphaf, 
-                                   vector ns, scalar alphas, int * fix = NULL)
-{
-    #if PRINTA
-    fprintf(stderr, "TEMP RECONSTRUCTION!\n");
-    #endif
-
-    double error_sum = 0;
-    int itrsum = 0, count = 0;
-    foreach(reduction(+:error_sum) reduction(+:itrsum) reduction(+:count)) {
-        c[] = clamp(c[], 0, 1);
-        if (on_interface(ibm) && c[]) {
-
-            #if PRINTA
-            fprintf(stderr, "(%g, %g, %g) cr[] = %g c[] = %g ibm[] = %g\n", x, y, z, cr[], c[], ibm[]);
-            #endif
-
-#if 0
-            if (cr[] < 1e-14 && c[] < 1e-14) {
-                cr[] = c[] = 0;
-                continue;
-            }
-#endif            
-            if (approx_equal_double (cr[], ibm[]) && c[] >= 1.) {
-                cr[] = ibm[];
-                continue;
-            }
-
-            cr[] = clamp(cr[], 0, ibm[]);
-
-            coord nsolid = {ns.x[], ns.y[], ns.z[]}, nfluid = {nf.x[], nf.y[], nf.z[]};
-
-            if (!nfluid.x && !nfluid.y && !nfluid.z) {
-                c[] = 0.9999;
-                nfluid = interface_normal (point, c);
-            }
-
-#if PRINTA
-            fprintf(stderr, "nf={%g, %g, %g} af=%g ns={%g, %g, %g} as=%g c=%g cr=%g\n",
-                nfluid.x, nfluid.y, nfluid.z, alphaf[], nsolid.x, nsolid.y, nsolid.z, 
-                alphas[], c[], cr[]);
-#endif
-
-            double freal = immersed_fraction (c[], nfluid, alphaf[], nsolid, alphas[],
-                                              (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5},0)*ibm[];
-            
-            error_sum += fabs(cr[] - freal) * pow(Delta, dimension);
-
-           if (approx_equal_double (cr[], freal, 1e-10)) {
-                continue;
-           }
-
-            int iter = 0;
-            double alpha = immersed_alpha_temp (c[], ibm[], nfluid, alphaf[], nsolid, alphas[], cr[], numitr = &iter);
-
-            #if PRINTA
-            double c0 = c[];
-            #endif
-
-            c[] = plane_volume (nfluid, alpha);
-            //alphaf[] = alpha;
-
-
-            #if PRINTA
-            fprintf(stderr, "(%g, %g, %g) c[]_before = %0.15f, c[]_after = %0.15f | cr[] = %0.15f crcalc =%0.15f\n",
-                           x, y, z, c0, c[], cr[], freal);
-            #endif
-
-            itrsum += iter;
-            count++;
-        }
-    }
-
-#if PRINTA
-    fprintf(stderr, "error_sum = %g average # of iteration = %g count = %d\n", error_sum, ((double)itrsum)/(count+SEPS), count);
-#endif
-
-    avgitr = ((double)itrsum)/(count+SEPS);
-    g_count = count;
-
-    if (fix)
-        *fix = error_sum > 1e-10? 1: 0;
-}
-
-
-/*
-real_volume calculates the volume of the portion of f which lays outside of
-the immersed boundary
-*/
-
-double real_volume (scalar f)
-{
-    vector nf[], ns[];
-    scalar alphaf[], alphas[];
-
-    reconstruction (f, nf, alphaf);
-    reconstruction (ibm, ns, alphas);
-
-    double volume = 0.;
-    foreach(reduction(+:volume)) {
-        if (on_interface(ibm) && on_interface(f))
-            volume += immersed_fraction (f[], (coord){nf.x[], nf.y[], nf.z[]}, alphaf[],
-                                              (coord){ns.x[], ns.y[], ns.z[]}, alphas[],
-                                              (coord){-0.5, -0.5, -0.5},
-                                              (coord){0.5, 0.5, 0.5}, 0) * dv2();
-        else
-            volume += f[]*dv2();
-    }
-
-    return volume;
-}
-
-#if 0
-#if CA
-
-double get_contact_angle (scalar f, scalar ibm)
-{
-    vector nf[], ns[];
-    scalar alphaf[], alphas[];
-
-    reconstruction (f, nf, alphaf);
-    reconstruction (ibm, ns, alphas);
-
-    scalar fr_temp[];
-    real_fluid (f, fr_temp, nf, alphaf, ns, alphas);
-
-    double theta = 0;
-    int count = 0;
-    foreach(reduction(+:theta) reduction(+:count)) {
-        if (on_interface(ibm) && on_interface(f) && fr_temp[]) {
-            coord nf_temp = {nf.x[], nf.y[]}, ns_temp = {ns.x[], ns.y[]};
-            if (is_triple_point (point, nf_temp, ns_temp)) {
-                double num = nf.x[]*ns.x[] + nf.y[]*ns.y[];
-                double den = distance(nf.x[], nf.y[]) * distance(ns.x[], ns.y[]);
-                theta += acos (num/den);
-                count++;
-            }
-        }
-    }
-
-    if (count > 0)
-        return (theta / count)*180./pi;
-    else
-        return 0;
-}
-#endif 
-#endif
-
-/*
+/**
 redistribute_volume calculates the volume loss caused by imprecise movement of the
 solid boundary (ibm), which itself is caused by us using different methods
 to advect the liquid and solid interface: VOF and level-set reinitialization -> VOF, resp.
@@ -1836,8 +1267,8 @@ to advect the liquid and solid interface: VOF and level-set reinitialization -> 
 The weights used for redistribution is based on the number of interfacial cells. Meaning
 each cell will get the same amount of volume.
 
-TODO: improve weighting function by maybe including distance from interface?
-*/
+TODO: improve weighting function by maybe including distance from interface? 
+TODO: clean up function */
 
 double redistribute_volume (scalar cr, const scalar ibm)
 {
@@ -1899,7 +1330,8 @@ double redistribute_volume (scalar cr, const scalar ibm)
                 // check for left/right neighbors
                 bool done = false;
                 for (int i = -1; i <= 1; i += 2)
-                    if (cr[i] + 2*(verror/(icells*vol)) < ibm[i] && ibm[i]) // 2* because cell may be a recipient for multiple cells (temp fix)
+                    // 2* because cell may be a recipient for multiple cells (temp fix)
+                    if (cr[i] + 2*(verror/(icells*vol)) < ibm[i] && ibm[i]) 
                         id.x[] = i, done = true;
 
                 // then check for top/bottom neighbors
@@ -1935,27 +1367,17 @@ double redistribute_volume (scalar cr, const scalar ibm)
 
     boundary ({id});
 
-
     int fixed = overfill? 0: 1;
     if (overfill)
         foreach(reduction(max:fixed)) {
             for (int i = -1; i <= 1; i += 2)
                 foreach_dimension()
                     if (id.x[i] == -i && cm[i]) {
-                        //double cr0 = cr[];
                         cr[] += verror/(icells*pow(Delta,dimension)*cm[i]);
                         fixed = 1;
-                        #if 0
-                        fprintf(stderr, "OVERFILL FIX:(%g, %g) cr0=%g cr[]=%g id=%g i=%d\n",
-                            x, y, cr0, cr[], id.x[i], i);
-                        #endif
                         cr[] = clamp (cr[], 0, ibm[]);
                     }
         }
-#if PRINTA
-    fprintf (stderr, "verror=%g icells=%d overfill=%d fixed=%d count=%d\n",
-        verror, icells, overfill, fixed, count);
-#endif
     boundary ({cr});
     (void) fixed; // to prevent unused variable warning
 
