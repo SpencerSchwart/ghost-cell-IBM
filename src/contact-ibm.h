@@ -119,7 +119,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
         inter[] = c[] > 0 && c[] < 1;
         extra[] = inter[] && ibm[] > 0 && ibm[] < 1;
 
-#if 1 // Make sure that extrapolation cells isn't an interior cell
+#if 0 // Make sure that extrapolation cells isn't an interior cell
         if (extra[]) {
             bool caCell = false;
             foreach_neighbor() {
