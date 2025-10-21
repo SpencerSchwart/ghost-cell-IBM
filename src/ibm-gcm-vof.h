@@ -1356,3 +1356,139 @@ double redistribute_volume (scalar cr, const scalar ibm)
     return verror;
 }
 
+/**
+redistribute_volumev2, like the function above, calculates the volume loss caused by advecting
+too much liquid on solid interface cells
+
+The recipient cells are chosen to be liquid interfacial cells within a 5x5x5 stencil of the
+problematic ones. This is different from the function above, which spreads the volume error
+equally to *all* liquid interfacial cells.
+
+TODO: axisymmetric extension
+TODO: probably does not work with AMR right now
+TODO: make stats struct that the functions returns */
+
+double redistribute_volumev2 (scalar cr, const scalar ibm)
+{
+    // 1. Calculate the volume error
+    //    and count the number of interfacial cells that contain no solid fragment
+    double verror = 0;
+    int icells = 0;
+
+    scalar verrors[];
+
+    // add injection prolongation?
+
+    foreach(reduction (+:verror) reduction (+:icells)) {
+        double local_verror = 0;
+        if (cr[] > ibm[]) { // cell is too full
+            local_verror = (cr[] - ibm[])*dv();
+            cr[] = ibm[];
+        }
+        else if (cr[] < 0) { // cell is too empty
+            local_verror = cr[]*dv();
+            cr[] = 0;
+        }
+        else 
+            verrors[] = 0;
+
+        // calculate the fractions for each recipient neighbor
+        if (local_verror) {
+            verror += local_verror;
+
+            int count = 0;
+            foreach_neighbor() {
+                if (cr[] > 0 && cr[] < 1 && ibm[] >= 1)
+                    count++;
+            }
+            if (count)
+                verrors[] = local_verror/count; // basic average, can be improved e.g., fuller 
+        }                                       // cells get less V compared to more empty interface cells
+
+        if (cr[] > 0 && cr[] < 1 && ibm[] >= 1)
+            icells++;
+    }
+   
+    if (verror == 0) return verror;
+
+    boundary ({cr});
+
+    // 2. Redistribute volume to cells near the violating cells
+    vector id[];
+    scalar overflow[];
+
+    bool has_overfill = false;
+
+    foreach(serial) {
+        if (cr[] > 0 && cr[] < 1 && ibm[] >= 1) {
+            foreach_dimension()
+                id.x[] = 0;
+
+            double cerror_sum = 0;
+            foreach_neighbor()
+                if (verrors[])
+                    cerror_sum += verrors[]/dv();
+
+            if (!cerror_sum)
+                continue;
+
+            if (cr[] + cerror_sum <= 1. && cr[] + cerror_sum >= 0.)
+                cr[] += cerror_sum;
+            else { 
+                // cell is too full to take the additional volume, so give it to (mostly) empty neighbors
+                has_overfill = true;
+
+                double cr0 = cr[];
+                cr[] = clamp(cr[] + cerror_sum, 0., 1.);
+                overflow[] = cr0 + cerror_sum - cr[];
+
+                bool done = false;
+
+                // check left/right neighbors first
+                for (int i = -1; i <= 1; i += 2)
+                    if (cr[i] < 0.5 && ibm[i] == 1)
+                        id.x[] = i, done = true;
+
+                if (done)
+                    continue;
+                
+                // check top/bottomn neigbors
+                for (int j = -1; j <= 1; j += 2)
+                    if (cr[0,j] < 0.5 && ibm[0,j] == 1)
+                        id.y[] = j, done = true;
+#if dimension == 3
+                if (done)
+                    continue;
+
+                // check front/back neighbors
+                for (int k = -1; k <= 1; k += 2)
+                    if (cr[0,0,k] < 0.5 && ibm[0,0,k] == 1)
+                        id.z[] = k, done = true;
+#endif
+                if (!done)
+                    fprintf (stderr, "WARNING: could not fill cell with volume error!\n");
+            }
+        }
+    }
+
+    boundary ({id});
+
+    if (has_overfill) {
+        foreach() {
+            if (ibm[] >= 1 && cr[] < 1) {
+                for (int i = -1; i <= 1; i += 2) {
+                    foreach_dimension() {
+                        if (id.x[i] == -i && ibm[i]) {
+                            cr[] += overflow[];
+                            cr[] = clamp (cr[], 0, ibm[]); // just in case
+                        }
+                    }
+                }
+            }
+        }
+    }
+    boundary ({cr});
+
+    return verror;
+}
+

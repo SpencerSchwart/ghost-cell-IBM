@@ -239,8 +239,10 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
 #endif
 
   // TODO: only call this function when crsum != crsumclamp!
-  if (crsum != crsum_clamp)
-    redistribute_volume (c, ibm);
+  if (crsum != crsum_clamp) {
+    fprintf(stderr, "distributing volume error\n");
+    redistribute_volumev2(c, ibm);
+  }
 
   foreach() {
     if (c[] < 1e-11)
