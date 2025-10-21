@@ -141,9 +141,29 @@ int approx_equal_double (double a, double b, double TOL = VTOL)
 }
 
 
+// normalize() but with SEPS in the denominator
+void normalize2 (coord * n)
+{
+    double norm = 0;
+    foreach_dimension()
+        norm += sq(n->x);
+    norm = sqrt(norm);
+    foreach_dimension()
+        n->x /= norm + SEPS;
+}
+
+void normalize_sum (coord * n)
+{
+    double norm = 0;
+    foreach_dimension()
+        norm += fabs(n->x);
+    foreach_dimension()
+        n->x /= norm + SEPS;
+}
+
 double dot_product_norm (coord a, coord b)
 {
-    normalize(&a); normalize(&b);
+    normalize2(&a); normalize2(&b);
 
     double product = 0;
     foreach_dimension()
@@ -166,26 +186,6 @@ double dot_product_angle (coord a, coord b)
     double product = clamp(dot_product(a, b), -1, 1);
     assert(fabs(product) <= 1);
     return acos(dot_product(a, b));
-}
-
-// normalize() but with SEPS in the denominator
-void normalize2 (coord * n)
-{
-    double norm = 0;
-    foreach_dimension()
-        norm += sq(n->x);
-    norm = sqrt(norm);
-    foreach_dimension()
-        n->x /= norm + SEPS;
-}
-
-void normalize_sum (coord * n)
-{
-    double norm = 0;
-    foreach_dimension()
-        norm += fabs(n->x);
-    foreach_dimension()
-        n->x /= norm + SEPS;
 }
 
 /*
