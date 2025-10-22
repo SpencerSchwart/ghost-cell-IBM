@@ -8,8 +8,6 @@
 
 (const) scalar contact_angle;
 
-//extern scalar f;
-
 typedef struct proj_coord {
     coord og;
     double x, y;
@@ -23,11 +21,11 @@ typedef struct plane {
     coord n;
     double alpha;
 
-    coord * p;      // stores all of the points along the plane
-    int psize;      // size of p array / number of points
+    coord p[12];      // stores all of the points along the plane
+    int psize;        // size of p array / number of points
 
-    triangle * tri; // stores coordinates for each triangle
-    int tsize;      // # of triangles
+    triangle tri[6];  // stores coordinates for each triangle
+    int tsize;        // # of triangles
 } plane;
 
 double get_percent_error (double a0, double a1)
@@ -427,14 +425,12 @@ int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump]
         }
 
         if (pcount < 3) {
-            allPlanes[i].p = NULL;
             allPlanes[i].psize = 0;
             continue;
         }
         
         assert (pcount >= 3);
         
-        allPlanes[i].p = malloc((pcount * sizeof(coord)));
         allPlanes[i].psize = pcount;
 
         for (int j = 0, jtrue = 0; j < nump; ++j) {
@@ -447,8 +443,6 @@ int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump]
 
         planeCount++;
     }
-
-    *planes = malloc(planeCount * sizeof(plane));
 
     for (int i = 0, itrue = 0; i < numplanes; ++i) {
         if (allPlanes[i].psize > 0) {
@@ -598,7 +592,6 @@ void triangulate_planes(int plcount, plane * planes)
 
         assert (planes[i].psize >= 3);
 
-        planes[i].tri = malloc ((planes[i].psize - 2) * sizeof(triangle));
         planes[i].tsize = planes[i].psize - 2;
 
         for (int j = 1, tricount = 0; j < planes[i].psize - 1; ++j) {
@@ -656,8 +649,6 @@ int make_list_unique(coord** tp, int tsize, int sizes[tsize], coord* set[tsize],
             }
         }
     }
-
-    *tp = malloc (ucount * sizeof(coord));
 
     int ucount1 = 0;
     for (int i = 0; i < tsize; ++i) {
