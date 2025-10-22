@@ -102,6 +102,8 @@ void move_solid_z(scalar ibm, face vector ibmf);
 
 scalar ft[];
 
+static inline bool interfacial (Point, scalar);
+
 foreach_dimension()
 static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0, 
                      face vector ibmf0, vector ns, scalar alphas, vector nfh, scalar alphafh, int last)
@@ -222,6 +224,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
 #else
       double val = 1;
 #endif
+
+      double frain = 0;
 
       if (interfacial(point, c))
       {
