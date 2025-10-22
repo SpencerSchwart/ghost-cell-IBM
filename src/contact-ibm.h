@@ -102,7 +102,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
 {
     scalar c0[];
     foreach() {
-        if (ibm[] > 0 && ibm[] < 1 && (cr[] <= 1e-10 || cr[] >= ibm[] - 1e-10) &&
+        if (ibm[] > 0 && ibm[] < 1 && (cr[] <= 1e-6 || cr[] >= ibm[] - 1e-6) &&
             !is_interior_cell(point, ibm, cr) && level == depth())
         {
             int near = 0;
@@ -116,10 +116,10 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
 
     foreach() {
 
-        inter[] = c[] > 0 && c[] < 1;
+        inter[] = c[] > 0 && c[] < ibm[];
         extra[] = inter[] && ibm[] > 0 && ibm[] < 1;
 
-#if 0 // Make sure that extrapolation cells isn't an interior cell
+#if 1 // Make sure that extrapolation cells isn't an interior cell
         if (extra[]) {
             bool caCell = false;
             foreach_neighbor() {
@@ -142,15 +142,11 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
 
             normalize (&ns);
             coord nc = normal_contact (ns, nf, contact_angle[]);
+            normalize_sum(&nc);
 
-            double mag = 0;
-            foreach_dimension()
-                mag += fabs(nc.x);
-
-            foreach_dimension() {
-                nc.x /= mag + SEPS;
+            foreach_dimension() 
                 n.x[] = nc.x;
-            }
+
             alpha[] = immersed_alpha(c[], ibm[], nc, alpha[], ns, alphas, cr[]);
             if (extra[]) {
                 c[] = plane_volume (nc, alpha[]);
@@ -158,13 +154,13 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
                     cr[] = 0;
                     if (!is_interior_cell(point, ibm, cr) && level == depth()) {
                         int near = 0;
-                        foreach_neighbor() //TODO: this is probably not necessary
+                        foreach_neighbor() 
                             if (c[] > 0 && ibm[]) { near = 1; break; }
                         ghostInter[] = near;
                     }
                 }
                 inter[] = c[] > 0 && c[] < 1;
-                extra[] = inter[] && ibm[] > 0 && ibm[] < 1 && !ghostInter[] && cr[] < ibm[]-1e-10;
+                extra[] = inter[] && ibm[] > 0 && ibm[] < 1 && !ghostInter[] && cr[] < ibm[]-1e-6;
             }
         }
     }
@@ -260,7 +256,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
             coord ghostCell = {x,y,z};
 
             // 3.c. extrapolate f from direct neighbors to get initial guess
-            int cond0 = cr0[] <= 1e-10;
+            int cond0 = cr0[] <= 1e-6;
             coord ns0 = {-ns.x[], -ns.y[], -ns.z[]}, nf1;
 
             foreach_neighbor() {
@@ -290,7 +286,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
                 if (c[] > 1 - INT_TOL) c[] = 1; // is this good?
             }
             // 3.e otherwise, cell should not be used to enforce C.A.
-            else if (ghostf <= 0 && cr0[] <= 1e-10 ) {
+            else if (ghostf <= 0 && cr0[] <= 1e-6 ) {
                 c[] = 0;
             }
         }
@@ -304,7 +300,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
     foreach() {
         gf1[] = c[];
         // make full cells with fractional ch conserve cr
-        if (ghostInter[] && cr0[] >= ibm[] - 1e-10 && c[] != c0[] && c[] != 1.) {
+        if (ghostInter[] && cr0[] >= ibm[] - 1e-6 && c[] != c0[] && c[] != 1.) {
             coord mf = interface_normal(point, ctmp);
             if (!mf.x && !mf.y && !mf.z) {
                 double ctemp = ctmp[];

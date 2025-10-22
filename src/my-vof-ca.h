@@ -244,12 +244,12 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   foreach() {
     if (c[] < 1e-11)
         c[] = 0;
-    if (on_interface(ibm) && c[] > ibm[] - 1e-10)
+    if (on_interface(ibm) && c[] > ibm[] - 1e-6)
         c[] = ibm[];
   }
 
   foreach() {
-    if (ibm[] > 0 && ibm[] < 1 && c[] >= ibm[]-1e-10)
+    if (ibm[] > 0 && ibm[] < 1 && c[] >= ibm[]-1e-6)
         ch[] = 1;
     else if (ibm[] > 0)
         ch[] = c[];
