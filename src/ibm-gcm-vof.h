@@ -386,7 +386,7 @@ int vertices_region(plane pls, plane plf, plane padv, coord pv[8], int print = 0
     return count;
 }
 
-int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump], plane** planes)
+int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump], plane* planes)
 {
     //plane cellpx = {{ 1, 0, 0}, 0.5};
     //plane cellpx = padv;
@@ -446,7 +446,7 @@ int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump]
 
     for (int i = 0, itrue = 0; i < numplanes; ++i) {
         if (allPlanes[i].psize > 0) {
-            (*planes)[itrue] = allPlanes[i];
+            planes[itrue] = allPlanes[i];
             ++itrue;
         }
     }
@@ -633,7 +633,7 @@ double rectangular_prism_volume (coord bc, coord tc)
     return l*w*h;
 }
 
-int make_list_unique(coord* tp[12], int tsize, int sizes[tsize], coord* set[tsize], 
+int make_list_unique(coord tp[12], int tsize, int sizes[tsize], coord* set[tsize], 
                      plane plf, plane pls)
 {
     coord unique[34];
@@ -655,8 +655,8 @@ int make_list_unique(coord* tp[12], int tsize, int sizes[tsize], coord* set[tsiz
         for (int j = 0; j < sizes[i]; ++j) {
             double placement = region_check2(plf, pls, set[i][j]);
             if ((placement > 0 || fabs(placement) <= 1e-6) && set[i][j].x != HUGE && 
-                point_is_unique(ucount1, *tp, set[i][j])) {
-                (*tp)[ucount1] = set[i][j];
+                point_is_unique(ucount1, tp, set[i][j])) {
+                tp[ucount1] = set[i][j];
                 ucount1++;
             }
         }
@@ -732,7 +732,7 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     int rcount = make_list_unique(tp, 6, totalSetSize, totalSet, plf, pls);
 
     plane planes[12];
-    int planeCount = fill_faces(plf, pls, padv, rcount, tp, &planes);
+    int planeCount = fill_faces(plf, pls, padv, rcount, tp, planes);
 
     for (int i = 0; i < planeCount; ++i)
         sort_clockwise3(planes[i].psize, planes[i].p, planes[i].n);
@@ -1411,7 +1411,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
     bool has_overfill = false;
 
     foreach(serial) {
-        overflow[] = 0;
+	overflow[] = 0;
         if (cr[] > 0 && cr[] < 1 && ibm[] >= 1) {
             foreach_dimension()
                 id.x[] = 0;
@@ -1427,7 +1427,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
             if (cr[] + cerror_sum <= 1. && cr[] + cerror_sum >= 0.)
                 cr[] += cerror_sum;
             else { 
-            // cell is too full to take the additional volume, so give it to (mostly) empty neighbors
+                // cell is too full to take the additional volume, so give it to (mostly) empty neighbors
                 has_overfill = true;
 
                 double cr0 = cr[];
@@ -1470,7 +1470,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
             if (ibm[] >= 1 && cr[] < 1) {
                 for (int i = -1; i <= 1; i += 2) {
                     foreach_dimension() {
-                        if (id.x[i] == -i && ibm[i] && overflow[i]) {
+                        if (id.x[i] == -i && ibm[i]) {
                             cr[] += overflow[i];
                             cr[] = clamp (cr[], 0, ibm[]); // just in case
                         }
