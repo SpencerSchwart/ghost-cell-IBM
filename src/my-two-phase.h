@@ -12,12 +12,12 @@ method. The volume fraction in fluid 1 is $f=1$ and $f=0$ in fluid
 
 #if CA
   #include "ibm-gcm-vof.h"
+
   #if RAIN
     #include "rain.h"
-    #include "my-vof-rain.h"
-  #else
-    #include "my-vof-ca.h"
   #endif
+
+  #include "my-vof-ca.h"
 #else
   #include "my-vof.h"
 #endif

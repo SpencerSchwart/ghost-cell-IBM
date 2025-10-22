@@ -633,7 +633,7 @@ double rectangular_prism_volume (coord bc, coord tc)
     return l*w*h;
 }
 
-int make_list_unique(coord** tp, int tsize, int sizes[tsize], coord* set[tsize], 
+int make_list_unique(coord* tp[12], int tsize, int sizes[tsize], coord* set[tsize], 
                      plane plf, plane pls)
 {
     coord unique[34];
@@ -727,11 +727,11 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     if (print)
         print_coord_list (2, psint);
 
-    coord* totalSet[6] = {pint, fp, sp, vp, pfint, psint}, *tp = NULL;
+    coord* totalSet[6] = {pint, fp, sp, vp, pfint, psint}, tp[12];
     int totalSetSize[6] = {2, fcount0, scount0, 8, 2, 2};
-    int rcount = make_list_unique(&tp, 6, totalSetSize, totalSet, plf, pls);
+    int rcount = make_list_unique(tp, 6, totalSetSize, totalSet, plf, pls);
 
-    plane * planes;
+    plane planes[12];
     int planeCount = fill_faces(plf, pls, padv, rcount, tp, &planes);
 
     for (int i = 0; i < planeCount; ++i)
@@ -750,14 +750,14 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
         advVolume = liquidVolume*totalVolume;
 
     double vf = clamp (realVolume/advVolume, 0., 1.);
-
+#if 0
     for (int i = 0; i < planeCount; ++i) {
         if (planes[i].p) free (planes[i].p);
         if (planes[i].tri) free (planes[i].tri);
     }
     free (planes);
     free (tp);
-
+#endif
     return vf;
 }
 #endif
@@ -1411,6 +1411,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
     bool has_overfill = false;
 
     foreach(serial) {
+        overflow[] = 0;
         if (cr[] > 0 && cr[] < 1 && ibm[] >= 1) {
             foreach_dimension()
                 id.x[] = 0;
@@ -1426,7 +1427,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
             if (cr[] + cerror_sum <= 1. && cr[] + cerror_sum >= 0.)
                 cr[] += cerror_sum;
             else { 
-                // cell is too full to take the additional volume, so give it to (mostly) empty neighbors
+            // cell is too full to take the additional volume, so give it to (mostly) empty neighbors
                 has_overfill = true;
 
                 double cr0 = cr[];
@@ -1462,15 +1463,15 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
         }
     }
 
-    boundary ({id});
+    boundary ({overflow, id});
 
     if (has_overfill) {
         foreach() {
             if (ibm[] >= 1 && cr[] < 1) {
                 for (int i = -1; i <= 1; i += 2) {
                     foreach_dimension() {
-                        if (id.x[i] == -i && ibm[i]) {
-                            cr[] += overflow[];
+                        if (id.x[i] == -i && ibm[i] && overflow[i]) {
+                            cr[] += overflow[i];
                             cr[] = clamp (cr[], 0, ibm[]); // just in case
                         }
                     }

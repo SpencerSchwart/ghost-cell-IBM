@@ -223,6 +223,33 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
       double val = 1;
 #endif
 
+#if RAIN
+      if (c[] > 0 && c[] < ibm[])
+      {
+        /**
+        interfacial cell must border a full cell to avoid creating whisps*/
+        bool real_interface = false;
+        foreach_neighbor(1) // only 3x3
+            if (c[] >= ibm[]) {
+                real_interface = true; 
+                break;
+            }
+
+        if (real_interface) {   
+            coord n = interface_normal (point, c), p;
+            double alpha = plane_alpha (c[], n);
+            plane_area_center (n, alpha, &p);
+            coord pc = {x, y, z};
+            foreach_dimension() // put the midpoint in local coordinates
+                pc.x += p.x*Delta;
+
+            double frain = -c.urain.x * c.rvf * rain_probability(point, pc, c);
+
+            c[] += dt*frain/(val*Delta);
+        }
+      }
+#endif
+
       c[]  += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
 
       crsum += c[]*pow(Delta, dimension)*val;
@@ -253,7 +280,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
         ch[] = 1;
     else if (ibm[] > 0)
         ch[] = c[];
-    if (contact_angle[] > 0.5*pi && !ibm[])
+    else
         ch[] = 0;
   }
   boundary({c,ch});
