@@ -100,8 +100,6 @@ void move_solid_x(scalar ibm, face vector ibmf);
 void move_solid_y(scalar ibm, face vector ibmf);
 void move_solid_z(scalar ibm, face vector ibmf);
 
-scalar ft[];
-
 foreach_dimension()
 static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0, 
                      face vector ibmf0, vector ns, scalar alphas, vector nfh, scalar alphafh, int last)
@@ -271,7 +269,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   foreach() {
     if (c[] < 1e-11)
         c[] = 0;
-    if (on_interface(ibm) && c[] > ibm[] - 1e-6)
+    if (on_interface(ibm) && c[] > ibm[] - 1e-6 && c[])
         c[] = ibm[];
   }
 
