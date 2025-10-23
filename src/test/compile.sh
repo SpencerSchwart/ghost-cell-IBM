@@ -10,7 +10,7 @@ fi
 
 CC="gcc"
 QCCFLAGS="-source -autolink -disable-dimensions"
-CFLAGS="-std=c99 -D_FORTIFY_SOURCE=2 -pipe -Wall -D_XOPEN_SOURCE=700 -O2"
+CFLAGS="-std=c99 -D_GNU_SOURCE -D_FORTIFY_SOURCE=2 -pipe -Wall -D_XOPEN_SOURCE=700 -O2"
 LINKS="-L$BASILISK/gl -lglutils -lfb_tiny -lm"
 
 for arg in "$@"; do
