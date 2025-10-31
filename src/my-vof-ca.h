@@ -264,7 +264,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
 #endif
 
   if (crsum != crsum_clamp) 
-    redistribute_volumev2(c, ibm);
+    redistribute_volume(c, ibm);
 
   foreach() {
     if (c[] < 1e-11)
