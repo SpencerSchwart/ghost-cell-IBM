@@ -1,5 +1,5 @@
-/*
-###### TWO PHASE FUNCTIONS FOR IBM ######
+/**
+###### TWO PHASE FUNCTIONS FOR IBM ###### 
 */
 
 #define BI_TOL 1e-9 // TODO: standardize tolerance for root solvers
@@ -21,11 +21,11 @@ typedef struct plane {
     coord n;
     double alpha;
 
-    coord p[12];      // stores all of the points along the plane
-    int psize;        // size of p array / number of points
+    coord * p;      // stores all of the points along the plane
+    int psize;      // size of p array / number of points
 
-    triangle tri[6];  // stores coordinates for each triangle
-    int tsize;        // # of triangles
+    triangle * tri; // stores coordinates for each triangle
+    int tsize;      // # of triangles
 } plane;
 
 double get_percent_error (double a0, double a1)
@@ -239,6 +239,7 @@ int plane_intersect (plane pl1, plane pl2, plane padv, coord pint[2], int print 
         coord pit = {p0.x + t*d.x, p0.y + t*d.y, p0.z + t*d.z};
 
         if (bounds_check(pit, padv.alpha) && point_is_unique(2, pint, pit)) {
+            //assert(count < 2);
             if (count > 2)
                 fprintf(stderr, "WARNING: count > 2 in plane_intersect!\n");
             else {
@@ -386,7 +387,7 @@ int vertices_region(plane pls, plane plf, plane padv, coord pv[8], int print = 0
     return count;
 }
 
-int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump], plane* planes)
+int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump], plane** planes)
 {
     //plane cellpx = {{ 1, 0, 0}, 0.5};
     //plane cellpx = padv;
@@ -425,12 +426,14 @@ int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump]
         }
 
         if (pcount < 3) {
+            allPlanes[i].p = NULL;
             allPlanes[i].psize = 0;
             continue;
         }
         
         assert (pcount >= 3);
         
+        allPlanes[i].p = malloc((pcount * sizeof(coord)));
         allPlanes[i].psize = pcount;
 
         for (int j = 0, jtrue = 0; j < nump; ++j) {
@@ -444,9 +447,11 @@ int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump]
         planeCount++;
     }
 
+    *planes = malloc(planeCount * sizeof(plane));
+
     for (int i = 0, itrue = 0; i < numplanes; ++i) {
         if (allPlanes[i].psize > 0) {
-            planes[itrue] = allPlanes[i];
+            (*planes)[itrue] = allPlanes[i];
             ++itrue;
         }
     }
@@ -455,7 +460,7 @@ int fill_faces (plane plf, plane pls, plane padv, int nump, const coord tp[nump]
 }
 
 /**
-The next few functions are to allow portablity for qsort_r. */
+The next few functions are to allow portablity for qsort_r */
 
 typedef int (*qsort_cmp_r)(const void *a, const void *b, void *arg);
 
@@ -507,7 +512,7 @@ int is_behind (const void *pa, const void *pb, void *center)
     return (dista > distb) ? -1: (dista < distb);
 }
 
-int compare_projected(const void *a, const void *b)
+int compare_projected(const void *a, const void *b) 
 {
     const proj_coord *pa = a;
     const proj_coord *pb = b;
@@ -531,7 +536,6 @@ coord face_normal(coord a, coord b, coord c)
     
     return n;  
 }
-
 
 /**
 sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
@@ -592,6 +596,7 @@ void triangulate_planes(int plcount, plane * planes)
 
         assert (planes[i].psize >= 3);
 
+        planes[i].tri = malloc ((planes[i].psize - 2) * sizeof(triangle));
         planes[i].tsize = planes[i].psize - 2;
 
         for (int j = 1, tricount = 0; j < planes[i].psize - 1; ++j) {
@@ -633,7 +638,7 @@ double rectangular_prism_volume (coord bc, coord tc)
     return l*w*h;
 }
 
-int make_list_unique(coord tp[12], int tsize, int sizes[tsize], coord* set[tsize], 
+int make_list_unique(coord** tp, int tsize, int sizes[tsize], coord* set[tsize], 
                      plane plf, plane pls)
 {
     coord unique[34];
@@ -650,13 +655,15 @@ int make_list_unique(coord tp[12], int tsize, int sizes[tsize], coord* set[tsize
         }
     }
 
+    *tp = malloc (ucount * sizeof(coord));
+
     int ucount1 = 0;
     for (int i = 0; i < tsize; ++i) {
         for (int j = 0; j < sizes[i]; ++j) {
             double placement = region_check2(plf, pls, set[i][j]);
             if ((placement > 0 || fabs(placement) <= 1e-6) && set[i][j].x != HUGE && 
-                point_is_unique(ucount1, tp, set[i][j])) {
-                tp[ucount1] = set[i][j];
+                point_is_unique(ucount1, *tp, set[i][j])) {
+                (*tp)[ucount1] = set[i][j];
                 ucount1++;
             }
         }
@@ -697,9 +704,6 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     coord pint[2] = {{nodata, nodata, nodata}, {nodata, nodata, nodata}};
     plane_intersect(plf, pls, padv, pint, print);
 
-    if (print)
-        print_coord_list (2, pint);
-
     coord fp[12];
     int fcount0 = facets(plf.n, plf.alpha, fp, 1);
     remove_invalid_points(fcount0, fp, plf, pls, padv);
@@ -712,27 +716,18 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     coord vp[8];
     vertices_region(pls, plf, padv, vp, print);
 
-    if (print)
-        print_coord_list (8, vp);
-
     coord pfint[2] = {{nodata, nodata, nodata}, {nodata, nodata, nodata}};
     plane_intersect(plf, padv, padv, pfint, print);
-
-    if (print)
-        print_coord_list (2, pfint);
 
     coord psint[2] = {{nodata, nodata, nodata}, {nodata, nodata, nodata}};
     plane_intersect(pls, padv, padv, psint, print);
 
-    if (print)
-        print_coord_list (2, psint);
-
-    coord* totalSet[6] = {pint, fp, sp, vp, pfint, psint}, tp[12];
+    coord* totalSet[6] = {pint, fp, sp, vp, pfint, psint}, *tp = NULL;
     int totalSetSize[6] = {2, fcount0, scount0, 8, 2, 2};
-    int rcount = make_list_unique(tp, 6, totalSetSize, totalSet, plf, pls);
+    int rcount = make_list_unique(&tp, 6, totalSetSize, totalSet, plf, pls);
 
-    plane planes[12];
-    int planeCount = fill_faces(plf, pls, padv, rcount, tp, planes);
+    plane * planes;
+    int planeCount = fill_faces(plf, pls, padv, rcount, tp, &planes);
 
     for (int i = 0; i < planeCount; ++i)
         sort_clockwise3(planes[i].psize, planes[i].p, planes[i].n);
@@ -750,23 +745,22 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
         advVolume = liquidVolume*totalVolume;
 
     double vf = clamp (realVolume/advVolume, 0., 1.);
-#if 0
+
     for (int i = 0; i < planeCount; ++i) {
         if (planes[i].p) free (planes[i].p);
         if (planes[i].tri) free (planes[i].tri);
     }
     free (planes);
     free (tp);
-#endif
+
     return vf;
 }
 #endif
 
 
-/*
+/**
 polygon_area calculates the area enclosed by a list of points (in cw or ccw order)
-using the shoelace formula.
-*/
+using the shoelace formula. */
 
 double polygon_area (int nump, coord cf[nump])
 {
@@ -785,10 +779,9 @@ double rectangle_area (coord bp, coord tp)
 }
 
 
-/*
+/**
 line_intersect returns the x (resp. y) coordinate along a line given y (resp. x).
-The return value is in the cell's local coordinate system, i.e. [-0.5,-0.5]x[0.5,0.5].
-*/
+The return value is in the cell's local coordinate system, i.e. [-0.5,-0.5]x[0.5,0.5]. */
 
 double line_intersect (double alpha, coord n, double x = HUGE, double y = HUGE)
 {
@@ -801,10 +794,9 @@ double line_intersect (double alpha, coord n, double x = HUGE, double y = HUGE)
 }
 
 
-/*
+/**
 immersed_area calculates the area of the real fluid part of a cell given a 
-bounding box (defined in lhs and rhs)
-*/
+bounding box (defined in lhs and rhs) */
 
 double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas, 
                       coord lhs, coord rhs, double advVolume = 0, int print = 0)
@@ -889,14 +881,13 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     return vf;
 }
 
-/*
+/**
 This function calculates the fraction of a rectangle (defined by lhs and rhs)
 which lies inside the liquid interface neglecting the portion inside of the 
 immersed boundary.
 
 lhs and rhs are the bottom left and top right (resp.) coordinates defining the
-region being advected by the split VOF advection scheme (see sweep_x in vof.h)
-*/
+region being advected by the split VOF advection scheme (see sweep_x in vof.h) */
 
 trace
 double immersed_fraction (double c, coord nf, double alphaf, coord ns, double alphas, 
