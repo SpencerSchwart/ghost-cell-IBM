@@ -1111,8 +1111,10 @@ void get_interpolation_points (Point point, const int m, coord pints[m],
 
 }
 
-#define rows ((int)pow(2,dimension))
-#define cols ((int)pow(2,dimension) + 1)
+//#define rows ((int)pow(2,dimension))
+//#define cols ((int)pow(2,dimension) + 1)
+#define rows (1 << dimension)
+#define cols (rows + 1)
 
 // takes in a row
 // TODO: does the projected velocity hold true when using another ghost cell's interface coordinate system?
@@ -1397,9 +1399,6 @@ coord image_velocity2 (Point point, vector u, coord imagePoint, PointIBM bioff,
     return imageVelo;
 }
 
-#undef rows
-#undef cols
-
 /*
 The function below uses interpolation to find the velocity at the image point and
 returns it given a vector field, u, the coordinates of the image point, and an array
@@ -1500,6 +1499,8 @@ double image_pressure (Point point, scalar p, coord imagePoint)
     return temp_pressure;
 }
 
+#undef rows
+#undef cols
 
 /*
 This macro is for refining a scalar field s and its face vector field sf to make
