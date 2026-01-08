@@ -107,8 +107,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   vector nf[];
   scalar alphaf[], flux[];
   double cfl = 0.;
-  
-  reconstruction (c, nf, alphaf); // TEMPORARY!!!
+
+  reconstruction(c, nf, alphaf);
 
   scalar * tracers = c.tracers, * gfl = NULL, * tfluxl = NULL;
   if (tracers) {
@@ -163,9 +163,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
 
         if (c[i] <= 0.)
             cf = 0.;
-        else if (c[i] >= ibm0[i]-INT_TOL) // interfacial cell is full
+        else if (c[i] >= ibm0[i] - INT_TOL) // interfacial cell is full
             cf = 1;
-        else if (c[i] > 0. && c[i] < ibm0[i]-INT_TOL) {
+        else if (c[i] > 0. && c[i] < ibm0[i] - INT_TOL) {
         #if 0
             if (ch[i] >= 1 && !tempnf.x && !tempnf.y && !tempnf.z) 
                 cf = 1;
@@ -179,13 +179,13 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
                     tempnf = tempnf0;
                     alpha = alphaf[i];
                 }
-        #if 1
+        #if 0
                 normalize2(&tempns);
                 coord nc = normal_contact (tempns, tempnf, contact_angle[]);
                 normalize_sum(&tempns);
                 normalize_sum(&nc);
 
-                tempnf = nc;
+                //tempnf = nc;
         #endif
                 double alphacr = immersed_alpha (ch[i], ibm[i], tempnf, alpha, tempns, alphas[i], c[i]);
                 double newc = plane_volume (tempnf, alphacr);
@@ -261,7 +261,6 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
 #endif
 
       c[]  += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
-      ch[] += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
 
       crsum += c[]*pow(Delta, dimension)*val;
       crsum_clamp += clamp(c[], 0., 1.)*pow(Delta, dimension)*val;
@@ -291,24 +290,21 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   }
 #endif
 
-  if (!last) {
-      reconstruction (ch, nfh, alphafh);
-      reconstruction (c, nf, alphaf);
+  foreach() {
+    if (ibm[] > 0 && ibm[] < 1 && c[] >= ibm[]-1e-6)
+        ch[] = 1;
+    else if (ibm[] > 0)
+        ch[] = c[];
+    else
+        ch[] = 0;
   }
-  else {
-    foreach() {
-      if (ibm[] > 0 && ibm[] < 1 && c[] >= ibm[]-1e-6)
-          ch[] = 1;
-      else if (ibm[] > 0)
-          ch[] = c[];
-      else
-          ch[] = 0;
-    }
-    boundary({c,ch});
+  boundary({c,ch});
 
-    reconstruction(c, nf, alphaf);
-    set_contact_angle(ch, c, ibm0, nf, alphaf, ns, alphas);
-  }
+  reconstruction(c, nf, alphaf);
+  set_contact_angle(ch, c, ibm0, nf, alphaf, ns, alphas);
+
+  if (!last)
+      reconstruction (ch, nfh, alphafh);
 
   delete (tfluxl); free (tfluxl);
 }
