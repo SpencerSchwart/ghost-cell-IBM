@@ -2,7 +2,7 @@
 ###### TWO PHASE FUNCTIONS FOR IBM ###### 
 */
 
-#define BI_TOL 1e-9 // TODO: standardize tolerance for root solvers
+#define BI_TOL 1e-11 // TODO: standardize tolerance for root solvers
 
 #include "fractions.h"
 
@@ -647,7 +647,7 @@ int make_list_unique(coord** tp, int tsize, int sizes[tsize], coord* set[tsize],
     for (int i = 0; i < tsize; ++i) {
         for (int j = 0; j < sizes[i]; ++j) {
             double placement = region_check2(plf, pls, set[i][j]);
-            if ((placement > 0 || fabs(placement) <= 1e-6) && set[i][j].x != HUGE && 
+            if ((placement > 0 || fabs(placement) <= 1e-12) && set[i][j].x != HUGE && 
                 point_is_unique(ucount, unique, set[i][j])) {
                 unique[ucount] = set[i][j];
                 ucount++;
@@ -661,7 +661,7 @@ int make_list_unique(coord** tp, int tsize, int sizes[tsize], coord* set[tsize],
     for (int i = 0; i < tsize; ++i) {
         for (int j = 0; j < sizes[i]; ++j) {
             double placement = region_check2(plf, pls, set[i][j]);
-            if ((placement > 0 || fabs(placement) <= 1e-6) && set[i][j].x != HUGE && 
+            if ((placement > 0 || fabs(placement) <= 1e-12) && set[i][j].x != HUGE && 
                 point_is_unique(ucount1, *tp, set[i][j])) {
                 (*tp)[ucount1] = set[i][j];
                 ucount1++;
@@ -677,7 +677,7 @@ int remove_invalid_points(int size, coord ps[size], plane fluid, plane solid, pl
     int fcount = 0;
     for (int i = 0; i < size; ++i) {
         double placement = region_check2(fluid, solid, ps[i]);
-        if ((placement >= 0 || fabs(placement) < 1e-6) && bounds_check(ps[i], padv.alpha))
+        if ((placement >= 0 || fabs(placement) < 1e-12) && bounds_check(ps[i], padv.alpha))
             fcount++;
         else
             ps[i].x = nodata, ps[i].y = nodata, ps[i].z = nodata;
@@ -1106,7 +1106,7 @@ double get_real_error (const void* data, double alpha)
 }
 
 
-double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int * numitr = NULL)
+double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int maxitr = 50, double tolerance = BI_TOL, int * numitr = NULL)
 {
     static const coord lhs = {-0.5,-0.5,-0.5}, rhs = {0.5,0.5,0.5};
 #if dimension == 2
@@ -1136,7 +1136,7 @@ double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int 
 
     // Fall back to basic root solver
     double alpha = 0;
-    int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, tolerance = 1e-12);
+    int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, maxitr = maxitr, tolerance = tolerance);
 
     if (numitr)
         *numitr = itr;
@@ -1194,7 +1194,7 @@ trace
 double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, double alphas,
                             double freal, double tolerance = BI_TOL, int * numitr = NULL)
 {
-    if ((freal <= VTOL || freal >= 1-VTOL) && !nf.x && !nf.y && !nf.z)
+    if ((freal <= INT_TOL || freal >= 1-INT_TOL) && !nf.x && !nf.y && !nf.z)
         return alphaf;
 
     //coord lhs = {-0.5,-0.5,-0.5}, rhs = {0.5,0.5,0.5}; // bottom-left & top-right points, resp.
@@ -1206,18 +1206,20 @@ double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, 
     freal = clamp(freal, 0., ibm0);
     const tripoint tcell = fill_tripoint (freal, nf, alphaf, ns, alphas, f0, ibm0);
 
-    int maxitr = 40;
+    int maxitr = 100;
 
     if (!nf.x && !nf.y && !nf.z)
         fprintf(stderr, "WARNING: all components of nf are 0 in alpha solver!\n");
 
     // the cell is full or empty, but we want to change f to set C.A while conserving freal
+    // TODO: this isn't necessary for the VOF advection step
       if ((nf.x || nf.y || nf.z) && (freal <= 0 + VTOL || freal >= ibm0 - VTOL)) {
-        return ghost_alpha (tcell, alphaMin, alphaMax, numitr);
+        return ghost_alpha (tcell, alphaMin, alphaMax, numitr, maxitr = maxitr, tolerance = tolerance);
     }
 
     //int itr = rsolver_bisection (&alpha, alphaMin, alphaMax, &tcell, get_real_error, maxitr = maxitr);
-    int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, maxitr = maxitr);
+    int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, 
+                             maxitr = maxitr, tolerance = tolerance);
     if (numitr)
         *numitr = itr;
 

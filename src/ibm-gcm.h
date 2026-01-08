@@ -1111,8 +1111,6 @@ void get_interpolation_points (Point point, const int m, coord pints[m],
 
 }
 
-//#define rows ((int)pow(2,dimension))
-//#define cols ((int)pow(2,dimension) + 1)
 #define rows (1 << dimension)
 #define cols (rows + 1)
 
