@@ -104,12 +104,9 @@ foreach_dimension()
 static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0, 
                      face vector ibmf0, vector ns, scalar alphas, vector nfh, scalar alphafh, int last)
 {
-  vector nf[];
-  scalar alphaf[], flux[];
+  scalar flux[];
   double cfl = 0.;
   
-  reconstruction (c, nf, alphaf); // TEMPORARY!!!
-
   scalar * tracers = c.tracers, * gfl = NULL, * tfluxl = NULL;
   if (tracers) {
     for (scalar t in tracers) {
@@ -148,7 +145,6 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
 
     double cf = 0;
     coord tempnf  = {-s*nfh.x[i], nfh.y[i], nfh.z[i]};
-    coord tempnf0 = {-s*nf.x[i], nf.y[i], nf.z[i]};
     coord lhs = {-0.5, -0.5, -0.5}, rhs = {s*un - 0.5, 0.5, 0.5};
 
     if (un == 0)
@@ -166,31 +162,24 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
         else if (c[i] >= ibm0[i]-INT_TOL) // interfacial cell is full
             cf = 1;
         else if (c[i] > 0. && c[i] < ibm0[i]-INT_TOL) {
-        #if 0
-            if (ch[i] >= 1 && !tempnf.x && !tempnf.y && !tempnf.z) 
-                cf = 1;
-            else if (ch[i] <= 1e-10 && !tempnf.x && !tempnf.y && !tempnf.z) 
-                cf = 0;
-            else 
-        #endif
-            {
-                double alpha = alphafh[i];
-                if (!tempnf.x && !tempnf.y && !tempnf.z) {
-                    tempnf = tempnf0;
-                    alpha = alphaf[i];
-                }
-        #if 1
-                normalize2(&tempns);
-                coord nc = normal_contact (tempns, tempnf, contact_angle[]);
-                normalize_sum(&tempns);
-                normalize_sum(&nc);
-
-                tempnf = nc;
-        #endif
-                double alphacr = immersed_alpha (ch[i], ibm[i], tempnf, alpha, tempns, alphas[i], c[i]);
-                double newc = plane_volume (tempnf, alphacr);
-                cf = immersed_fraction (newc, tempnf, alphacr, tempns, alphas[i], lhs, rhs, advVolume, 0);
+            double alpha = alphafh[i];
+            if (!tempnf.x && !tempnf.y && !tempnf.z) {
+                coord off = {0,0,0};
+                off.x = i;
+                tempnf = youngs_normal_off (point, c, off);
+                alpha = 0; // inital guess
             }
+            
+            normalize2(&tempns);
+            coord nc = normal_contact (tempns, tempnf, contact_angle[]);
+            normalize_sum(&tempns);
+            normalize_sum(&nc);
+
+            tempnf = nc;
+            
+            double alphacr = immersed_alpha (ch[i], ibm[i], tempnf, alpha, tempns, alphas[i], c[i]);
+            double newc = plane_volume (tempnf, alphacr);
+            cf = immersed_fraction (newc, tempnf, alphacr, tempns, alphas[i], lhs, rhs, advVolume, 0);
        }
        else
            cf = 0;

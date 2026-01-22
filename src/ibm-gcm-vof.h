@@ -1228,6 +1228,80 @@ double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, 
 
 
 /**
+Calculates the normal of a scalar field in 2D or 3D using Young's method with an option
+to offset the stencil so that the normal is calculated for a neighboring cell, i.e.
++/- 1 in the x, y, or z direction. */
+
+coord youngs_normal_off (Point point, scalar c, coord o = {0,0,0})
+{
+    assert(fabs(o.x) < 2 && fabs(o.y) < 2 && fabs(o.z) < 2); // to avoid stencil overflow
+    double m[3], m1, m2, t0;
+
+    int ox = o.x, oy = o.y, oz = o.z;
+
+#if dimension == 2
+
+    m1 = c[-1 + ox,-1 + oy] + 2.0*c[-1 + ox, 0 + oy] + c[-1 + ox, 1 + oy];
+    m2 = c[ 1 + ox,-1 + oy] + 2.0*c[ 1 + ox, 0 + oy] + c[ 1 + ox, 1 + oy];
+    m[0] = m1 - m2 + NOT_ZERO;
+    m1 = c[-1 + ox,-1 + oy] + 2.0*c[ 0 + ox,-1 + oy] + c[ 1 + ox,-1 + oy];
+    m2 = c[-1 + ox, 1 + oy] + 2.0*c[ 0 + ox, 1 + oy] + c[ 1 + ox, 1 + oy];
+    m[1] = m1 - m2 + NOT_ZERO;
+
+    /* normalize the set (mx0,my0): |mx0|+|my0|=1 and
+       write the two components of the normal vector  */
+    t0 = fabs(m[0]) + fabs(m[1]);
+    (void) oz; // avoid unused variable warning
+    return (coord){m[0] / t0, m[1] / t0, 0};
+
+#else // dimension == 3
+
+    m1 = c[-1 + ox,-1 + oy,-1 + oz] + c[-1 + ox,1 + oy,-1 + oz] + 
+         c[-1 + ox,-1 + oy, 1 + oz] + c[-1 + ox,1 + oy, 1 + oz] +
+        2.*(c[-1 + ox,-1 + oy, 0 + oz] + c[-1 + ox,1 + oy,0 + oz] + 
+            c[-1 + ox, 0 + oy,-1 + oz] + c[-1 + ox,0 + oy,1 + oz]) +
+        4.*(c[-1 + ox, 0 + oy, 0 + oz]);
+    m2 = c[1 + ox,-1 + oy,-1 + oz] + c[1 + ox,1 + oy,-1 + oz] +
+         c[1 + ox,-1 + oy, 1 + oz] + c[1 + ox,1 + oy, 1 + oz] +
+        2.*(c[1 + ox,-1 + oy, 0 + oz] + c[1 + ox,1 + oy,0 + oz] + 
+            c[1 + ox, 0 + oy,-1 + oz] + c[1 + ox,0 + oy,1 + oz]) +
+        4.*(c[1 + ox, 0 + oy, 0 + oz]);
+    m[0] = m1 - m2;
+
+    m1 = c[-1 + ox,-1 + oy,-1 + oz] + c[-1 + ox,-1 + oy,1 + oz] + 
+         c[ 1 + ox,-1 + oy,-1 + oz] + c[ 1 + ox,-1 + oy,1 + oz] +
+        2.*(c[-1 + ox,-1 + oy, 0 + oz] + c[1 + ox,-1 + oy,0 + oz] + 
+            c[ 0 + ox,-1 + oy,-1 + oz] + c[0 + ox,-1 + oy,1 + oz]) +
+        4.*(c[0 + ox,-1 + oy,0 + oz]);
+    m2 = c[-1 + ox,1 + oy,-1 + oz] + c[-1 + ox,1 + oy,1 + oz] + 
+         c[ 1 + ox,1 + oy,-1 + oz] + c[ 1 + ox,1 + oy,1 + oz] +
+        2.*(c[-1 + ox,1 + oy, 0 + oz] + c[1 + ox,1 + oy,0 + oz] + 
+            c[ 0 + ox,1 + oy,-1 + oz] + c[0 + ox,1 + oy,1 + oz]) +
+        4.*(c[ 0 + ox,1 + oy, 0 + oz]);
+    m[1] = m1 - m2;
+    
+    m1 = c[-1 + ox,-1 + oy,-1 + oz] + c[-1 + ox,1 + oy,-1 + oz] + 
+         c [1 + ox,-1 + oy,-1 + oz] + c[ 1 + ox,1 + oy,-1 + oz] +
+         2.*(c[-1 + ox, 0 + oy,-1 + oz] + c[1 + ox,0 + oy,-1 + oz] + 
+             c[ 0 + ox,-1 + oy,-1 + oz] + c[0 + ox,1 + oy,-1 + oz]) +
+         4.*(c[0 + ox,0 + oy,-1 + oz]);
+    m2 = c[-1 + ox,-1 + oy,1 + oz] + c[-1 + ox,1 + oy,1 + oz] + 
+         c[ 1 + ox,-1 + oy,1 + oz] + c[ 1 + ox,1 + oy,1 + oz] +
+         2.*(c[-1 + ox, 0 + oy,1 + oz] + c[1 + ox,0 + oy,1 + oz] + 
+             c[ 0 + ox,-1 + oy,1 + oz] + c[0 + ox,1 + oy,1 + oz]) +
+         4.*(c[ 0 + ox, 0 + oy,1 + oz]);
+    m[2] = m1 - m2;
+
+    /* normalize the set (mx,my,mz): |mx|+|my|+|mz| = 1 */
+    t0 = fabs(m[0]) + fabs([1]) + fabs([2]);
+    if (t0 < 1e-30) 
+      return (coord){1., 0., 0.};
+
+    return (coord){m[0] /= t0, m0[1] /= t0, m[2] /= t0};
+#endif // dimension == 3
+}
+
+/**
 redistribute_volume calculates the volume loss caused by imprecise movement of the
 solid boundary (ibm), which itself is caused by us using different methods
 to advect the liquid and solid interface: VOF and level-set reinitialization -> VOF, resp.
