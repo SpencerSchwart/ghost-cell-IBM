@@ -24,6 +24,7 @@ static inline coord normal_contact (coord ns, coord nf, double angle)
         n.y =   ns.x * sin(angle) - ns.y * cos(angle);
     }
 #else // dimension == 3
+#if 1
     foreach_dimension()  //Axis angle
       if (ns.x != 0) ns.x = -ns.x ; //We take the normal pointing toward the fluid
 
@@ -47,6 +48,22 @@ static inline coord normal_contact (coord ns, coord nf, double angle)
     n.y = cos(angle)*sin(beta) - sin(angle)*cos(phi)*cos(beta);
     n.z = sin(angle)*cos(phi)*sin(beta)*sin(gamma) + cos(angle)*cos(beta)*sin(gamma) + 
           sin(angle)*sin(phi)*cos(gamma);
+#else
+    foreach_dimension()
+        if (ns.x != 0) ns.x = -ns.x;
+
+    coord t;
+    double cos_thetas = dot_product(nf, ns);
+    foreach_dimension()
+        t.x = nf.x - cos_thetas * ns.x;
+
+    fprintf(stderr, "t={%g, %g, %g} ||t|| = %g", t.x, t.y, t.y, distance3D(t.x,t.y,t.z));
+
+    normalize2(&t);
+
+    foreach_dimension()
+        n.x = cos(angle)*ns.x + sin(angle)*t.x;
+#endif
 #endif
 
     return n;
@@ -114,6 +131,8 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
             ghostInter[] = 0;
     }
 
+    //fprintf(stderr, "calculating desired interface...\n");
+
     foreach() {
 
         inter[] = c[] > 0 && c[] < ibm[];
@@ -141,6 +160,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
                 nf.x = n.x[];
 
             normalize (&ns);
+            normalize (&nf);
             coord nc = normal_contact (ns, nf, contact_angle[]);
             normalize_sum(&nc);
 
@@ -162,8 +182,14 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
                 inter[] = c[] > 0 && c[] < 1;
                 extra[] = inter[] && ibm[] > 0 && ibm[] < 1 && !ghostInter[] && cr[] < ibm[]-1e-6;
             }
-        }
+#if 0
+            fprintf(stderr, "extra cell: (%g, %g, %g) c=%g ibm=%g nf={%g,%g,%g} ns={%g,%g,%g} as=%g nc={%g,%g,%g} ac=%g\n",
+                x, y, z, c[], ibm[], nf.x, nf.y, nf.z, ns.x, ns.y, ns.z, alphas, n.x[], n.y[], n.z[], alpha[]);
+#endif
+     }
     }
+
+    //fprintf(stderr, "finished\n");
 
     boundary ({c, cr, n, alpha, inter, ghostInter, extra});
 }
@@ -183,7 +209,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
 {
     scalar ghostInter[];
 
-    //foreach() { gf00[] = c[]; }
+    foreach() { gf00[] = c[]; }
 
     reconstruction_contact(c, cr0, nf, alphaf, ns, alphas, inter, ghostInter, extra);
     scalar c0[];
@@ -220,11 +246,12 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
                     ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
                 }
             }
-            
+
             // 3.b. Assign volume fraction in ghost/solid cell
             if (totalWeight > 0.) 
                 c[] = ghostf / (totalWeight + SEPS);
-            else if (contact_angle[] <= 0.5*pi) {
+#if 1
+            else if (contact_angle[] <= 0.55*pi) {
                 bool check = false;
                 foreach_neighbor(1) {
                     if (ibm[] && cr0[] && !extra[])
@@ -249,6 +276,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
                         c[] = 1;
                 }
             }
+#endif            
         }
         if (ghostInter[])
         {
@@ -258,6 +286,9 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
             // 3.c. extrapolate f from direct neighbors to get initial guess
             int cond0 = cr0[] <= 1e-6;
             coord ns0 = {-ns.x[], -ns.y[], -ns.z[]}, nf1;
+
+            //fprintf(stderr, "ghost cell: (%g, %g, %g) c=%g ibm=%g ns={%g,%g,%g} as=%g\n", 
+            //    x, y, z, cr0[], ibm[], ns.x[], ns.y[], ns.z[], alphas[]);
 
             foreach_neighbor() {
                 if (extra[]) {
@@ -278,12 +309,19 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
                     totalWeight += cellWeight;
 
                     ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+#if 0
+                    double ctemp = rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+                    if (ctemp)
+                    fprintf(stderr, "   extra cell: (%g, %g, %g) c=%g ibm=%g nf={%g,%g,%g} af=%g as=%g cw=%g ct=%g\n",
+                        x, y, z, cr0[], ibm[], nf1.x, nf1.y, nf1.z, alphaf[], alphas[], cellWeight, ctemp);
+#endif
                 }
             }
 
             if (totalWeight > 0.) {
                 c[] = ghostf / totalWeight;
                 if (c[] > 1 - INT_TOL) c[] = 1; // is this good?
+                //fprintf(stderr, "   final: c=%g ghostf=%g tw=%g\n", c[], ghostf, totalWeight);
             }
             // 3.e otherwise, cell should not be used to enforce C.A.
             else if (ghostf <= 0 && cr0[] <= 1e-6 ) {
@@ -297,6 +335,8 @@ void set_contact_angle (scalar c, scalar cr0, const scalar ibm,
         ctmp[] = c[];
     boundary({ctmp,cr0,c});
 
+    /**
+    TODO: is this necessary for ALL contact angles? or just super hydrophobic?*/
     foreach() {
         gf1[] = c[];
         // make full cells with fractional ch conserve cr

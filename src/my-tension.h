@@ -93,7 +93,7 @@ event acceleration (i++)
       /**
       If $\phi$ is already allocated, we add $\sigma\kappa$, otherwise
       we allocate a new field and set it to $\sigma\kappa$. */
-
+#if CA
       scalar phi = c.phi;
       if (phi.i)
     	curvature (ch, phi, c.sigma, add = true);
@@ -102,5 +102,15 @@ event acceleration (i++)
     	curvature (ch, phi, c.sigma, add = false);
     	c.phi = phi;
       }
+#else
+      scalar phi = c.phi;
+      if (phi.i)
+    	curvature (c, phi, c.sigma, add = true);
+      else {
+	    phi = new scalar;
+    	curvature (c, phi, c.sigma, add = false);
+    	c.phi = phi;
+      }
+#endif
     }
 }
