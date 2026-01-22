@@ -1293,11 +1293,11 @@ coord youngs_normal_off (Point point, scalar c, coord o = {0,0,0})
     m[2] = m1 - m2;
 
     /* normalize the set (mx,my,mz): |mx|+|my|+|mz| = 1 */
-    t0 = fabs(m[0]) + fabs([1]) + fabs([2]);
+    t0 = fabs(m[0]) + fabs(m[1]) + fabs(m[2]);
     if (t0 < 1e-30) 
       return (coord){1., 0., 0.};
 
-    return (coord){m[0] /= t0, m0[1] /= t0, m[2] /= t0};
+    return (coord){m[0] /= t0, m[1] /= t0, m[2] /= t0};
 #endif // dimension == 3
 }
 

@@ -287,6 +287,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
     }
     boundary({c,ch});
 
+    scalar alphaf[];
+    vector nf[];
+
     reconstruction(c, nf, alphaf);
     set_contact_angle(ch, c, ibm0, nf, alphaf, ns, alphas);
   }
