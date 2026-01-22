@@ -167,6 +167,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
                 coord off = {0,0,0};
                 off.x = i;
                 tempnf = youngs_normal_off (point, c, off);
+                tempnf = (coord){-s*tempnf.x, tempnf.y, tempnf.z};
                 alpha = 0; // inital guess
             }
             
