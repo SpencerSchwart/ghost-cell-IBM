@@ -11,8 +11,6 @@ method. The volume fraction in fluid 1 is $f=1$ and $f=0$ in fluid
 *mu1*, *rho2*, *mu2*, respectively. */
 
 #if CA
-  #include "ibm-gcm-vof.h"
-
   #if RAIN
     #include "rain.h"
   #endif

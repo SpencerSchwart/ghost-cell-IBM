@@ -353,6 +353,7 @@ TODO: what if interface perfectly cuts cell face? use interfacial() instead? mus
       be as cheap as possible.
 */
 
+trace
 void reconstruction_ibm (const scalar c, const face vector cf, vector n, scalar alpha)
 {
     foreach() {

@@ -5,7 +5,7 @@ attribute {
   bool inverse;
 }
 
-scalar cid[];
+scalar ch[];  // Volume fraction field for curvature calculation
 
 extern scalar * interfaces;
 extern face vector uf;
@@ -57,8 +57,6 @@ static void vof_concentration_refine (Point point, scalar s)
   }
 }
 
-scalar ch[];  // Volume fraction field for curvature calculation
-
 event defaults (i = 0)
 {
   for (scalar c in interfaces) {
@@ -94,7 +92,10 @@ event stability (i++) {
 }
 
 vector divs[];
+
+#if MOVING
 face vector ibmf_temp[];
+#endif
 
 void move_solid_x(scalar ibm, face vector ibmf);
 void move_solid_y(scalar ibm, face vector ibmf);
@@ -125,11 +126,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   
   foreach_face(x, reduction (max:cfl)) {
 
-#if IBM
-    double un = uf.x[]*dt/(Delta*fm.x[]*ibmf_temp.x[] + SEPS), s = sign(un);
-#else
     double un = uf.x[]*dt/(Delta*fm.x[] + SEPS), s = sign(un);
-#endif
     int i = -(s + 1.)/2.;
 
     /**
@@ -155,13 +152,13 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
     else if (ibm0[i] > 0. && ibm0[i] < 1.) {
         coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
 
-        double advVolume = fabs(un)*ibmf_temp.x[];
+        double advVolume = fabs(un)*ibmf.x[];
 
         if (c[i] <= 0.)
             cf = 0.;
         else if (c[i] >= ibm0[i]-INT_TOL) // interfacial cell is full
             cf = 1;
-        else if (c[i] > 0. && c[i] < ibm0[i]-INT_TOL) {
+        else if (c[i] > 0. && c[i] < ibm0[i]-INT_TOL) { // three-phase
             double alpha = alphafh[i];
             if (!tempnf.x && !tempnf.y && !tempnf.z) {
                 coord off = {0,0,0};
@@ -188,7 +185,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
     else 
         cf = 0;
 
-    flux[] = cf*uf.x[];
+    flux[] = cf*uf.x[]*ibmf.x[];
 
     scalar t, gf, tflux;
     for (t,gf,tflux in tracers,gfl,tfluxl) {
@@ -250,8 +247,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
       }
 #endif
 
-      c[]  += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
-      ch[] += dt*(flux[] - flux[1] + cc[]*(uf.x[1] - uf.x[] - divs.x[]))/(val*Delta);
+      c[]  += dt*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[] - divs.x[]))/(val*Delta);
+      ch[] += dt*(flux[] - flux[1] + cc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[] - divs.x[]))/(val*Delta);
 
       crsum += c[]*pow(Delta, dimension)*val;
       crsum_clamp += clamp(c[], 0., 1.)*pow(Delta, dimension)*val;
@@ -277,22 +274,21 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   }
   else {
     foreach() {
-      if (c[] < 1e-11)
+      if (c[] < VTOL)
         c[] = 0;
-      if (ibm[] > 0 && ibm[] < 1 && c[] >= ibm[]-1e-6)
+      if (ibm[] > 0 && ibm[] < 1 && c[] >= ibm[]-INT_TOL)
           ch[] = 1;
       else if (ibm[] > 0)
           ch[] = c[];
       else
           ch[] = 0;
     }
-    boundary({c,ch});
 
     scalar alphaf[];
     vector nf[];
 
-    reconstruction(c, nf, alphaf);
-    set_contact_angle(ch, c, ibm0, nf, alphaf, ns, alphas);
+    reconstruction(c, nf, alphaf); // should be based on c or ch?
+    set_contact_angle(ch, c, ibm0, nf, alphaf, ns, alphas); // find ch
   }
 
   delete (tfluxl); free (tfluxl);
@@ -350,7 +346,7 @@ void vof_advection (scalar * interfaces, int i)
 
     reconstruction_ibm (ibm, ibmf, ns, alphas);
     reconstruction (ch, nfh, alphafh);
-    if (i == 0) {
+    if (i == 0) { // is this necessary still?
         reconstruction (c, nf, alphaf);
         real_fluid (ch, c, nf, alphaf, ns, alphas);
     }
@@ -362,28 +358,32 @@ void vof_advection (scalar * interfaces, int i)
             divs.x[] = 0;
     }
 
+#if MOVING
     foreach_face() {
         ibmf_temp.x[] = ibmf.x[];
         uf.x[] *= ibmf_temp.x[];
     }
-    boundary({uf});
-   
+    ibm_boundary({uf.x, uf.y, uf.z});
+#endif
+
     void (* sweep[dimension]) (scalar, scalar, scalar, scalar *, scalar, 
                                face vector, vector, scalar, vector, scalar, int);
     int d = 0;
     foreach_dimension()
       sweep[d++] = sweep_x;
     for (d = 0; d < dimension; d++) {
-
         int last = (d == dimension - 1);
         sweep[(i + d) % dimension] (c, ch, cc, tcl, ibm, ibmf, ns, alphas, nfh, alphafh, last);
     }
     delete (tcl), free (tcl);
 
+#if MOVING
     foreach_face()
         uf.x[] /= (ibmf_temp.x[] + SEPS);
-
-    boundary({uf, c});
+    ibm_boundary({uf.x, uf.y, uf.z, c});
+#else
+    //ibm_boundary({c, ch});
+#endif
   }
 }
 

@@ -837,7 +837,6 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
             pf[i].x = nodata;
             ps[i].x = nodata;
         }
-
     
     boundary_points(nf, alphaf, lhs, rhs, pf);
     boundary_points(ns, alphas, lhs, rhs, ps);
@@ -1105,7 +1104,7 @@ double get_real_error (const void* data, double alpha)
     return frcalc - clamp(tcell.fr, 0, tcell.s);
 }
 
-
+trace
 double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int maxitr = 50, double tolerance = BI_TOL, int * numitr = NULL)
 {
     static const coord lhs = {-0.5,-0.5,-0.5}, rhs = {0.5,0.5,0.5};
@@ -1312,6 +1311,7 @@ each cell will get the same amount of volume.
 TODO: improve weighting function by maybe including distance from interface? 
 TODO: clean up function */
 
+trace
 double redistribute_volume (scalar cr, const scalar ibm)
 {
     // 1. Calculate the volume error
@@ -1426,6 +1426,7 @@ TODO: axisymmetric extension
 TODO: probably does not work with AMR right now
 TODO: make stats struct that the functions returns */
 
+trace
 double redistribute_volumev2 (scalar cr, const scalar ibm)
 {
     // 1. Calculate the volume error
@@ -1551,3 +1552,13 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
     return verror;
 }
 
+/**
+ibm_boundary is used to differentiate the calls to boundary so that one can see how much
+time is allocated to boundary() within a certain section of code, since boundary() is
+used many time throughout the source code. */
+
+trace
+void ibm_boundary (scalar * list)
+{
+  boundary(list);
+}
