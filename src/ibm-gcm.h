@@ -1,11 +1,13 @@
 #if !AXI
 #undef dv
 #define dv()  (pow(Delta,dimension))
-#endif
+#endif // !AXI
 #define dv2() (pow(Delta,dimension)*ibm[]*cm[])
 #define dv3() (pow(Delta,dimension)*ibm[])
 
 #include "fractions.h"
+
+#include "mls.h"
 
 #define BGHOSTS 2
 #define IBM 1
@@ -111,6 +113,11 @@ double navier_slip (double expr, Point point = point,
 {
   return data ? ibm_area_center (point, s, &x, &y, &z),
     ((bool *)data)[0] = true, ((bool *)data)[1] = true, expr : 2.*expr - s[];
+}
+
+double cross_product_2d (coord a, coord b)
+{
+    return (a.x*b.y) - (a.y*b.x);
 }
 
 coord cross_product (coord a, coord b)
@@ -700,7 +707,8 @@ gauss_elim performs *in place* transformation to the provided augmented matrix
 TODO: Extend to handle higher-order interpolation schemes, i.e. larger matrices.
 */
 
-void gauss_elim(int m, int n, double matrix[m][n], double sol[m])
+//void gauss_elim(int m, int n, double matrix[m][n], double sol[m])
+int gauss_elim(int m, int n, double matrix[m][n], double sol[m])
 {
     // Forward elimination
     for (int i = 0; i < m; i++) {
@@ -723,9 +731,9 @@ void gauss_elim(int m, int n, double matrix[m][n], double sol[m])
         }
 
         // 3. Make sure our pivot is non‐zero (or not too close to zero)
-        if (fabs(matrix[i][i]) < 1e-12) {
+        if (fabs(matrix[i][i]) < 1e-14) {
             fprintf(stderr, "ERROR: Pivot is zero (matrix is singular or nearly singular)\n");
-            return;
+            return -1;
         }
 
         // 4. Eliminate all rows below row i
@@ -751,6 +759,7 @@ void gauss_elim(int m, int n, double matrix[m][n], double sol[m])
         // Divide by the diagonal element
         sol[i] /= matrix[i][i];
     }
+    return 1;
 }
 
 
@@ -2128,6 +2137,17 @@ int local_to_global (Point point, coord p, double* ax, double* ay, double* az)
 
     return 0;
 }
+
+/**
+Same as above, but returns the values in a coord type instead of individual double variables.*/
+coord local_to_global_coord (Point point, coord p1)
+{
+    coord c = {x,y,z}, p2;
+    foreach_dimension()
+        p2.x = c.x + p1.x*Delta;
+    return p2;
+}
+
 
 
 /*

@@ -7,6 +7,8 @@ attribute {
 
 scalar ch[];  // Volume fraction field for curvature calculation
 
+scalar c0[];
+
 extern scalar * interfaces;
 extern face vector uf;
 extern double dt;
@@ -93,6 +95,8 @@ event stability (i++) {
 
 vector divs[];
 
+const coord indicator = {0,1,2};
+
 #if MOVING
 face vector ibmf_temp[];
 #endif
@@ -169,7 +173,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
             }
             
             normalize2(&tempns);
-            coord nc = normal_contact (tempns, tempnf, contact_angle[]);
+            coord nc = normal_contact (tempns, tempnf, contact_angle[i]);
             normalize_sum(&tempns);
             normalize_sum(&nc);
 
@@ -194,7 +198,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
     	cf1 = 1. - cf1, ci = 1. - ci;
       if (ci > 1e-10) {
 	    double ff = t[i]/ci + s*min(1., 1. - s*un)*gf[i]*Delta/2.;
-    	tflux[] = ff*cf1*uf.x[];
+    	tflux[] = ff*cf1*uf.x[]*ibmf.x[];
       }
       else
 	    tflux[] = 0.;
@@ -211,7 +215,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
 	     __LINE__, cfl - 0.5), fflush (ferr);
 
   double crsum = 0, crsum_clamp = 0;
-  foreach(reduction (+:crsum) reduction (+:crsum_clamp))
+  foreach(reduction (+:crsum) reduction (+:crsum_clamp)) {
+
     if (ibm0[] > 0) {
 
 #if AXI
@@ -255,8 +260,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
 
       scalar t, tc, tflux;
       for (t, tc, tflux in tracers, tcl, tfluxl)
-        t[] += dt*(tflux[] - tflux[1] + tc[]*(uf.x[1] - uf.x[]))/(val*Delta);
+        t[] += dt*(tflux[] - tflux[1] + tc[]*(ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[]))/(val*Delta);
     }
+  }
 
 #if MOVING
   move_solid_x(ibm0, ibmf0);
@@ -266,13 +272,21 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
   if (crsum != crsum_clamp) {
     fprintf(stderr, "crsum != crsum_clamp: %0.14g != %0.14g\nRedistributing volume...\n",
             crsum, crsum_clamp);
-    redistribute_volume(c, ibm);
+    //redistribute_volume(c, ibm);
+    foreach() {
+        if (c[] > ibm[] || c[] < 0)
+            c[] = clamp(c[], 0, ibm[]);
+    }
   }
 
   if (!last) {
       reconstruction (ch, nfh, alphafh);
   }
   else {
+    
+    if (c.wetting.dynamic) // if using dynamic CA model, update CA in three-phase cells
+        update_contact_angle (c, c0, ibm0, ns, alphas, u, contact_angle);
+
     foreach() {
       if (c[] < VTOL)
         c[] = 0;
@@ -287,7 +301,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar ibm0,
     scalar alphaf[];
     vector nf[];
 
-    reconstruction(c, nf, alphaf); // should be based on c or ch?
+    reconstruction(c, nf, alphaf); // should be based on c or ch? TODO: is it even necessary?
     set_contact_angle(ch, c, ibm0, nf, alphaf, ns, alphas); // find ch
   }
 
@@ -352,6 +366,7 @@ void vof_advection (scalar * interfaces, int i)
     }
 
     foreach() {
+        c0[] = c[];
         cc[] = (c[] > 0.5*ibm[]);
 
         foreach_dimension()

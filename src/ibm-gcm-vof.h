@@ -6,8 +6,6 @@
 
 #include "fractions.h"
 
-(const) scalar contact_angle;
-
 typedef struct proj_coord {
     coord og;
     double x, y;
@@ -311,10 +309,11 @@ TODO: do we need another case when ns.y || nf.y = 0? or does this code
       handle everything ok? */
 
 int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
-                         coord lhs, coord rhs, coord * pint = NULL)
+                         coord lhs = {-0.5,-0.5}, coord rhs = {0.5,0.5}, coord * pint = NULL)
 {
 #if dimension == 2
     coord pt;
+
     pt.x = (alphas/(ns.y + SEPS) - alphaf/(nf.y + SEPS)) /
                   ((ns.x/(ns.y + SEPS)) - (nf.x/(nf.y + SEPS)) + SEPS);
 
@@ -332,10 +331,31 @@ int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
 }
 
 /**
+Similar to above function, but returns the intersection point without considering a boundary.*/
+coord lines_intersect (coord nf, double alphaf, coord ns, double alphas)
+{
+    coord pint;
+    if (fabs(nf.y) > 1e-5) {
+        pint.x = (alphas/(ns.y + SEPS) - alphaf/(nf.y + SEPS)) /
+                 ((ns.x/(ns.y + SEPS)) - (nf.x/(nf.y + SEPS)) + SEPS);
+
+        pint.y = (alphaf/(nf.y + SEPS)) - (nf.x*pint.x)/(nf.y + SEPS);
+    }
+    else {
+        pint.y = (alphas/(ns.x + SEPS) - alphaf/(nf.x + SEPS)) /
+                 ((ns.y/(ns.x + SEPS)) - (nf.y/(nf.x + SEPS)) + SEPS);
+
+        pint.x = (alphaf/(nf.x + SEPS)) - (nf.y*pint.y)/(nf.x + SEPS);
+    }
+
+    return pint;
+}
+
+/**
 this function checks to see if a given point, pc, is inside the region
 containing only real fluid and not inside the immersed boundary.
 
-Note: ns is the inward pointing normal for the solid boundary while
+Note: ns is the inward (might actualyl be outward) pointing normal for the solid boundary while 
       nf is the outward pointing normal for the fluid boundary.
 
 returns
@@ -815,9 +835,11 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     double rhsx = 0;
     if (rhs.x < 0.5 && areaLiquid < 1 && advVolume) {
         cvy = clamp(cvy, -0.5, 0.5);
+#if 1
         rhsx = fit_volume (advVolume, ns, alphas, rhs.x);
         rhs.x = rhsx;
         rhsb.x = rhsx;
+#endif
         coord rect0[4] = {lhs,rhsb,rhs,lhst};
         areaTotal = polygon_area (4, rect0);
         areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs);
@@ -1092,7 +1114,7 @@ double fit_volume (double advVolume, coord ns, double alphas, double ufdt)
 }
 
 
-double get_real_error (const void* data, double alpha) 
+double get_real_error (const void* data, double alpha)
 {
     tripoint tcell = (*(tripoint*)data);
 
