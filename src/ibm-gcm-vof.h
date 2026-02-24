@@ -5,6 +5,7 @@
 #define BI_TOL 1e-11 // TODO: standardize tolerance for root solvers
 
 #include "fractions.h"
+#include "ibm-utils.h"
 
 typedef struct proj_coord {
     coord og;
@@ -847,7 +848,7 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
 
     double areaAdv = 0;
     if (!advVolume)
-        areaAdv = areaTotal*areaLiquid; // = uf*dt*ibmf*dx
+        areaAdv = areaTotal*areaLiquid; // = uf*dt*fs*dx
     else
         areaAdv = advVolume;
 
@@ -940,120 +941,6 @@ tripoint fill_tripoint (double fr, coord nf, double alphaf, coord ns, double alp
 {
     tripoint tcell = {nf, ns, alphaf, alphas, f, fr, s};
     return tcell;
-}
-
-/**
-generic root solver using the bisection method */
-int rsolver_bisection (double* a, double amin, double amax, const void* data, double (*func)(const void*, double),
-                       double tolerance = BI_TOL, int maxitr = 50)
-{
-    double errmax = (*func)(data, amax);
-    if (fabs(errmax) < tolerance) {
-        *a = amax;
-        return 0;
-    }
-
-    double b = 0, error = HUGE;
-    int itr = 0;
-    while (fabs(error) > tolerance && itr < maxitr) {
-        b = (amin + amax)/2.;   // bisection
-        error = (*func)(data, b);
-        if (sign2(error) == sign2(errmax)) {
-            amax = b;
-            errmax = error;
-        }
-        else
-            amin = b;
-        itr++;
-    }
-        
-    if (itr == maxitr) {
-        fprintf(stderr, "WARNING: alpha  solver does not converge after"
-                        " maximum iteration (%d), error = %g\n", maxitr, error);
-    }
-    *a = b;
-    return itr;
-}
-
-/**
-generic root solver using Brent's method */
-int rsolver_brent (double* result, double a, double b, const void* data, double (*func)(const void*, double),
-                   double tolerance = BI_TOL, int maxitr = 50, int warning = 1)
-{
-    double fa = (*func)(data, a);
-    if (fabs(fa) < tolerance) {
-        *result = a;
-        return 0;
-    }
-
-    double fb = (*func)(data, b);
-    if (fabs(fb) < tolerance) {
-        *result = b;
-        return 0;
-    }
-
-    if (fa * fb >= 0) {
-        if (warning)
-            fprintf(stderr, "WARNING: range in Brent's solver does not contain root!\n");
-        return -1;
-    }
-
-    if (fabs(fa) < fabs(fb)) {
-        swap(double, a, b);
-        swap(double, fa, fb);
-    }
-
-    double c = a, fc = fa, d = b - a; 
-    int iter = 0, mflag = 1;
-    while (fabs(b - a) > tolerance && fabs(fb) > tolerance && fabs(fa) > tolerance && iter < maxitr) {
-
-        double s;
-        if (!approx_equal_double(fa, fc) && !approx_equal_double(fb, fc)) {
-            s = (a*fb*fc)/((fa-fb)*(fa-fc)) + 
-                (b*fa*fc)/((fb-fa)*(fb-fc)) + 
-                (c*fa*fb)/((fc-fa)*(fc-fb));
-        }
-        else // secant
-            s = b - fb*(b-a)/(fb-fa + SEPS);
-
-        int cond1 = s <= fmin(a, b) || s >= fmax(a, b);
-        //int cond1 = (s < (3*a + b)/4.) || (s > b); // assuming a < b and |fa| > |fb|
-        int cond2 =  mflag && fabs(s - b) >= fabs(b-c)*0.5;
-        int cond3 = !mflag && fabs(s - b) >= fabs(c-d)*0.5;
-        int cond4 =  mflag && fabs(b - c) < tolerance;
-        int cond5 = !mflag && fabs(c - d) < tolerance;
-        if (cond1 || cond2 || cond3 || cond4 || cond5) {
-            s = (a + b) * 0.5;
-            mflag = 1;
-        }
-        else
-            mflag = 0;
-
-        double fs = (*func)(data, s);
-        d = c;        
-        c = b; fc = fb;
-
-        if (fa*fs < 0)
-            b = s, fb = fs;
-        else
-            a = s, fa = fs;
-
-        if (fabs(fa) < fabs(fb)) {
-            swap(double, a, b);
-            swap(double, fa, fb);
-        }
-        if (fabs(fb) < tolerance || fabs(fa) < tolerance)
-            break;
-
-        ++iter;
-    }
-
-    if (iter == maxitr && warning) 
-        fprintf(stderr, "WARNING: alpha  solver does not converge after"
-                        " maximum iteration (%d), error = %g\n", maxitr, fb);
-
-    *result = (fabs(fa) < fabs(fb)) ? a : b;
-    return iter;
 }
 
 /** 
@@ -1167,18 +1054,18 @@ double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int 
 
 /**
 this function fills fr with only the real volume fraction of f that lays 
-outside of the solid immersed boundary, ibm. */
+outside of the solid immersed boundary, cs. */
 
 void real_fluid (scalar f, scalar fr, vector nf, scalar alphaf, vector ns, scalar alphas)
 {
     foreach() {
-        if (on_interface(ibm) && on_interface(f))
+        if (on_interface(cs) && on_interface(f))
             fr[] = immersed_fraction (f[], (coord){nf.x[], nf.y[], nf.z[]}, alphaf[],
                                            (coord){ns.x[], ns.y[], ns.z[]}, alphas[],
                                            (coord){-0.5,-0.5,-0.5},
-                                           (coord){ 0.5, 0.5, 0.5}) * ibm[];
+                                           (coord){ 0.5, 0.5, 0.5}) * cs[];
         else
-            fr[] = f[] * ibm[];
+            fr[] = f[] * cs[];
     }
 }
 
@@ -1192,12 +1079,12 @@ interior cells are cells along the solid interface that
 TODO: make a formal definition of what an interior cell is (full cells along the solid interface?
       any full cell that would not contain an extrapolated interface for CAs?) */
 
-bool is_interior_cell (Point point, scalar ibm, scalar cr)
+bool is_interior_cell (Point point, scalar cs, scalar cr)
 {
-    if (ibm[] <= 0 || ibm[] >= 1 || cr[] == 0)
+    if (cs[] <= 0 || cs[] >= 1 || cr[] == 0)
         return false;
     foreach_neighbor() {
-        if (ibm[] && fabs(cr[] - ibm[]) > INT_TOL) {
+        if (cs[] && fabs(cr[] - cs[]) > INT_TOL) {
             return false;
         }
     }
@@ -1212,7 +1099,7 @@ bisection method to obtain alpha.
 The solver converges after about 10 iterations if tolerance = 1e-9 using Brent's method,
 and a little more than twice that for the normal bisection method. */
 trace
-double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, double alphas,
+double immersed_alpha (double f, double cs, coord nf, double alphaf, coord ns, double alphas,
                             double freal, double tolerance = BI_TOL, int * numitr = NULL)
 {
     if ((freal <= INT_TOL || freal >= 1-INT_TOL) && !nf.x && !nf.y && !nf.z)
@@ -1223,9 +1110,9 @@ double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, 
     double alphaMin = -0.6, alphaMax = 0.6, alpha = 0; // are there better values?
  
     double f0 = clamp(f, 0., 1.);
-    double ibm0 = ibm;
-    freal = clamp(freal, 0., ibm0);
-    const tripoint tcell = fill_tripoint (freal, nf, alphaf, ns, alphas, f0, ibm0);
+    double cs0 = cs;
+    freal = clamp(freal, 0., cs0);
+    const tripoint tcell = fill_tripoint (freal, nf, alphaf, ns, alphas, f0, cs0);
 
     int maxitr = 100;
 
@@ -1234,7 +1121,7 @@ double immersed_alpha (double f, double ibm, coord nf, double alphaf, coord ns, 
 
     // the cell is full or empty, but we want to change f to set C.A while conserving freal
     // TODO: this isn't necessary for the VOF advection step
-      if ((nf.x || nf.y || nf.z) && (freal <= 0 + VTOL || freal >= ibm0 - VTOL)) {
+      if ((nf.x || nf.y || nf.z) && (freal <= 0 + VTOL || freal >= cs0 - VTOL)) {
         return ghost_alpha (tcell, alphaMin, alphaMax, numitr, maxitr = maxitr, tolerance = tolerance);
     }
 
@@ -1324,7 +1211,7 @@ coord youngs_normal_off (Point point, scalar c, coord o = {0,0,0})
 
 /**
 redistribute_volume calculates the volume loss caused by imprecise movement of the
-solid boundary (ibm), which itself is caused by us using different methods
+solid boundary (cs), which itself is caused by us using different methods
 to advect the liquid and solid interface: VOF and level-set reinitialization -> VOF, resp.
 
 The weights used for redistribution is based on the number of interfacial cells. Meaning
@@ -1334,29 +1221,29 @@ TODO: improve weighting function by maybe including distance from interface?
 TODO: clean up function */
 
 trace
-double redistribute_volume (scalar cr, const scalar ibm)
+double redistribute_volume (scalar cr, const scalar cs)
 {
     // 1. Calculate the volume error
     //    and count the number of interfacial cells that contain no solid fragment
     double verror = 0;
     int icells = 0;
     foreach(reduction (+:verror) reduction (+:icells)) {
-        if (cr[] > ibm[]) { // cell is too full
-            verror += (cr[] - ibm[])*dv();
-            cr[] = ibm[];
+        if (cr[] > cs[]) { // cell is too full
+            verror += (cr[] - cs[])*dv();
+            cr[] = cs[];
         }
         else if (cr[] < 0) { // cell is too empty
             verror += cr[]*dv();
             cr[] = 0;
         }
         #if MOVING
-        else if (on_interface(ibm) && cr[] < ibm[] && // moving interface error
-            is_interior_cell (point, ibm, cr)) {
-            verror += (cr[] - ibm[])*dv();
-            cr[] = ibm[];
+        else if (on_interface(cs) && cr[] < cs[] && // moving interface error
+            is_interior_cell (point, cs, cr)) {
+            verror += (cr[] - cs[])*dv();
+            cr[] = cs[];
         }
         #endif
-        if (cr[] > 0 && cr[] < ibm[]-1e-10 && ibm[] >= 1)
+        if (cr[] > 0 && cr[] < cs[]-1e-10 && cs[] >= 1)
             icells++;
     }
    
@@ -1370,11 +1257,11 @@ double redistribute_volume (scalar cr, const scalar ibm)
     int count = 0, overfill = 0;
 
     foreach(reduction(max:overfill) reduction(+:count)) {
-        if (cr[] > 0 && cr[] < ibm[]-1e-10 && ibm[] >= 1) {
+        if (cr[] > 0 && cr[] < cs[]-1e-10 && cs[] >= 1) {
 
             // cell is too full to take the additional volume, so give it to neighbors
             double vol = dv();
-            if (cr[] + (verror/(icells*vol)) > ibm[]) {
+            if (cr[] + (verror/(icells*vol)) > cs[]) {
                 overfill = 1;
 
                 count++;
@@ -1383,23 +1270,23 @@ double redistribute_volume (scalar cr, const scalar ibm)
                 bool done = false;
                 for (int i = -1; i <= 1; i += 2)
                     // 2* because cell may be a recipient for multiple cells (temp fix)
-                    if (cr[i] + 2*(verror/(icells*vol)) < ibm[i] && ibm[i]) 
+                    if (cr[i] + 2*(verror/(icells*vol)) < cs[i] && cs[i]) 
                         id.x[] = i, done = true;
 
                 // then check for top/bottom neighbors
                 if (!done)
                    for (int j = -1; j <= 1; j += 2)
 #if AXI
-                       if (cr[0,j] + 2*(verror/(pow(Delta,dimension)*cm[0,j]*icells)) < ibm[0,j] && ibm[0,j])
+                       if (cr[0,j] + 2*(verror/(pow(Delta,dimension)*cm[0,j]*icells)) < cs[0,j] && cs[0,j])
 #else
-                       if (cr[0,j] + 2*(verror/(icells*vol)) < ibm[0,j] && ibm[0,j])
+                       if (cr[0,j] + 2*(verror/(icells*vol)) < cs[0,j] && cs[0,j])
 #endif
                            id.y[] = j, done = true;
 
 #if dimension == 3
                 if (!done)
                    for (int k = -1; k <= 1; k += 2)
-                       if (cr[0,0,k] + 2*(verror/(icells*vol)) < ibm[0,0,k] && ibm[0,0,k])
+                       if (cr[0,0,k] + 2*(verror/(icells*vol)) < cs[0,0,k] && cs[0,0,k])
                            id.z[] = k, done = true;
 #endif
                 
@@ -1427,7 +1314,7 @@ double redistribute_volume (scalar cr, const scalar ibm)
                     if (id.x[i] == -i && cm[i]) {
                         cr[] += verror/(icells*pow(Delta,dimension)*cm[i]);
                         fixed = 1;
-                        cr[] = clamp (cr[], 0, ibm[]);
+                        cr[] = clamp (cr[], 0, cs[]);
                     }
         }
     boundary ({cr});
@@ -1449,7 +1336,7 @@ TODO: probably does not work with AMR right now
 TODO: make stats struct that the functions returns */
 
 trace
-double redistribute_volumev2 (scalar cr, const scalar ibm)
+double redistribute_volumev2 (scalar cr, const scalar cs)
 {
     // 1. Calculate the volume error
     //    and count the number of interfacial cells that contain no solid fragment
@@ -1462,9 +1349,9 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
 
     foreach(reduction (+:verror) reduction (+:icells)) {
         double local_verror = 0;
-        if (cr[] > ibm[]) { // cell is too full
-            local_verror = (cr[] - ibm[])*dv();
-            cr[] = ibm[];
+        if (cr[] > cs[]) { // cell is too full
+            local_verror = (cr[] - cs[])*dv();
+            cr[] = cs[];
         }
         else if (cr[] < 0) { // cell is too empty
             local_verror = cr[]*dv();
@@ -1479,14 +1366,14 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
 
             int count = 0;
             foreach_neighbor() {
-                if (cr[] > 0 && cr[] < 1 && ibm[] >= 1)
+                if (cr[] > 0 && cr[] < 1 && cs[] >= 1)
                     count++;
             }
             if (count)
                 verrors[] = local_verror/count; // basic average, can be improved e.g., fuller 
         }                                       // cells get less V compared to more empty interface cells
 
-        if (cr[] > 0 && cr[] < 1 && ibm[] >= 1)
+        if (cr[] > 0 && cr[] < 1 && cs[] >= 1)
             icells++;
     }
    
@@ -1502,7 +1389,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
 
     foreach(serial) {
 	overflow[] = 0;
-        if (cr[] > 0 && cr[] < 1 && ibm[] >= 1) {
+        if (cr[] > 0 && cr[] < 1 && cs[] >= 1) {
             foreach_dimension()
                 id.x[] = 0;
 
@@ -1528,7 +1415,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
 
                 // check left/right neighbors first
                 for (int i = -1; i <= 1; i += 2)
-                    if (cr[i] < 0.5 && ibm[i] == 1)
+                    if (cr[i] < 0.5 && cs[i] == 1)
                         id.x[] = i, done = true;
 
                 if (done)
@@ -1536,7 +1423,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
                 
                 // check top/bottomn neigbors
                 for (int j = -1; j <= 1; j += 2)
-                    if (cr[0,j] < 0.5 && ibm[0,j] == 1)
+                    if (cr[0,j] < 0.5 && cs[0,j] == 1)
                         id.y[] = j, done = true;
 #if dimension == 3
                 if (done)
@@ -1544,7 +1431,7 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
 
                 // check front/back neighbors
                 for (int k = -1; k <= 1; k += 2)
-                    if (cr[0,0,k] < 0.5 && ibm[0,0,k] == 1)
+                    if (cr[0,0,k] < 0.5 && cs[0,0,k] == 1)
                         id.z[] = k, done = true;
 #endif
                 if (!done)
@@ -1557,12 +1444,12 @@ double redistribute_volumev2 (scalar cr, const scalar ibm)
 
     if (has_overfill) {
         foreach() {
-            if (ibm[] >= 1 && cr[] < 1) {
+            if (cs[] >= 1 && cr[] < 1) {
                 for (int i = -1; i <= 1; i += 2) {
                     foreach_dimension() {
-                        if (id.x[i] == -i && ibm[i]) {
+                        if (id.x[i] == -i && cs[i]) {
                             cr[] += overflow[i];
-                            cr[] = clamp (cr[], 0, ibm[]); // just in case
+                            cr[] = clamp (cr[], 0, cs[]); // just in case
                         }
                     }
                 }

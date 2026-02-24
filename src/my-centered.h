@@ -155,8 +155,8 @@ event defaults (i = 0)
 
   if (alpha.x.i == unityf.x.i) {
 #if IBM
-    alpha = ibmf;
-    rho = ibm;
+    alpha = fs;
+    rho = cs;
 #else
     alpha = fm;
     rho = cm;
@@ -199,7 +199,7 @@ event defaults (i = 0)
   for (scalar s in {p, pf, u, g}) {
     s.restriction = restriction_ibm_linear;
     s.refine = s.prolongation = refine_ibm_linear;
-    s.depends = list_add (s.depends, ibm);
+    s.depends = list_add (s.depends, cs);
   }
   for (scalar s in {p, pf})
     s.ibm_gradient = pressure_ibm_gradient;
@@ -297,12 +297,8 @@ void prediction()
   if (u.x.gradient)
     foreach()
       foreach_dimension() {
-#if EMBED
-    if (!fs.x[] && !fs.x[1])
-	    du.x[] = 0.;
-	else
-#elif IBM
-    if (!ibmf.x[] && !ibmf.x[1]) // should use ibmf or fm?
+#if EMBED || IBM
+    if (!fs.x[] && !fs.x[1]) // should use ibmf or fm?
 	    du.x[] = 0.;
 	else
 #endif
@@ -311,13 +307,9 @@ void prediction()
   else
     foreach()
       foreach_dimension() {
-#if EMBED
+#if EMBED || IBM
     if (!fs.x[] && !fs.x[1])
 	    du.x[] = 0.;
-	else
-#elif IBM
-        if (!ibmf.x[] && !ibmf.x[1])
-	  du.x[] = 0.;
 	else
 #endif
 	  du.x[] = (u.x[1] - u.x[-1])/(2.*Delta);
@@ -341,8 +333,6 @@ void prediction()
     }
     #endif
     uf.x[] *= fm.x[];
-    //if (fabs(uf.x[]) > LIMIT)
-    //    fprintf(stderr, "WARNING: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
   }
 
   delete ((scalar *){du});
@@ -379,7 +369,7 @@ static void correction (double dt)
   foreach()
     foreach_dimension()
 #if IBM
-      u.x[] += ibmCells[]*dt*g.x[];
+      u.x[] += gc[]*dt*g.x[];
 #else
       u.x[] += dt*g.x[];
 #endif
@@ -428,6 +418,8 @@ The (provisionary) face velocity field at time $t+\Delta t$ is
 obtained by interpolation from the centered velocity field. The
 acceleration term is added. */
 
+void solid_domainv2 (scalar, face vector);
+
 
 event acceleration (i++,last)
 {
@@ -454,7 +446,7 @@ void centered_gradient (scalar p, vector g)
   face vector gf[];
   foreach_face() {
 #if IBM
-    gf.x[] = fm.x[]*ibmf.x[]*a.x[] - fm.x[]*alpha.x[]*(p[] - p[-1])/Delta;
+    gf.x[] = fm.x[]*fs.x[]*a.x[] - fm.x[]*alpha.x[]*(p[] - p[-1])/Delta;
 #else
     gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta;
 #endif
@@ -468,7 +460,7 @@ void centered_gradient (scalar p, vector g)
   foreach() {
     foreach_dimension() {
 #if IBM
-      g.x[] = (gf.x[] + gf.x[1]) / (fm.x[]*ibmf.x[] + fm.x[1]*ibmf.x[1] + SEPS);
+      g.x[] = (gf.x[] + gf.x[1]) / (fm.x[]*fs.x[] + fm.x[1]*fs.x[1] + SEPS);
 #else
       g.x[] = (gf.x[] + gf.x[1]) / (fm.x[] + fm.x[1] + SEPS);
 #endif
@@ -514,7 +506,7 @@ event adapt (i++,last) {
   #elif IBM
   //fractions_cleanup (ibm, ibmf);
   foreach_face()
-    if (uf.x[] && (!fm.x[] || !ibmf.x[]))
+    if ((!fm.x[] || !fs.x[]) && uf.x[])
       uf.x[] = 0.;
   #endif
   event ("properties");

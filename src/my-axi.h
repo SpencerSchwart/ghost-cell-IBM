@@ -43,7 +43,7 @@ static void refine_cm_axi (Point point, scalar cm)
       cm[] = y*cs[];
 #elif IBM
   foreach_child()
-    cm[] = y*(ibm[] > 0);
+    cm[] = y*(cs[] > 0);
 #endif // !EMBED && !IBM
 }
 
@@ -84,15 +84,15 @@ static void refine_face_x_axi (Point point, scalar fm)
   fine(fm,1,1) = (y + Delta/4. - sig*(1. - ff))*ff;
 #elif IBM
   if (!is_refined(neighbor(-1))) {
-    fine(fm,0,0) = (y - Delta/4.)*fine(ibmFaces.x,0,0);
-    fine(fm,0,1) = (y + Delta/4.)*fine(ibmFaces.x,0,1);
+    fine(fm,0,0) = (y - Delta/4.)*fine(gcf.x,0,0);
+    fine(fm,0,1) = (y + Delta/4.)*fine(gcf.x,0,1);
   }
   if (!is_refined(neighbor(1)) && neighbor(1).neighbors) {
-    fine(fm,2,0) = (y - Delta/4.)*fine(ibmFaces.x,2,0);
-    fine(fm,2,1) = (y + Delta/4.)*fine(ibmFaces.x,2,1);
+    fine(fm,2,0) = (y - Delta/4.)*fine(gcf.x,2,0);
+    fine(fm,2,1) = (y + Delta/4.)*fine(gcf.x,2,1);
   }
-  fine(fm,1,0) = (y - Delta/4.)*fine(ibmFaces.x,1,0);
-  fine(fm,1,1) = (y + Delta/4.)*fine(ibmFaces.x,1,1);
+  fine(fm,1,0) = (y - Delta/4.)*fine(gcf.x,1,0);
+  fine(fm,1,1) = (y + Delta/4.)*fine(gcf.x,1,1);
 #endif // !EMBED && !IBM
 }
 
@@ -117,15 +117,15 @@ static void refine_face_y_axi (Point point, scalar fm)
   fine(fm,1,1) = y*fine(fs.y,1,1);
 #elif IBM
   if (!is_refined(neighbor(0,-1))) {
-    fine(fm,0,0) = (max(y - Delta/2., 1e-20))*fine(ibmFaces.y,0,0) ;
-    fine(fm,1,0) = (max(y - Delta/2., 1e-20))*fine(ibmFaces.y,1,0);
+    fine(fm,0,0) = (max(y - Delta/2., 1e-20))*fine(gcf.y,0,0) ;
+    fine(fm,1,0) = (max(y - Delta/2., 1e-20))*fine(gcf.y,1,0);
   }
   if (!is_refined(neighbor(0,1)) && neighbor(0,1).neighbors) {
-    fine(fm,0,2) = (y + Delta/2.)*fine(ibmFaces.y,0,2);
-    fine(fm,1,2) = (y + Delta/2.)*fine(ibmFaces.y,1,2);
+    fine(fm,0,2) = (y + Delta/2.)*fine(gcf.y,0,2);
+    fine(fm,1,2) = (y + Delta/2.)*fine(gcf.y,1,2);
   }
-  fine(fm,0,1) = y*fine(ibmFaces.y,0,1);
-  fine(fm,1,1) = y*fine(ibmFaces.y,1,1);
+  fine(fm,0,1) = y*fine(gcf.y,0,1);
+  fine(fm,1,1) = y*fine(gcf.y,1,1);
 #endif // !EMBED && !IBM
 }
 #endif
@@ -178,25 +178,25 @@ double axi_factor (Point point, coord p) {
   return y;
 }
 
-void cm_update (scalar cm, scalar ibmCells)
+void cm_update (scalar cm, scalar gc)
 {
   foreach() {
-    cm[] = y*(ibm[] > 0);
+    cm[] = y*(cs[] > 0);
   }
-  cm[top] = dirichlet(y*ibm[]);
-  cm[bottom] = dirichlet(y*ibm[]);
+  cm[top] = dirichlet(y*cs[]);
+  cm[bottom] = dirichlet(y*cs[]);
 }
 
-void fm_update (face vector fm, face vector ibmFaces)
+void fm_update (face vector fm, face vector gcf)
 {
   foreach_face(x) {
-    fm.x[] = y*ibmFaces.x[];
+    fm.x[] = y*gcf.x[];
   }
   foreach_face(y)
-    fm.y[] = max(y, 1e-20)*ibmFaces.y[];
+    fm.y[] = max(y, 1e-20)*gcf.y[];
 
-  fm.t[top] = dirichlet(y*ibmFaces.t[]);
-  fm.t[bottom] = dirichlet(y*ibmFaces.t[]);
+  fm.t[top] = dirichlet(y*gcf.t[]);
+  fm.t[bottom] = dirichlet(y*gcf.t[]);
 }
 #endif // IBM
 

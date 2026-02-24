@@ -32,8 +32,8 @@ static void relax_diffusion (scalar * a, scalar * b, int l, void * data)
             double a = 0.;
             foreach_dimension()
                 a += mu.x[1]*s[1] + mu.x[]*s[-1];
-            u.x[] = ibmCells[]*(dt*a + r.x[]*sq(Delta)) /
-                               (sq(Delta) * (rho[] + lambda.x) + avgmu); 
+            u.x[] = gc[]*(dt*a + r.x[]*sq(Delta)) /
+                         (sq(Delta) * (rho[] + lambda.x) + avgmu); 
         }
     }
 }
@@ -60,7 +60,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
             foreach_dimension()
                 a += g.x[] - g.x[1];
             res.x[] = r.x[] - (rho[] + lambda.x)*u.x[] - dt*a/Delta;
-            if (ibm[] <= 0.5)
+            if (cs[] <= GCV)
                 res.x[] = 0;
             if (fabs (res.x[]) > maxres)
                 maxres = fabs (res.x[]);
@@ -75,7 +75,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
                 a += mu.x[0]*face_gradient_x (s, 0) - mu.x[1]*face_gradient_x (s, 1);
             res.x[] = r.x[] - (rho[] + lambda.x) * u.x[] - dt * a / Delta;
 
-            if (ibm[] <= 0.5)
+            if (cs[] <= GCV)
                 res.x[] = 0;
 
             if (fabs (res.x[]) > maxres)
@@ -100,17 +100,13 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
 #if AXI
         val = cm[];
 #endif
-#if CA
-        rho2[] = rho[]*val;
-#else
-        rho2[] = rho[]*val/(ibm[] + SEPS);
-#endif
+        rho2[] = rho[]*val/(cs[] + SEPS);
         foreach_dimension() {
             r.x[] = rho2[] * u.x[];
         }
     }
 
-    restriction ({mu, rho2, ibmCells, fm, cm, ibm});
+    restriction ({mu, rho2, gc, fm, cm, cs});
     struct Viscosity p = { mu, rho2, dt };
     return mg_solve ((scalar *){u}, (scalar *){r},
                      residual_diffusion, relax_diffusion, &p, 
@@ -118,3 +114,4 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
                      tolerance = TOLERANCE_MU ? TOLERANCE_MU : TOLERANCE);
 
 }
+

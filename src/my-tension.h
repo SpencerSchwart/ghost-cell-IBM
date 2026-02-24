@@ -49,9 +49,9 @@ event stability (i++)
   foreach_face (reduction(min:amin) reduction(max:amax) reduction(min:dmin))
     if (fm.x[] > 0.) {
 #if IBM
-      if (ibmf.x[] > 0.) {
-      if (alpha.x[]/ibmf.x[] > amax) amax = alpha.x[]/ibmf.x[];
-      if (alpha.x[]/ibmf.x[] < amin) amin = alpha.x[]/ibmf.x[];
+      if (fs.x[] > 0.) {
+      if (alpha.x[]/fs.x[] > amax) amax = alpha.x[]/fs.x[];
+      if (alpha.x[]/fs.x[] < amin) amin = alpha.x[]/fs.x[];
       }
 #else
       if (alpha.x[]/fm.x[] > amax) amax = alpha.x[]/fm.x[];
@@ -69,7 +69,7 @@ event stability (i++)
   for (scalar c in interfaces)
     sigma += c.sigma;
   if (sigma) {
-    double dt = sqrt (rhom*cube(dmin)/(pi*sigma));
+    double dt = sqrt(rhom*cube(dmin)/(pi*sigma));
     if (dt < dtmax)
       dtmax = dt;
   }
@@ -81,6 +81,7 @@ event stability (i++)
 We overload the acceleration event to define the potential
 $\phi=\sigma\kappa$. */
 
+scalar phig[];
 
 event acceleration (i++)
 {
@@ -113,4 +114,8 @@ event acceleration (i++)
       }
 #endif
     }
+
+    scalar phi = f.phi;
+    foreach()
+        phig[] = phi[];
 }

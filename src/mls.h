@@ -113,9 +113,12 @@ double interpolate_mls (int np, coord p[np], double u[np], coord pint, double ra
     /**
     Solve the linear system, where A is the augmented matrix [A | b]. */
     //gauss_elim(m, m + 1, A, c);
-    if (gauss_elim(m, m + 1, A, c) < 0)
+    bool err = false;
+    if (gauss_elim(m, m + 1, A, c) < 0) {
         for (int n = 0; n < np; n++)
             fprintf(stderr, "|| %d p = {%g, %g} u = %g\n", n, p[n].x, p[n].y, u[n]);
+        err = true;
+    }
 
     /**
     Calculate the value at the inerpolated point using the found coefficients.*/
@@ -127,6 +130,9 @@ double interpolate_mls (int np, coord p[np], double u[np], coord pint, double ra
     if (w) free(w); 
     if (c) free(c); 
     if (v) free(v);
+
+    if (err)
+        return 0;
 
     return uint;
 }

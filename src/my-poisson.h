@@ -489,7 +489,7 @@ mgstats project (face vector uf, scalar p,
   foreach() {
     divg[] = 0.;
 #if IBM
-    if (on_interface(ibm)) {
+    if (on_interface(cs)) {
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
 
@@ -508,7 +508,7 @@ mgstats project (face vector uf, scalar p,
       }
     }
     foreach_dimension() {
-      divg[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
+      divg[] += fs.x[1]*uf.x[1] - fs.x[]*uf.x[];
     }
 #else
     foreach_dimension()
@@ -539,21 +539,18 @@ mgstats project (face vector uf, scalar p,
 
   foreach_face() {
 #if IBM
-    double metric = !ibmf.x[]? 0: alpha2.x[]/ibmf.x[];
-    //double metric = alpha2.x[];
+    double metric = !fs.x[]? 0: alpha2.x[]/fs.x[];
     uf.x[] -= dt*metric*face_gradient_x (p, 0);
 #else
     uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
 #endif
-    //if (fabs(uf.x[]) > LIMIT)
-    //    fprintf(stderr, "WARNING in proj: uf[] = %g in (%g, %g) exceeds %g\n", uf.x[], x, y, LIMIT);
   }
 
-#if IBM && 1
+#if 0
   foreach() {
     divg1[] = 0;
 
-    if (on_interface(ibm)) {
+    if (on_interface(cs)) {
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
       foreach_dimension() {
@@ -565,7 +562,7 @@ mgstats project (face vector uf, scalar p,
     }
 
     foreach_dimension()
-      divg1[] += ibmf.x[1]*uf.x[1] - ibmf.x[]*uf.x[];
+      divg1[] += fs.x[1]*uf.x[1] - fs.x[]*uf.x[];
     divg1[] /= Delta;
   }
 #endif

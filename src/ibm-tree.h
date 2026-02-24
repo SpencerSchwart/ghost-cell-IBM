@@ -8,15 +8,15 @@ This file defines the restriction/prolongation functions which are
 necessary to implement [ibmded boundaries](ibm.h) on adaptive
 meshes.
 
-## Volume fraction field *ibm*
+## Volume fraction field *cs*
 
 For the ibmded fraction field *ibm*, the function below is modelled
 closely on the volume fraction refinement function
 [fraction_refine()](fractions.h#fraction_refine). */
 
-static void ibm_fraction_refine (Point point, scalar ibm)
+static void ibm_fraction_refine (Point point, scalar cs)
 {
-  double cc = ibm[];
+  double cc = cs[];
 
   /**
   If the cell is empty or full, simple injection from the coarse cell
@@ -24,7 +24,7 @@ static void ibm_fraction_refine (Point point, scalar ibm)
   
   if (cc <= 0. || cc >= 1.) {
     foreach_child()
-      ibm[] = cc;
+      cs[] = cc;
   }
   else {
 
@@ -33,7 +33,7 @@ static void ibm_fraction_refine (Point point, scalar ibm)
     boundary using VOF linear reconstruction and a normal estimated
     from the surface fractions. */
 
-    coord n = facet_normal (point, ibm, ibmf);
+    coord n = facet_normal (point, cs, fs);
     double alpha = plane_alpha (cc, n);
       
     foreach_child() {
@@ -41,26 +41,26 @@ static void ibm_fraction_refine (Point point, scalar ibm)
       coord nc;
       foreach_dimension()
 	    nc.x = child.x*n.x;
-      ibm[] = rectangle_fraction (nc, alpha, a, b);
+      cs[] = rectangle_fraction (nc, alpha, a, b);
     }
   }
 }
 
 /**
-## Surface fractions field *ibmf*
+## Surface fractions field *fs*
 
-The ibmded surface fractions *ibmf* are reconstructed using this
+The ibmded surface fractions *fs* are reconstructed using this
 function. */
 
 foreach_dimension()
 static void ibm_face_fraction_refine_x (Point point, scalar s)
 {
-  vector ibmf = s.v;
+  vector fs = s.v;
   /**
   If the cell is empty or full, simple injection from the coarse cell
   value is used. */
   
-  if (ibm[] <= 0. || ibm[] >= 1.) {
+  if (cs[] <= 0. || cs[] >= 1.) {
 
     /**
     We need to make sure that the fine cells face fractions match
@@ -68,13 +68,13 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
 
     for (int j = 0; j <= 1; j++)
       for (int k = 0; k <= 1; k++)
-	    fine(ibmf.x,1,j,k) = ibm[];
+	    fine(fs.x,1,j,k) = cs[];
     for (int i = 0; i <= 1; i++)
       if (!is_refined(neighbor(2*i-1)) && neighbor(2*i-1).neighbors &&
 	     (is_local(cell) || is_local(neighbor(2*i-1))))
 	    for (int j = 0; j <= 1; j++)
           for (int k = 0; k <= 1; k++)
-            fine(ibmf.x,2*i,j,k) = ibmf.x[i];
+            fine(fs.x,2*i,j,k) = fs.x[i];
   }
   else {
 
@@ -83,11 +83,11 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
     boundary using VOF linear reconstruction and a normal estimated
     from the surface fractions. */
 
-    coord n = facet_normal (point, ibm, ibmf);
-    double alpha = plane_alpha (ibm[], n);
+    coord n = facet_normal (point, cs, fs);
+    double alpha = plane_alpha (cs[], n);
       
     /**
-    We need to reconstruct the face fractions *ibmf* for the fine cells.
+    We need to reconstruct the face fractions *fs* for the fine cells.
     
     For the fine face fractions contained within the coarse cell,
     we compute the intersections directly using the VOF
@@ -102,11 +102,11 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
     if (2.*fabs(alpha) < fabs(n.y)) {
       double yc = alpha/n.y;
       int i = yc > 0.;
-      fine(ibmf.x,1,1 - i) = n.y < 0. ? 1. - i : i;
-      fine(ibmf.x,1,i) = n.y < 0. ? i - 2.*yc : 1. - i + 2.*yc;
+      fine(fs.x,1,1 - i) = n.y < 0. ? 1. - i : i;
+      fine(fs.x,1,i) = n.y < 0. ? i - 2.*yc : 1. - i + 2.*yc;
     }
     else
-      fine(ibmf.x,1,0) = fine(ibmf.x,1,1) = alpha > 0.;
+      fine(fs.x,1,0) = fine(fs.x,1,1) = alpha > 0.;
 
 #else // dimension == 3
 
@@ -115,13 +115,13 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
 
     for (int j = 0; j <= 1; j++)
       for (int k = 0; k <= 1; k++)
-	    if (!fine(ibm,0,j,k) || !fine(ibm,1,j,k))
-	      fine(ibmf.x,1,j,k) = 0.;
+	    if (!fine(cs,0,j,k) || !fine(cs,1,j,k))
+	      fine(fs.x,1,j,k) = 0.;
 	    else {
 	      static const coord a = {0.,0.,0.}, b = {.5,.5,.5};
     	  coord nc;
 	      nc.x = 0., nc.y = (2.*j - 1.)*n.y, nc.z = (2.*k - 1.)*n.z;
-	      fine(ibmf.x,1,j,k) = rectangle_fraction (nc, alpha, a, b);
+	      fine(fs.x,1,j,k) = rectangle_fraction (nc, alpha, a, b);
 	    }
 
 #endif // dimension == 3
@@ -134,10 +134,10 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
     for (int i = 0; i <= 1; i++)
       if (neighbor(2*i-1).neighbors && (is_local(cell) || is_local(neighbor(2*i-1)))) {
 	    if (!is_refined(neighbor(2*i-1))) {
-	      if (ibmf.x[i] <= 0. || ibmf.x[i] >= 1.)
+	      if (fs.x[i] <= 0. || fs.x[i] >= 1.)
 	        for (int j = 0; j <= 1; j++)
 	          for (int k = 0; k <= 1; k++)
-		        fine(ibmf.x,2*i,j,k) = ibmf.x[i];
+		        fine(fs.x,2*i,j,k) = fs.x[i];
 	      else {
 #if dimension == 2
 	  
@@ -145,15 +145,15 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
 	    In 2D the orientation is obtained by looking at the values
 	    of face fractions in the transverse direction. */
 	  
-	        double a = ibmf.y[0,1] <= 0. || ibmf.y[2*i-1,1] <= 0. ||
-	                   ibmf.y[] >= 1. || ibmf.y[2*i-1] >= 1.;
-	        if ((2.*a - 1)*(ibmf.x[i] - 0.5) > 0.) {
-	          fine(ibmf.x,2*i,0) = a;
-	          fine(ibmf.x,2*i,1) = 2.*ibmf.x[i] - a;
+	        double a = fs.y[0,1] <= 0. || fs.y[2*i-1,1] <= 0. ||
+	                   fs.y[] >= 1. || fs.y[2*i-1] >= 1.;
+	        if ((2.*a - 1)*(fs.x[i] - 0.5) > 0.) {
+	          fine(fs.x,2*i,0) = a;
+	          fine(fs.x,2*i,1) = 2.*fs.x[i] - a;
 	        }
 	        else {
-	          fine(ibmf.x,2*i,0) = 2.*ibmf.x[i] + a - 1.;
-    	      fine(ibmf.x,2*i,1) = 1. - a;
+	          fine(fs.x,2*i,0) = 2.*fs.x[i] + a - 1.;
+    	      fine(fs.x,2*i,1) = 1. - a;
 	        }
 
 #else  // dimension == 3
@@ -167,7 +167,7 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
 		    static const coord a = {0.,0.,0.}, b = {.5,.5,.5};
 		    coord nc;
 		    nc.x = 0., nc.y = (2.*j - 1.)*n.y, nc.z = (2.*k - 1.)*n.z;
-		    fine(ibmf.x,2*i,j,k) =
+		    fine(fs.x,2*i,j,k) =
 		      rectangle_fraction (nc, alpha - n.x*(2.*i - 1.)/2., a, b);
 	      }
 
@@ -182,8 +182,8 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
 	#if dimension > 2
 	  for (int k = 0; k <= 1; k++)
 	#endif
-	    if (fine(ibmf.x,2*i,j,k) && !fine(ibm,i,j,k))
-	      fine(ibmf.x,2*i,j,k) = 0.;
+	    if (fine(fs.x,2*i,j,k) && !fine(cs,i,j,k))
+	      fine(fs.x,2*i,j,k) = 0.;
       }
   }
 
@@ -195,7 +195,7 @@ static void ibm_face_fraction_refine_x (Point point, scalar s)
 We now define restriction and prolongation functions for cell-centered
 fields. The goal is to define second-order operators which do not use
 any values from cells entirely contained within the ibmded boundary
-(for which *ibm = 0*). 
+(for which *cs = 0*). 
 
 When restricting it is unfortunately not always possible to obtain a
 second-order interpolation. This happens when the parent cell does not
@@ -212,7 +212,7 @@ attribute {
 static inline void restriction_ibm_linear (Point point, scalar s)
 {  
   // 0 children
-  if (!ibm[]) {
+  if (!cs[]) {
     s[] = 0.;
     return;
   }
@@ -227,7 +227,7 @@ static inline void restriction_ibm_linear (Point point, scalar s)
 #if dimension > 2
     for (int j = 0; j <= 1; j++)
 #endif
-      if (fine(ibm,0,i,j) && fine(ibm,1,!i,!j))
+      if (fine(cs,0,i,j) && fine(cs,1,!i,!j))
 	    val += (fine(s,0,i,j) + fine(s,1,!i,!j))/2., nv++;
   if (nv > 0.) {
     s[] = val/nv;
@@ -241,7 +241,7 @@ static inline void restriction_ibm_linear (Point point, scalar s)
   coord p = {0.,0.,0.};
 
   foreach_child() {
-    if (ibm[])
+    if (cs[])
       p.x += x, p.y += y, p.z += z, val += s[], nv++;
    }
   assert (nv > 0.);
@@ -272,19 +272,19 @@ gradients in each direction and add the corresponding correction. */
 static inline void refine_ibm_linear (Point point, scalar s)
 {
   foreach_child() {
-    if (!ibm[])
+    if (!cs[])
       s[] = 0.;
     else {
-      assert (coarse(ibm));
+      assert (coarse(cs));
       int i = (child.x + 1)/2, j = (child.y + 1)/2;
 #if dimension == 2
-      if (coarse(ibmf.x,i) && coarse(ibmf.y,0,j) &&
-	  (coarse(ibm) == 1. || coarse(ibm,child.x) == 1. ||
-	   coarse(ibm,0,child.y) == 1. || coarse(ibm,child.x,child.y) == 1.)) {
-	assert (coarse(ibm,child.x) && coarse(ibm,0,child.y));
-	if (coarse(ibmf.x,i,child.y) && coarse(ibmf.y,child.x,j)) {
+      if (coarse(fs.x,i) && coarse(fs.y,0,j) &&
+	  (coarse(cs) == 1. || coarse(cs,child.x) == 1. ||
+	   coarse(cs,0,child.y) == 1. || coarse(cs,child.x,child.y) == 1.)) {
+	assert (coarse(cs,child.x) && coarse(cs,0,child.y));
+	if (coarse(fs.x,i,child.y) && coarse(fs.y,child.x,j)) {
 	  // bilinear interpolation
-	  assert (coarse(ibm,child.x,child.y));
+	  assert (coarse(cs,child.x,child.y));
 	  s[] = (9.*coarse(s) + 
 		 3.*(coarse(s,child.x) + coarse(s,0,child.y)) + 
 		 coarse(s,child.x,child.y))/16.;
@@ -293,29 +293,29 @@ static inline void refine_ibm_linear (Point point, scalar s)
 	  // triangular interpolation	  
 	  s[] = (2.*coarse(s) + coarse(s,child.x) + coarse(s,0,child.y))/4.;
       }
-      else if (coarse(ibm,child.x,child.y) &&
-	       ((coarse(ibmf.x,i) && coarse(ibmf.y,child.x,j)) ||
-		(coarse(ibmf.y,0,j) && coarse(ibmf.x,i,child.y)))) {
+      else if (coarse(cs,child.x,child.y) &&
+	       ((coarse(fs.x,i) && coarse(fs.y,child.x,j)) ||
+		(coarse(fs.y,0,j) && coarse(fs.x,i,child.y)))) {
 	// diagonal interpolation
 	s[] = (3.*coarse(s) + coarse(s,child.x,child.y))/4.;
       }
 #else // dimension == 3
       int k = (child.z + 1)/2;
-      if (coarse(ibmf.x,i) > 0.25 && coarse(ibmf.y,0,j) > 0.25 &&
-	  coarse(ibmf.z,0,0,k) > 0.25 &&
-	  (coarse(ibm) == 1. || coarse(ibm,child.x) == 1. ||
-	   coarse(ibm,0,child.y) == 1. || coarse(ibm,child.x,child.y) == 1. ||
-	   coarse(ibm,0,0,child.z) == 1. || coarse(ibm,child.x,0,child.z) == 1. ||
-	   coarse(ibm,0,child.y,child.z) == 1. ||
-	   coarse(ibm,child.x,child.y,child.z) == 1.)) {
-	assert (coarse(ibm,child.x) && coarse(ibm,0,child.y) &&
-		coarse(ibm,0,0,child.z));
-	if (coarse(ibmf.x,i,child.y) && coarse(ibmf.y,child.x,j) &&
-	    coarse(ibmf.z,child.x,child.y,k) &&
-	    coarse(ibmf.z,child.x,0,k) && coarse(ibmf.z,0,child.y,k)) {
-	  assert (coarse(ibm,child.x,child.y) && coarse(ibm,child.x,0,child.z) &&
-		  coarse(ibm,0,child.y,child.z) &&
-		  coarse(ibm,child.x,child.y,child.z));
+      if (coarse(fs.x,i) > 0.25 && coarse(fs.y,0,j) > 0.25 &&
+	  coarse(fs.z,0,0,k) > 0.25 &&
+	  (coarse(cs) == 1. || coarse(cs,child.x) == 1. ||
+	   coarse(cs,0,child.y) == 1. || coarse(cs,child.x,child.y) == 1. ||
+	   coarse(cs,0,0,child.z) == 1. || coarse(cs,child.x,0,child.z) == 1. ||
+	   coarse(cs,0,child.y,child.z) == 1. ||
+	   coarse(cs,child.x,child.y,child.z) == 1.)) {
+	assert (coarse(cs,child.x) && coarse(cs,0,child.y) &&
+		coarse(cs,0,0,child.z));
+	if (coarse(fs.x,i,child.y) && coarse(fs.y,child.x,j) &&
+	    coarse(fs.z,child.x,child.y,k) &&
+	    coarse(fs.z,child.x,0,k) && coarse(fs.z,0,child.y,k)) {
+	  assert (coarse(cs,child.x,child.y) && coarse(cs,child.x,0,child.z) &&
+		  coarse(cs,0,child.y,child.z) &&
+		  coarse(cs,child.x,child.y,child.z));
 	  // bilinear interpolation
 	  s[] = (27.*coarse(s) + 
 		 9.*(coarse(s,child.x) + coarse(s,0,child.y) +
@@ -329,20 +329,20 @@ static inline void refine_ibm_linear (Point point, scalar s)
 	  s[] = (coarse(s) + coarse(s,child.x) + coarse(s,0,child.y) +
 		 coarse(s,0,0,child.z))/4.;
       }
-      else if (coarse(ibm,child.x,child.y,child.z) &&
-	       ((coarse(ibmf.z,child.x,child.y,k) &&
-		 ((coarse(ibmf.x,i) && coarse(ibmf.y,child.x,j)) ||
-		  (coarse(ibmf.y,0,j) && coarse(ibmf.x,i,child.y))))
+      else if (coarse(cs,child.x,child.y,child.z) &&
+	       ((coarse(fs.z,child.x,child.y,k) &&
+		 ((coarse(fs.x,i) && coarse(fs.y,child.x,j)) ||
+		  (coarse(fs.y,0,j) && coarse(fs.x,i,child.y))))
 		||
-		(coarse(ibmf.z,0,0,k) &&
-		 ((coarse(ibmf.x,i,0,child.z) && coarse(ibmf.y,child.x,j,child.z)) ||
-		  (coarse(ibmf.y,0,j,child.z) && coarse(ibmf.x,i,child.y,child.z))))
+		(coarse(fs.z,0,0,k) &&
+		 ((coarse(fs.x,i,0,child.z) && coarse(fs.y,child.x,j,child.z)) ||
+		  (coarse(fs.y,0,j,child.z) && coarse(fs.x,i,child.y,child.z))))
 		||
-		(coarse(ibmf.z,child.x,0,k) &&
-		 coarse(ibmf.x,i) && coarse(ibmf.y,child.x,j,child.z))
+		(coarse(fs.z,child.x,0,k) &&
+		 coarse(fs.x,i) && coarse(fs.y,child.x,j,child.z))
 		||
-		(coarse(ibmf.z,0,child.y,k) &&
-		 coarse(ibmf.y,0,j) && coarse(ibmf.x,i,child.y,child.z))
+		(coarse(fs.z,0,child.y,k) &&
+		 coarse(fs.y,0,j) && coarse(fs.x,i,child.y,child.z))
 		))
 	// diagonal interpolation
 	s[] = (3.*coarse(s) + coarse(s,child.x,child.y,child.z))/4.;
@@ -351,9 +351,9 @@ static inline void refine_ibm_linear (Point point, scalar s)
 	// Pathological cases, use 1D gradients.
 	s[] = coarse(s);
 	foreach_dimension() {
-	  if (coarse(ibmf.x,(child.x + 1)/2) && coarse(ibm,child.x))
+	  if (coarse(fs.x,(child.x + 1)/2) && coarse(cs,child.x))
 	    s[] += (coarse(s,child.x) - coarse(s))/4.;
-	  else if (coarse(ibmf.x,(- child.x + 1)/2) && coarse(ibm,- child.x))
+	  else if (coarse(fs.x,(- child.x + 1)/2) && coarse(cs,- child.x))
 	    s[] -= (coarse(s,- child.x) - coarse(s))/4.;
 	}
       }
@@ -368,7 +368,7 @@ This function is modelled on
 [*refine_face_x()*](/src/grid/tree-common.h#refine_face_x) and is
 typically used to refine the values of the face-centered velocity
 field *uf*. It uses linear interpolation, taking into account the
-weighting by the ibmded fractions *ibmf*. */
+weighting by the ibmded fractions *fs*. */
 
 foreach_dimension()
 void refine_ibm_face_x (Point point, scalar s)
@@ -377,27 +377,27 @@ void refine_ibm_face_x (Point point, scalar s)
   for (int i = 0; i <= 1; i++)
     if (neighbor(2*i - 1).neighbors &&
 	(is_local(cell) || is_local(neighbor(2*i - 1)))) {
-      double g1 = ibmf.x[i] >= 1. && ibmf.x[i,+1] && ibmf.x[i,-1] ?
-	(v.x[i,+1]/ibmf.x[i,+1] - v.x[i,-1]/ibmf.x[i,-1])/8. : 0.;
-      double g2 = ibmf.x[i] >= 1. && ibmf.x[i,0,+1] && ibmf.x[i,0,-1] ?
-	(v.x[i,0,+1]/ibmf.x[i,0,+1] - v.x[i,0,-1]/ibmf.x[i,0,-1])/8. : 0.;
+      double g1 = fs.x[i] >= 1. && fs.x[i,+1] && fs.x[i,-1] ?
+	(v.x[i,+1]/fs.x[i,+1] - v.x[i,-1]/fs.x[i,-1])/8. : 0.;
+      double g2 = fs.x[i] >= 1. && fs.x[i,0,+1] && fs.x[i,0,-1] ?
+	(v.x[i,0,+1]/fs.x[i,0,+1] - v.x[i,0,-1]/fs.x[i,0,-1])/8. : 0.;
       for (int j = 0; j <= 1; j++)
 	for (int k = 0; k <= 1; k++)
-	  fine(v.x,2*i,j,k) = ibmf.x[i] ?
-	    fine(ibmf.x,2*i,j,k)*(v.x[i]/ibmf.x[i] +
+	  fine(v.x,2*i,j,k) = fs.x[i] ?
+	    fine(fs.x,2*i,j,k)*(v.x[i]/fs.x[i] +
 				(2*j - 1)*g1 + (2*k - 1)*g2) : 0.;
     }
   if (is_local(cell)) {
-    double g1 = (ibmf.x[0,+1] + ibmf.x[1,+1]) && (ibmf.x[0,-1] + ibmf.x[1,-1]) ?
-      ((v.x[0,+1] + v.x[1,+1])/(ibmf.x[0,+1] + ibmf.x[1,+1]) -
-       (v.x[0,-1] + v.x[1,-1])/(ibmf.x[0,-1] + ibmf.x[1,-1]))/8. : 0.;
-    double g2 = (ibmf.x[1,0,+1] + ibmf.x[0,0,+1]) && (ibmf.x[1,0,-1] + ibmf.x[0,0,-1]) ?
-      ((v.x[0,0,+1] + v.x[1,0,+1])/(ibmf.x[1,0,+1] + ibmf.x[0,0,+1]) -
-       (v.x[0,0,-1] + v.x[1,0,-1])/(ibmf.x[1,0,-1] + ibmf.x[0,0,-1]))/8. : 0.;
+    double g1 = (fs.x[0,+1] + fs.x[1,+1]) && (fs.x[0,-1] + fs.x[1,-1]) ?
+      ((v.x[0,+1] + v.x[1,+1])/(fs.x[0,+1] + fs.x[1,+1]) -
+       (v.x[0,-1] + v.x[1,-1])/(fs.x[0,-1] + fs.x[1,-1]))/8. : 0.;
+    double g2 = (fs.x[1,0,+1] + fs.x[0,0,+1]) && (fs.x[1,0,-1] + fs.x[0,0,-1]) ?
+      ((v.x[0,0,+1] + v.x[1,0,+1])/(fs.x[1,0,+1] + fs.x[0,0,+1]) -
+       (v.x[0,0,-1] + v.x[1,0,-1])/(fs.x[1,0,-1] + fs.x[0,0,-1]))/8. : 0.;
     for (int j = 0; j <= 1; j++)
       for (int k = 0; k <= 1; k++)
-	fine(v.x,1,j,k) = ibmf.x[] + ibmf.x[1] ?
-	  fine(ibmf.x,1,j,k)*((v.x[] + v.x[1])/(ibmf.x[] + ibmf.x[1]) +
+	fine(v.x,1,j,k) = fs.x[] + fs.x[1] ?
+	  fine(fs.x,1,j,k)*((v.x[] + v.x[1])/(fs.x[] + fs.x[1]) +
 			    (2*j - 1)*g1 + (2*k - 1)*g2) : 0.;
   }
 }
@@ -406,7 +406,7 @@ foreach_dimension()
 static void refine_metric_injection_x (Point point, scalar s)
 {
     vector v = s.v;
-    double val = on_interface(ibm)? 1.: ibm[];
+    double val = on_interface(cs)? 1.: cs[];
     foreach_child()
         v.x[] = val;
 }
@@ -439,7 +439,7 @@ static inline void restriction_cell_metric (Point point, scalar s)
 {
    // double sum = 0.;
    // foreach_child()
-   //     sum += ibm[];
+   //     sum += cs[];
    // s[] = sum/(1 << dimension) > 0.5;
    double val = s[];
    foreach_child()
@@ -449,7 +449,7 @@ static inline void restriction_cell_metric (Point point, scalar s)
 
 static void fraction_refine_metric (Point point, scalar s)
 {
-  double cc = ibm[];
+  double cc = cs[];
 
   /**
   If the cell is empty or full, simple injection from the coarse cell
@@ -466,7 +466,7 @@ static void fraction_refine_metric (Point point, scalar s)
     boundary using VOF linear reconstruction and a normal estimated
     from the surface fractions. */
 
-    coord n = facet_normal (point, ibm, ibmf);
+    coord n = facet_normal (point, cs, fs);
     double alpha = plane_alpha (cc, n);
       
     foreach_child() {

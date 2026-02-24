@@ -86,7 +86,7 @@ event properties (i++)
 #if IBM
     foreach_face() {
         double ff = (sf[] + sf[-1])/2.;
-        alphav.x[] = ibmf.x[]/rho(ff);
+        alphav.x[] = fs.x[]/rho(ff);
         if (mu1 || mu2) {
           face vector muv = mu;
            muv.x[] = fm.x[]*mu(ff);
@@ -105,13 +105,7 @@ event properties (i++)
   
   foreach() {
 #if IBM
-
-#if !CA
-    rhov[] = ibm[]*rho(sf[]);
-#else
-    rhov[] = rho(sf[]); // TODO: try ibm[]*rho(sf[])
-#endif // CA
-
+    rhov[] = cs[]*rho(sf[]);
 #else // !IBM
     rhov[] = cm[]*rho(sf[]);
 #endif // IBM

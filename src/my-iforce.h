@@ -1,4 +1,3 @@
-//#include "contact-ibm.h"
 /**
 # Interfacial forces
 
@@ -63,7 +62,7 @@ event acceleration (i++)
 
       foreach() {
 #if CA
-	    f[] = clamp (f[], 0., ibm[]);
+	    f[] = clamp (f[], 0., cs[]);
 #else
 	    f[] = clamp (f[], 0., 1.);
 #endif
@@ -113,16 +112,21 @@ event acceleration (i++)
 	  phi[-1] < nodata ? phi[-1] :
 	  0.;
 
-#if IBM
+#if IBM || EMBED
     #if CA
       double val1 = f[]? ch[]: 0;
       double val2 = f[-1]? ch[-1]: 0;
-      ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(val1 - val2)/Delta;
+      //double val1 = ch[], val2 = ch[-1];
+    #if EMBED
+      ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(val1 - val2)/Delta;
     #else
-      ia.x[] += alpha.x[]/(ibmf.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
+      ia.x[] += alpha.x[]/(fs.x[] + SEPS)*phif*(val1 - val2)/Delta;
+    #endif
+    #else
+      ia.x[] += alpha.x[]/(fs.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
     #endif // CA
 #else
-	ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
+      ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
 #endif
       }
 
