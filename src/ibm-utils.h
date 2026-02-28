@@ -395,4 +395,15 @@ int rsolver_brent (double* result, double a, double b, const void* data, double 
     return iter;
 }
 
+void vorticity2 (const vector u, scalar omega)
+{
+  foreach() {
+    if (cm[]) {
+      omega[] = ((fm.x[1] - fm.x[])*u.y[] +
+             fm.x[1]*u.y[1] - fm.x[]*u.y[-1] -
+             (fm.y[0,1] - fm.y[])*u.x[] +
+             fm.y[]*u.x[0,-1] - fm.y[0,1]*u.x[0,1])/(2.*(cm[] + SEPS)*Delta);
+    }
+  }
+}
 

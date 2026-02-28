@@ -633,7 +633,7 @@ void fluid_only (Point point, const int n, double rmatrix[n],
 
     // a. Check to see if point is in a ghost cell, if so, move it to the interface
     //    and recalculate the node's value considering the immersed boundary condition.
-    if (cs[xx,yy,zz] <= 0.5 && cs[xx,yy,zz] > 0.) {
+    if (cs[xx,yy,zz] <= GCV && cs[xx,yy,zz] > 0.) {
         *pcell = (coord){midPoints.x[xx,yy,zz], midPoints.y[xx,yy,zz], midPoints.z[xx,yy,zz]};
 
         // move point more if cell is inside domain boundary

@@ -308,6 +308,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
         c[] = 0;
       if (cs[] > 0 && cs[] < 1 && c[] >= cs[]-INT_TOL)
           ch[] = 1;
+      else if (cs[] > 0 && c[] < 1 && c[])
+          ch[] = c[]/cs[];
       else if (cs[] > 0)
           ch[] = c[];
       else
@@ -317,7 +319,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
     scalar alphaf[];
     vector nf[];
 
-    reconstruction(c, nf, alphaf); // should be based on c or ch? TODO: is it even necessary?
+    reconstruction(ch, nf, alphaf); // should be based on c or ch? TODO: is it even necessary?
     set_contact_angle(ch, c, cs0, nf, alphaf, ns, alphas); // find ch
   }
 

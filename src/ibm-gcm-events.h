@@ -147,9 +147,9 @@ TODO: is assigning pressure to full ghost cells necessary? probably not
 scalar ibalphas[];
 vector normals[];
 vector midPoints[];
-
 #if 1
 event acceleration (i++)
+//event projection (i++)
 {
     trash({normals, midPoints});
     // 1. Initalize fields to hold interface normals and fragment midpoints
@@ -188,6 +188,19 @@ event acceleration (i++)
     u.z.mp = bi;
 #endif
 
+#if 0
+    vector u2[];
+    scalar_clone(u2.x, u.x);
+    scalar_clone(u2.y, u.y);
+
+    vector g0[];
+    centered_gradient (p, g0);
+
+    foreach() {
+        u2.x[] = gc[]*(0.5*(uf.x[] + uf.x[1]) + dt*g0.x[]);
+    }
+#endif
+
     // 2. Identify ghost cells and calculate and assign their values to enforce B.C
     foreach() {
         if (is_ghost_cell(point, cs)) {
@@ -224,11 +237,13 @@ event acceleration (i++)
                             double delta = 0;
                             foreach_dimension()
                                 delta += sq(ghostCell.x - imagePoint.x);
-                            delta = sqrt(delta);
+                            delta = sqrt(delta)/(2*Delta);
+                            vb /= Delta;
 
                             // only for stationary solids right now (hence 0 -)
-                            gcProjVelocity.x = delta*(0 - projVelocity.x)/(0.5*delta + vb) + 
-                                               projVelocity.x;
+                            //gcProjVelocity.x = delta*(0 - projVelocity.x)/(0.5*delta + vb) + 
+                            //                   projVelocity.x;
+                            gcProjVelocity.x = -projVelocity.x*(delta - vb)/(delta + vb);
                         }
                         else
                             gcProjVelocity.x = 2*vb - projVelocity.x;
@@ -357,12 +372,10 @@ event end_timestep (i++)
                             double delta = 0;
                             foreach_dimension()
                                 delta += sq(ghostCell.x - imagePoint.x);
-                            //delta = sqrt(delta)/Delta; // normalize by cell size
-                            delta = sqrt(delta);
+                            delta = sqrt(delta)/(2*Delta);
+                            vb /= Delta;
 
-                            // only for stationary solids right now (hence 0 -)
-                            gcProjVelocity.x = delta*(0 - projVelocity.x)/(0.5*delta + vb) + 
-                                               projVelocity.x;
+                            gcProjVelocity.x = -projVelocity.x*(delta - vb)/(delta + vb);
                         }
                         else
                             gcProjVelocity.x = 2*vb - projVelocity.x;

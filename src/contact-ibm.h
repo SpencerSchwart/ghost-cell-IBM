@@ -152,7 +152,7 @@ static inline coord normal_contact (coord ns, coord nf, double angle)
 {
     coord n;
 #if dimension == 2
-    if (- ns.x * nf.y + ns.y * nf.x > 0) { // 2D cross product
+    if (- ns.x * nf.y + ns.y * nf.x >= 0) { // 2D cross product
         n.x = - ns.x * cos(angle) + ns.y * sin(angle);
         n.y = - ns.x * sin(angle) - ns.y * cos(angle);
     }
@@ -544,6 +544,31 @@ void clean_fluid_real (scalar f, scalar fr, scalar cs)
     }
 }
 
+/** 
+ */
+bool contact_line_border(Point point, scalar c, scalar cs, double angle)
+{
+
+    int vol = angle >= pi/2.? cs[]: 0;
+
+    /** check left-right */
+    for(int i = -1; i <= 1; i += 2)
+       if (cs[i] > 0 && cs[i] < 1 && approx_equal_double(c[i], vol, 1e-3))
+           return true;
+
+    /** check top-bottom */
+    for(int j = -1; j <= 1; j += 2)
+       if (cs[0,j] > 0 && cs[0,j] < 1 && approx_equal_double(c[0,j], vol, 1e-3))
+           return true;
+
+    /** check front-back */
+    for(int k = -1; k <= 1; k += 2)
+       if (cs[0,0,k] > 0 && cs[0,0,k] < 1 && approx_equal_double(c[0,0,k], vol, 1e-3))
+           return true;
+     
+    return false;
+}
+
 
 /**
 This function extends the normal reconstruction() function in fractions.h by
@@ -565,6 +590,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
             foreach_neighbor() //TODO: this is probably not necessary
                 if (c[] > 0 && cs[]) { near = 1; break; }
             ghostInter[] = near;
+            //ghostInter[] = 0;
         }
         else
             ghostInter[] = 0;
@@ -572,7 +598,14 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
 
     foreach() {
 
-        inter[] = c[] > 0 && c[] < cs[];
+        //inter[] = c[] > 0 && c[] < cs[];
+        inter[] = cr[] > VTOL && cr[] < cs[] - VTOL;
+
+#if 1
+        if (inter[] && cs[] > 0 && cs[] < 1 && contact_angle[]) {
+            extra[] = (int)contact_line_border(point, cr, cs, contact_angle[]);
+        }
+#else
         extra[] = inter[] && cs[] > 0 && cs[] < 1 && contact_angle[];
 
 #if 1 // Make sure that extrapolation cells isn't an interior cell
@@ -587,17 +620,25 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
             extra[] = caCell;
         }
 #endif
-
+#endif
         if (extra[]) {
             coord ns = facet_normal (point, cs, fs);
             double alphas = line_alpha (cs[], ns);
             coord nf;
 
-            foreach_dimension()
+            double norm = 0;
+            foreach_dimension() {
                 nf.x = n.x[];
+                norm += sq(nf.x);
+            }
 
-            normalize (&ns);
+            if (!norm) {
+                extra[] = 0;
+                continue;
+            }
+
             normalize (&nf);
+            normalize2 (&ns);
             coord nc = normal_contact (ns, nf, contact_angle[]);
             normalize_sum(&nc);
 
@@ -619,7 +660,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
                 inter[] = c[] > 0 && c[] < 1;
                 extra[] = inter[] && cs[] > 0 && cs[] < 1 && !ghostInter[] && cr[] < cs[]-1e-6 && contact_angle[];
             }
-     }
+        }
     }
 
     boundary ({c, cr, n, alpha, inter, ghostInter, extra});
@@ -647,7 +688,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
     scalar_clone (c0, c);
     scalar_clone (c1, c);
 
-    #if 0
+    #if 1
     foreach() {
         gginter[] = ghostInter[];
         c0[] = c[];
