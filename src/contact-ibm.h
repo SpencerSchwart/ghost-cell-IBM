@@ -500,6 +500,15 @@ void update_contact_angle (scalar c, scalar c0, scalar cs, vector ns,
             contact_angle[] = theta;
             //fprintf(stderr, "fix (%g, %g) %g %d %g %g\n", x, y, check[], pinned, theta0, contact_angle[]);
         }
+        if (check[] == 1) {
+            double theta = contact_angle[];
+            foreach_neighbor() { // check to see if CL is actually pinned or not
+                if (check[] == 3 || check[] == 2) {
+                    theta = contact_angle[];
+                }
+            }
+            contact_angle[] = theta;
+        }
     }
     #endif
     boundary({contact_angle});
