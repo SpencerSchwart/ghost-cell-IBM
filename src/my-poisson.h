@@ -489,6 +489,20 @@ mgstats project (face vector uf, scalar p,
   foreach() {
     divg[] = 0.;
 #if IBM
+    
+#if 0
+    if (!cs[]) continue;
+
+    foreach_dimension() {
+        if (borders_ghost_x(point, cs) || (cs[] > 0 && cs[] < 1)) {
+            divg[] += virtual_merge_x (point, cs, fs, uf);
+        }
+        divg[] += fs.x[1]*uf.x[1] - fs.x[]*uf.x[];
+    }
+
+    divg[] /= dt*Delta;
+
+#else
     if (on_interface(cs)) {
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
@@ -510,6 +524,8 @@ mgstats project (face vector uf, scalar p,
     foreach_dimension() {
       divg[] += fs.x[1]*uf.x[1] - fs.x[]*uf.x[];
     }
+#endif
+
 #else
     foreach_dimension()
       divg[] += uf.x[1] - uf.x[];

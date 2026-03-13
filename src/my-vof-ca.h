@@ -227,6 +227,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 #if AXI
     if (cs0[] > 0 && cm[]) {
       double val = cm[];
+      #if EMBED
+      val /= cs0[];
+      #endif
 #else
     if (cs0[] > 0) {
       double val = 1;

@@ -351,7 +351,7 @@ coord boundary_int (Point point, fragment frag, coord fluidCell, scalar cs)
                          (-frag.alpha / mag - offset) * n.z};
 
     foreach_dimension()
-        boundaryInt.x = ghostCell.x + boundaryInt.x*Delta;
+        boundaryInt.x = ghostCell.x + (boundaryInt.x*Delta);
 
     return boundaryInt;
 }
@@ -377,7 +377,6 @@ coord image_point (coord boundaryInt, coord ghostCell)
 
      return imagePoint;
 }
-
 
 /*
 Similarly to image_point, fresh_image_point calculates the imagepoint for "fresh cells"
@@ -657,7 +656,7 @@ void fluid_only (Point point, const int n, double rmatrix[n],
             type = 0;
         }
         else if (dirichlet && navierslip) {
-            assert(dir != 'n'); // navier-slip cannot be applied in the normal direction
+            //assert(dir != 'n'); // navier-slip cannot be applied in the normal direction
             val = bc; // assumes stationary wall
             type = 2;
         }
@@ -892,6 +891,8 @@ coord image_velocity (Point point, vector u, coord imagePoint, PointIBM bioff,
 
     return imageVelo;
 }
+
+
 
 /*
 The function below uses interpolation to find the velocity at the image point and
@@ -1214,7 +1215,7 @@ coord ghost_fluxes (Point point, scalar cs, face vector fs, face vector uf)
 {
     int xindex = is_mostly_solid (cs, 0)? 0: borders_ghost_x (point, cs);
     int yindex = is_mostly_solid (cs, 0)? 0: borders_ghost_y (point, cs);
-#if 0
+#if 1
     fprintf (stderr, "### New Cell ###\n");
     fprintf (stderr, "|| xindex=%d yindex=%d\n", xindex, yindex);
 #endif
@@ -1234,7 +1235,7 @@ coord ghost_fluxes (Point point, scalar cs, face vector fs, face vector uf)
 
     // sum of y contributions
     int bottomIndex = yindex - 1, topIndex = yindex + 1;
-    if (ibm[xindex,bottomIndex] > 0.5) {
+    if (cs[xindex,bottomIndex] > 0.5) {
         bottomWeight = sq(n.y) * fs.y[xindex,yindex];
     }
     else if (cs[xindex,topIndex] > 0.5) { // should be else if? or separate if?
@@ -1245,12 +1246,14 @@ coord ghost_fluxes (Point point, scalar cs, face vector fs, face vector uf)
     coord nOutward, midPoint;
     double area = ibm_geometry (point, &midPoint, &nOutward);
 
+    bool bctype[2] = {false, false};
+    double vb = u.x.boundary[immersed] (point, point, u.x, bctype); // normal velocity BC
+
     double veloFlux = -uf.x[xindex,yindex] * fs.x[xindex,yindex] +
                        uf.x[rightIndex,yindex] * fs.x[rightIndex,yindex] +
                       -uf.y[xindex,yindex] * fs.y[xindex,yindex] +
                        uf.y[xindex,topIndex] * fs.y[xindex,topIndex] -
-                       uibm_x(midPoint.x,midPoint.y,midPoint.z) * nOutward.x * area - 
-                       uibm_y(midPoint.x,midPoint.y,midPoint.z) * nOutward.y * area;
+                       vb * area;
     // veloFlux /= Delta;
 
     double weightSum = leftWeight + rightWeight + bottomWeight + topWeight + SEPS;
@@ -1259,32 +1262,37 @@ coord ghost_fluxes (Point point, scalar cs, face vector fs, face vector uf)
     double yFlux = veloFlux * ((topWeight + bottomWeight) / weightSum);
     coord fluxes = {xFlux, yFlux};
 
-    if (ibm[] <= 0.5) {
+    if (cs[] <= 0.5) {
         foreach_dimension() {
             fluxes.x *= -1;
         }
     }
-#if 0
-    fprintf (stderr, "%g %g n.x=%g n.y=%g ws=%g f.x=%g f.y=%g\n",
-                       x, y, n.x, n.y, weightSum, fluxes.x, fluxes.y);
+    else {
+        fluxes.x *= abs(xindex);
+        fluxes.y *= abs(yindex);
+    }
+#if 1
+    fprintf (stderr, "(%g %g) n.x=%g n.y=%g ws=%g f.x=%g f.y=%g vb=%g veloFlux=%g\n",
+                       x, y, n.x, n.y, weightSum, fluxes.x, fluxes.y, vb, veloFlux);
 #endif
     return fluxes;
 }
 
 foreach_dimension()
-double virtual_merge_x (Point point, scalar ibm, face vector fs, face vector uf)
+double virtual_merge_x (Point point, scalar cs, face vector fs, face vector uf)
 {
-    if (ibm[] <= 0) {
+    if (cs[] <= 0) {
         return 0;
     }
-    int index = borders_ghost_x(point, ibm);
+    int index = borders_ghost_x(point, cs);
 
     // nothing special to be done for cells that don't border ghost cells
-    if (!index && (ibm[] > 0.5 || ibm[] <= 0)) {
+    if (!index && (cs[] > 0.5 || cs[] <= 0)) {
+    //if (!index) {
         return 0;
     }
 
-    coord mergedFlux = ghost_fluxes (point, ibm, fs, uf);
+    coord mergedFlux = ghost_fluxes (point, cs, fs, uf);
     
     return mergedFlux.x;
 }
@@ -1760,41 +1768,39 @@ static inline double ibm_face_value_x (Point point, scalar a, int i)
 }
 #endif // dimension == 3
 
-#if 0 // TODO: try turning third on/off and include it in macros
 attribute {
     bool third;
 }
-#endif
 
-#if 1
+#if 0
 #undef face_gradient_x
 #define face_gradient_x(a,i)					\
-  (fs.x[i] < 1. && fs.x[i] > 0. ?			\
+  (a.third && fs.x[i] < 1. && fs.x[i] > 0. ?			\
    ibm_face_gradient_x (point, a, i) :			\
    (a[i] - a[i-1])/Delta)
 
 #undef face_gradient_y
 #define face_gradient_y(a,i)					\
-  (fs.y[0,i] < 1. && fs.y[0,i] > 0. ?		\
+  (a.third && fs.y[0,i] < 1. && fs.y[0,i] > 0. ?		\
    ibm_face_gradient_y (point, a, i) :			\
    (a[0,i] - a[0,i-1])/Delta)
 
 #undef face_gradient_z
 #define face_gradient_z(a,i)					\
-  (fs.z[0,0,i] < 1. && fs.z[0,0,i] > 0. ?		\
+  (a.third && fs.z[0,0,i] < 1. && fs.z[0,0,i] > 0. ?		\
    embed_face_gradient_z (point, a, i) :			\
    (a[0,0,i] - a[0,0,i-1])/Delta)
-#endif
-#undef face_value
-#define face_value(a,i)							\
-  (true && fs.x[i] < 1. && fs.x[i] > 0. ?				\
-   ibm_face_value_x (point, a, i) :					\
-   ibm_avg(a,i,0,0))
-
 #undef center_gradient
 #define center_gradient(a) (fs.x[] && fs.x[1] ? (a[1] - a[-1])/(2.*Delta) : \
 			    fs.x[1] ? (a[1] - a[])/Delta :		    \
 			    fs.x[]  ? (a[] - a[-1])/Delta : 0.)
+
+#endif
+#undef face_value
+#define face_value(a,i)							\
+  (a.third && fs.x[i] < 1. && fs.x[i] > 0. ?				\
+   ibm_face_value_x (point, a, i) :					\
+   ibm_avg(a,i,0,0))
 #endif
 
 

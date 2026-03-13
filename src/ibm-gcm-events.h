@@ -144,6 +144,8 @@ TODO: is calculating and assigning pressure necessary here?
 TODO: is assigning pressure to full ghost cells necessary? probably not
 */
 
+const coord ind = {0,1,2};
+
 scalar ibalphas[];
 vector normals[];
 vector midPoints[];
@@ -188,7 +190,7 @@ event acceleration (i++)
     u.z.mp = bi;
 #endif
 
-#if 0
+#if 1
     vector u2[];
     scalar_clone(u2.x, u.x);
     scalar_clone(u2.y, u.y);
@@ -197,10 +199,12 @@ event acceleration (i++)
     centered_gradient (p, g0);
 
     foreach() {
-        u2.x[] = gc[]*(0.5*(uf.x[] + uf.x[1]) + dt*g0.x[]);
+        foreach_dimension()
+            u2.x[] = u.x[] + gc[]*dt*g0.x[];
     }
 #endif
 
+#if 1
     // 2. Identify ghost cells and calculate and assign their values to enforce B.C
     foreach() {
         if (is_ghost_cell(point, cs)) {
@@ -212,13 +216,13 @@ event acceleration (i++)
             coord boundaryInt = boundary_int (point, interFrag, fluidCell, cs);
 
             coord imagePoint = image_point (boundaryInt, ghostCell);
-
+  
             foreach_dimension()
                 bi.x[] = boundaryInt.x;
 
-            coord imageVelocity = image_velocity (point, u, imagePoint, bioff, 
+            coord imageVelocity = image_velocity (point, u2, imagePoint, bioff, 
                                                   midPoints, normals, ibalphas);
-            
+
             if (local_bc_coordinates) {
                 coord n = interFrag.n, t1, t2;
                 normal_and_tangents (&n, &t1, &t2);
@@ -245,8 +249,16 @@ event acceleration (i++)
                             //                   projVelocity.x;
                             gcProjVelocity.x = -projVelocity.x*(delta - vb)/(delta + vb);
                         }
-                        else
-                            gcProjVelocity.x = 2*vb - projVelocity.x;
+                        else {
+                            double delta = 0;
+                            foreach_dimension()
+                                delta += sq(ghostCell.x - imagePoint.x);
+                            delta = sqrt(delta)/(2*Delta);
+
+                            double multiplier = delta <= 1? 1: 1;
+                            
+                            gcProjVelocity.x = 2*vb - projVelocity.x*multiplier;
+                        }
                     }
                     else {
                         gcProjVelocity.x = projVelocity.x;
@@ -283,7 +295,7 @@ event acceleration (i++)
            }
        }
     }
-
+#endif
     boundary((scalar *){u, p, pf, bi});
 }
 #endif
@@ -305,10 +317,11 @@ TODO: is assigning pressure to full ghost cells necessary?
 #if 1
 event end_timestep (i++)
 {
-#if 1 // is this part necessary?
+#if 0 // is this part necessary?
     correction(-dt);  // remove old pressure from velocity field
     // 2. Apply the pressure B.C
     foreach() {
+        //if (cs[] <= 0. && is_ghost_cell(point, cs)) {
         if (cs[] <= 0. && is_ghost_cell(point, cs)) {
            fragment interFrag;
            coord fluidCell, ghostCell = {x,y,z};
@@ -318,10 +331,10 @@ event end_timestep (i++)
            coord boundaryInt = boundary_int (point, interFrag, fluidCell, cs);
            coord imagePoint = image_point (boundaryInt, ghostCell);
     
-           if (cs[] <= 0.) {
+           //if (cs[] <= 0.) {
                p[] = image_pressure (point, p, imagePoint);
                pf[] = image_pressure (point, pf, imagePoint);
-           }
+           //}
        }
        else if (cs[] == 0) {
            p[] = 0; pf[] = 0;
@@ -336,6 +349,13 @@ event end_timestep (i++)
     u.x.mp = bi; u.y.mp = bi; 
 #if dimension == 3
     u.z.mp = bi;
+#endif
+
+#if 0
+    foreach_face() {
+        double metric = !fs.x[]? 0: fm.x[]*alpha.x[]/fs.x[];
+        uf.x[] -= dt*metric*face_gradient_x (p, 0);
+    }
 #endif
 
     // 3. Update the velocity B.C
@@ -362,6 +382,7 @@ event end_timestep (i++)
                 coord projVelocity = {dot_product(imageVelocity, n),
                                       dot_product(imageVelocity, t1),
                                       dot_product(imageVelocity, t2)};
+
                 coord gcProjVelocity = {0,0,0};
                 foreach_dimension() {
                     bool bctype[2] = {false, false};
@@ -377,8 +398,17 @@ event end_timestep (i++)
 
                             gcProjVelocity.x = -projVelocity.x*(delta - vb)/(delta + vb);
                         }
-                        else
-                            gcProjVelocity.x = 2*vb - projVelocity.x;
+                        else {
+                             double delta = 0;
+                            foreach_dimension()
+                                delta += sq(ghostCell.x - imagePoint.x);
+                            delta = sqrt(delta)/(2*Delta);
+
+                            double multiplier = delta <= 1? 1: 1;
+                            //if (ind.x == 0) multiplier = 1; 
+                            //fprintf(stderr, "multiplier = %g delta = %g\n", multiplier, delta);
+                            gcProjVelocity.x = 2*vb - projVelocity.x*multiplier;
+                        }
                     }
                     else { // neumann
                         gcProjVelocity.x = projVelocity.x;
