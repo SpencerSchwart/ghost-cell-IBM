@@ -190,7 +190,7 @@ event acceleration (i++)
     u.z.mp = bi;
 #endif
 
-#if 1
+#if 0
     vector u2[];
     scalar_clone(u2.x, u.x);
     scalar_clone(u2.y, u.y);
@@ -220,7 +220,7 @@ event acceleration (i++)
             foreach_dimension()
                 bi.x[] = boundaryInt.x;
 
-            coord imageVelocity = image_velocity (point, u2, imagePoint, bioff, 
+            coord imageVelocity = image_velocity (point, u, imagePoint, bioff, 
                                                   midPoints, normals, ibalphas);
 
             if (local_bc_coordinates) {
@@ -317,35 +317,6 @@ TODO: is assigning pressure to full ghost cells necessary?
 #if 1
 event end_timestep (i++)
 {
-#if 0 // is this part necessary?
-    correction(-dt);  // remove old pressure from velocity field
-    // 2. Apply the pressure B.C
-    foreach() {
-        //if (cs[] <= 0. && is_ghost_cell(point, cs)) {
-        if (cs[] <= 0. && is_ghost_cell(point, cs)) {
-           fragment interFrag;
-           coord fluidCell, ghostCell = {x,y,z};
-           PointIBM bioff;
-
-           closest_interface (point, midPoints, cs, normals, &interFrag, &fluidCell, &bioff);
-           coord boundaryInt = boundary_int (point, interFrag, fluidCell, cs);
-           coord imagePoint = image_point (boundaryInt, ghostCell);
-    
-           //if (cs[] <= 0.) {
-               p[] = image_pressure (point, p, imagePoint);
-               pf[] = image_pressure (point, pf, imagePoint);
-           //}
-       }
-       else if (cs[] == 0) {
-           p[] = 0; pf[] = 0;
-       }
-    }
-    boundary({u, p, pf});
-    centered_gradient (p, g);
-
-    correction(dt);  // add new pressure to velocity field
-    boundary({u});
-    #endif
     u.x.mp = bi; u.y.mp = bi; 
 #if dimension == 3
     u.z.mp = bi;
