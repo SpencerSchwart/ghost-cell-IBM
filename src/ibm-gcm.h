@@ -13,7 +13,7 @@
 #define IBM 1
 #define LIMIT 1e100
 
-#define GCV 0.5 // if fluid volume fraction > GCV, its a fluid cell
+#define GCV 1e-8 // if fluid volume fraction > GCV, its a fluid cell
 
 #undef SEPS
 #define SEPS 1e-30
@@ -1580,7 +1580,8 @@ static void gradients_ibm (scalar * f, vector * g)
       if (s.gradient)
 	foreach_dimension() {
 #if IBM
-      if (!fs.x[] || !fs.x[1])
+      //if (!fs.x[] || !fs.x[1])
+      if (!gc[])
         v.x[] = 0.;
       else
 #endif
@@ -1589,7 +1590,8 @@ static void gradients_ibm (scalar * f, vector * g)
       else // centered
 	foreach_dimension() {
 #if IBM
-      if (!fs.x[] || !fs.x[1])
+      //if (!fs.x[] || !fs.x[1])
+      if (!gc[])
         v.x[] = 0.;
       else
 #endif

@@ -214,6 +214,7 @@ event acceleration (i++)
 
             closest_interface (point, midPoints, cs, normals, &interFrag, &fluidCell, &bioff);
             coord boundaryInt = boundary_int (point, interFrag, fluidCell, cs);
+            //rho[] = rho[0,1];
 
             coord imagePoint = image_point (boundaryInt, ghostCell);
   
@@ -281,7 +282,7 @@ event acceleration (i++)
                     }
                 }
             }
-            #if 1
+            #if 0
             if (cs[] <= 0.) { // is pressure b.c. necessary here?
                 p[] = image_pressure (point, p, imagePoint);
                 pf[] = image_pressure (point, pf, imagePoint);

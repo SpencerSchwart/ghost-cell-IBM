@@ -101,6 +101,7 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
         val = cm[];
 #endif
         rho2[] = rho[]*val/(cs[] + SEPS);
+        //rho2[] = cs[]*rho[]*val;
         foreach_dimension() {
             r.x[] = rho2[] * u.x[];
         }

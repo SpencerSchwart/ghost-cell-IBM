@@ -298,7 +298,8 @@ void prediction()
     foreach()
       foreach_dimension() {
 #if EMBED || IBM
-    if (!fs.x[] && !fs.x[1]) // should use ibmf or fm?
+    //if (!fs.x[] && !fs.x[1]) // should use ibmf or fm?
+    if (!gc[])
 	    du.x[] = 0.;
 	else
 #endif
@@ -308,7 +309,8 @@ void prediction()
     foreach()
       foreach_dimension() {
 #if EMBED || IBM
-    if (!fs.x[] && !fs.x[1])
+    //if (!fs.x[] && !fs.x[1])
+    if (!gc[])
 	    du.x[] = 0.;
 	else
 #endif

@@ -85,8 +85,29 @@ event properties (i++)
 
 #if IBM
     foreach_face() {
-        double ff = (sf[] + sf[-1])/2.;
+        double ff = 0;
+        if (cs[] && cs[-1])
+            ff = (sf[]/cs[] + sf[-1]/cs[-1])/2.;
+        else if (cs[] && !cs[-1])
+            ff = sf[]/cs[];
+        else if (!cs[] && cs[-1])
+            ff = sf[-1]/cs[-1];
         alphav.x[] = fs.x[]/rho(ff);
+        if (mu1 || mu2) {
+          face vector muv = mu;
+           muv.x[] = fm.x[]*mu(ff);
+        }
+    }
+#elif EMBED
+    foreach_face() {
+        double ff = 0;
+        if (cs[] && cs[-1])
+            ff = (sf[]/cs[] + sf[-1]/cs[-1])/2.;
+        else if (cs[] && !cs[-1])
+            ff = sf[]/cs[];
+        else if (!cs[] && cs[-1])
+            ff = sf[-1]/cs[-1];
+        alphav.x[] = fm.x[]/rho(ff);
         if (mu1 || mu2) {
           face vector muv = mu;
            muv.x[] = fm.x[]*mu(ff);
@@ -105,7 +126,9 @@ event properties (i++)
   
   foreach() {
 #if IBM
-    rhov[] = cs[]*rho(sf[]);
+    rhov[] = cs[]? cs[]*rho(sf[]/(cs[])): 0;
+#elif EMBED
+    rhov[] = cs[]? cm[]*rho(sf[]/(cs[])): 0;
 #else // !IBM
     rhov[] = cm[]*rho(sf[]);
 #endif // IBM

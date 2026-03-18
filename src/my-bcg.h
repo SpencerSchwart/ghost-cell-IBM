@@ -8,6 +8,8 @@ face metric), a timestep *dt* and a source term field *src*, it fills
 the face vector field *flux* with the components of the advection
 fluxes of *f*. */
 
+vector gg[];
+
 void tracer_fluxes (scalar f,
 		    face vector uf,
 		    face vector flux,
@@ -26,6 +28,7 @@ void tracer_fluxes (scalar f,
 */
 #if IBM
   gradients_ibm ({f}, {g});
+  gradients_ibm ({f}, {gg});
 #else
   gradients ({f}, {g});
 #endif

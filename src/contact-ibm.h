@@ -562,17 +562,17 @@ bool contact_line_border(Point point, scalar c, scalar cs, double angle)
 
     /** check left-right */
     for(int i = -1; i <= 1; i += 2)
-       if (cs[i] > 0 && cs[i] < 1 && approx_equal_double(c[i], vol, 1e-3))
+       if (cs[i] > 0 && cs[i] < 1 && approx_equal_double(c[i], vol, 1e-2))
            return true;
 
     /** check top-bottom */
     for(int j = -1; j <= 1; j += 2)
-       if (cs[0,j] > 0 && cs[0,j] < 1 && approx_equal_double(c[0,j], vol, 1e-3))
+       if (cs[0,j] > 0 && cs[0,j] < 1 && approx_equal_double(c[0,j], vol, 1e-2))
            return true;
 
     /** check front-back */
     for(int k = -1; k <= 1; k += 2)
-       if (cs[0,0,k] > 0 && cs[0,0,k] < 1 && approx_equal_double(c[0,0,k], vol, 1e-3))
+       if (cs[0,0,k] > 0 && cs[0,0,k] < 1 && approx_equal_double(c[0,0,k], vol, 1e-2))
            return true;
      
     return false;
@@ -815,6 +815,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
     boundary({ctmp,cr0,c});
 #endif
 
+#if 0
     /**
     TODO: is this necessary for ALL contact angles? or just super hydrophobic?*/
     foreach() {
@@ -852,7 +853,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
         }
         #endif
     }
-
+#endif
     clean_fluid (c, cs);
     boundary ({c, cr0});
 }
