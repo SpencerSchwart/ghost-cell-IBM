@@ -177,7 +177,7 @@ event vof (i++) {
 
   foreach()
     foreach_dimension()
-      u.x[] = gc[]? (q1.x[] + q2.x[])/(rho(f[]) + SEPS): u.x[];
+      u.x[] = gc[] && cs[]? (q1.x[] + q2.x[])/(rho(f[]/cs[]) + SEPS): u.x[];
 
   /**
   We set the list of interfaces to NULL so that the default *vof()*
