@@ -12,17 +12,19 @@
  */
 
 attribute {
-    coord urain;      // Incoming velocity of rain
-    double rvf;       // Rain volume fraction
+    struct rain {
+        coord u;          // Incoming velocity of rain
+        double rvf;       // Rain volume fraction
 
-    double stddev;    // Standard deviation of Gaussian impact distribution (width of region)
-    double mean;      // Mean position of Gaussian along the line (in tangent direction)
+        double stddev;    // Standard deviation of Gaussian impact distribution (width of region)
+        double mean;      // Mean position of Gaussian along the line (in tangent direction)
 
-    coord normal;     // Unit normal vector to the line (points to from rain region)
-    coord tangent;    // Unit tangent vector along the line
-    double intercept; // Line intercept parameter (α in n·x = α)
+        coord normal;     // Unit normal vector to the line (points to from rain region)
+        coord tangent;    // Unit tangent vector along the line
+        double intercept; // Line intercept parameter (α in n·x = α)
 
-    coord pref;       // Reference point on the line for coordinate system origin
+        coord pref;       // Reference point on the line for coordinate system origin
+    } rain;
 }
 
 extern scalar f;
@@ -38,13 +40,13 @@ extern scalar f;
  */
 event defaults (i = 0)
 {
-    if (f.normal.x != 0.)
-        f.pref = (coord) {f.intercept / f.normal.x, 0}; // use x-intercept
-    else if (f.normal.y != 0.) 
-        f.pref = (coord) {0, f.intercept / f.normal.y}; // use y-intercept
+    if (f.rain.normal.x != 0.)
+        f.rain.pref = (coord) {f.rain.intercept / f.rain.normal.x, 0}; // use x-intercept
+    else if (f.rain.normal.y != 0.) 
+        f.rain.pref = (coord) {0, f.rain.intercept / f.rain.normal.y}; // use y-intercept
 
     // Tangent is perpendicular to normal: rotate normal by 90° counterclockwise
-    f.tangent = (coord){-f.normal.y, f.normal.x};
+    f.rain.tangent = (coord){-f.rain.normal.y, f.rain.normal.x};
 }
 
 /**
@@ -79,7 +81,7 @@ double gauss_distribution(double stddev, double mean, double h)
 bool is_in_impact_region(scalar c, coord pc)
 {
     // Compute signed distance: n·p - α
-    return c.normal.x*pc.x + c.normal.y*pc.y - c.intercept >= 0;
+    return c.rain.normal.x*pc.x + c.rain.normal.y*pc.y - c.rain.intercept >= 0;
 }
 
 /**
@@ -100,15 +102,15 @@ double rain_probability(Point point, coord pc, scalar c)
 {
     // Step 1: Project point onto the line
     // Compute signed distance t from point to line
-    double tt = c.normal.x*pc.x + c.normal.y*pc.y - c.intercept;
+    double tt = c.rain.normal.x*pc.x + c.rain.normal.y*pc.y - c.rain.intercept;
 
     // Project by moving distance t in the normal direction: p_proj = p - t*n
-    coord pc_proj = {pc.x - tt*c.normal.x, pc.y - tt*c.normal.y};
+    coord pc_proj = {pc.x - tt*c.rain.normal.x, pc.y - tt*c.rain.normal.y};
 
     // Step 2: Compute coordinate along the line
     // h is the signed distance from reference point along tangent direction
-    double h = (pc_proj.x - c.pref.x)*(c.tangent.x) + (pc_proj.y - c.pref.y)*(c.tangent.y);
+    double h = (pc_proj.x - c.rain.pref.x)*(c.rain.tangent.x) + (pc_proj.y - c.rain.pref.y)*(c.rain.tangent.y);
 
     // Step 3: Return Gaussian weight if inside region, 0 otherwise
-    return is_in_impact_region(c, pc)? gauss_distribution(c.stddev, c.mean, h): 0;
+    return is_in_impact_region(c, pc)? gauss_distribution(c.rain.stddev, c.rain.mean, h): 0;
 }

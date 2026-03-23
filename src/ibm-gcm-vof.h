@@ -1471,3 +1471,35 @@ void ibm_boundary (scalar * list)
 {
   boundary(list);
 }
+
+/**
+Calculates the area of a scalar field c considering the immersed boundary.
+TODO: include three-phase and cut cells in calculation */
+
+double interface_area_ibm (scalar c, scalar cs)
+{
+  double area = 0.;
+  foreach (reduction(+:area))
+    if (cs[] == 1 && c[] > INT_TOL && c[] < cs[] - INT_TOL) {
+      coord n = interface_normal (point, c), p;
+      double alpha = plane_alpha (c[], n);
+      area += pow(Delta, dimension - 1)*plane_area_center (n, alpha, &p);
+    }
+  return area;
+}
+
+/** checks to see if the given point either containts a fragment of c or
+is empty (c = 0) but has a full neighbor (c = 1) */
+static inline bool empty_interfacial (Point point, scalar c)
+{
+  if (c[] <= 0.) {
+    for (int i = -1; i <= 1; i += 2)
+      foreach_dimension()
+	if (c[i] >= 1.)
+	  return true;
+  }
+  else if (c[] > 0 && c[] < cs[])
+    return true;
+  else
+    return false;
+}

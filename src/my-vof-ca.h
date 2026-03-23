@@ -236,7 +236,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 #endif
 
 #if RAIN
-      if (c[] > 0 && c[] < cs[])
+      if (empty_interfacial(point, c))
       {
         /**
         interfacial cell must border a full cell to avoid creating whisps*/
@@ -252,12 +252,13 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
             double alpha = plane_alpha (c[], n);
             plane_area_center (n, alpha, &p);
             coord pc = {x, y, z};
-            foreach_dimension() // put the midpoint in local coordinates
+            foreach_dimension() // put the midpoint in global coordinates
                 pc.x += p.x*Delta;
 
-            double frain = -c.urain.x * c.rvf * rain_probability(point, pc, c);
+            double frain = -c.rain.u.x * c.rain.rvf * rain_probability(point, pc, c);
 
-            c[] += dt*frain/(val*Delta);
+            c[]  += dt*frain/(val*Delta);
+            ch[] += dt*frain/(val*Delta);
         }
       }
 #endif
