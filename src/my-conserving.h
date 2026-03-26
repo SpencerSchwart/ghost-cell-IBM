@@ -147,6 +147,7 @@ event vof (i++) {
   foreach()
     foreach_dimension() {
       double fc = clamp(f[],0,1);
+      if (cs[]) fc /= cs[];
       q1.x[] = fc*rho1*u.x[];
       q2.x[] = (1. - fc)*rho2*u.x[];
     }

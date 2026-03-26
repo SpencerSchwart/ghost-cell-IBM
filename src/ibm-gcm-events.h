@@ -214,7 +214,6 @@ event acceleration (i++)
 
             closest_interface (point, midPoints, cs, normals, &interFrag, &fluidCell, &bioff);
             coord boundaryInt = boundary_int (point, interFrag, fluidCell, cs);
-            //rho[] = rho[0,1];
 
             coord imagePoint = image_point (boundaryInt, ghostCell);
   

@@ -13,7 +13,7 @@
 #define IBM 1
 #define LIMIT 1e100
 
-#define GCV 1e-8 // if fluid volume fraction > GCV, its a fluid cell
+#define GCV 1e-2 // if fluid volume fraction > GCV, its a fluid cell
 
 #undef SEPS
 #define SEPS 1e-30
@@ -340,6 +340,7 @@ coord boundary_int (Point point, fragment frag, coord fluidCell, scalar cs)
     double mag = distance3D(frag.n.x, frag.n.y, frag.n.z) + SEPS;
     coord n = frag.n, ghostCell = {x,y,z};
 
+    //fprintf(stderr, "n = {%g, %g} gc={%g, %g} fc={%g, %g}\n", n.x, n.y, x, y, fluidCell.x, fluidCell.y);
     normalize2(&n);
 
     double offset = 0;

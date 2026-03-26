@@ -18,18 +18,21 @@ static double vof_concentration_gradient_x (Point point, scalar c, scalar t)
 {
   static const double cmin = 0.5;
   double cl = c[-1], cc = c[], cr = c[1];
+  if (cs[-1]) cl /= cs[-1];
+  if (cs[])   cc /= cs[];
+  if (cs[1])  cr /= cs[1];
   if (t.inverse)
     cl = 1. - cl, cc = 1. - cc, cr = 1. - cr;
   if (cc >= cmin && t.gradient != zero) {
     if (cr >= cmin) {
       if (cl >= cmin) {
-	if (t.gradient)
-	  return t.gradient (t[-1]/cl, t[]/cc, t[1]/cr)/Delta;
-	else
-	  return (t[1]/cr - t[-1]/cl)/(2.*Delta);
+        if (t.gradient)
+	      return t.gradient (t[-1]/cl, t[]/cc, t[1]/cr)/Delta;
+	    else
+	      return (t[1]/cr - t[-1]/cl)/(2.*Delta);
       }
       else
-	return (t[1]/cr - t[]/cc)/Delta;
+	    return (t[1]/cr - t[]/cc)/Delta;
     }
     else if (cl >= cmin)
       return (t[]/cc - t[-1]/cl)/Delta;
@@ -196,7 +199,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
     scalar t, gf, tflux;
     for (t,gf,tflux in tracers,gfl,tfluxl) {
-      double cf1 = cf, ci = c[i];
+      double cf1 = cf, ci = cs[i]? c[i]/cs[i]: 0;
       if (t.inverse)
     	cf1 = 1. - cf1, ci = 1. - ci;
       if (ci > 1e-10) {
@@ -361,10 +364,10 @@ void vof_advection (scalar * interfaces, int i)
 #endif // !NO_1D_COMPRESSION
 #if TREE
       if (t.refine != vof_concentration_refine) {
-	t.refine = t.prolongation = vof_concentration_refine;
-	t.restriction = restriction_volume_average;
-	t.dirty = true;
-	t.c = c;
+	    t.refine = t.prolongation = vof_concentration_refine;
+	    t.restriction = restriction_volume_average;
+	    t.dirty = true;
+	    t.c = c;
       }
 #endif // TREE
     }
@@ -373,9 +376,9 @@ void vof_advection (scalar * interfaces, int i)
       scalar t, tc;
       for (t, tc in tracers, tcl) {
         if (t.inverse)
-	      tc[] = c[] < 0.5*cs[] ? t[]/(1. - c[]) : 0.;
+	      tc[] = c[] < 0.5*cs[] && cs[]? t[]/(1. - c[]/cs[]) : 0.;
 	    else
-	      tc[] = c[] > 0.5*cs[] ? t[]/c[] : 0.;
+	      tc[] = c[] > 0.5*cs[] && cs[] ? t[]/(c[]/cs[]) : 0.;
       }
 #endif // !NO_1D_COMPRESSION
     }
