@@ -555,24 +555,24 @@ void clean_fluid_real (scalar f, scalar fr, scalar cs)
 
 /** 
  */
-bool contact_line_border(Point point, scalar c, scalar cs, double angle)
+bool contact_line_border(Point point, scalar c, scalar cs, double angle, double tolerance = 1e-2)
 {
 
     int vol = angle >= pi/2.? cs[]: 0;
 
     /** check left-right */
     for(int i = -1; i <= 1; i += 2)
-       if (cs[i] > 0 && cs[i] < 1 && approx_equal_double(c[i], vol, 1e-2))
+       if (cs[i] > 0 && cs[i] < 1 && approx_equal_double(c[i], vol, tolerance))
            return true;
 
     /** check top-bottom */
     for(int j = -1; j <= 1; j += 2)
-       if (cs[0,j] > 0 && cs[0,j] < 1 && approx_equal_double(c[0,j], vol, 1e-2))
+       if (cs[0,j] > 0 && cs[0,j] < 1 && approx_equal_double(c[0,j], vol, tolerance))
            return true;
 
     /** check front-back */
     for(int k = -1; k <= 1; k += 2)
-       if (cs[0,0,k] > 0 && cs[0,0,k] < 1 && approx_equal_double(c[0,0,k], vol, 1e-2))
+       if (cs[0,0,k] > 0 && cs[0,0,k] < 1 && approx_equal_double(c[0,0,k], vol, tolerance))
            return true;
      
     return false;
@@ -612,7 +612,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
 
 #if 1
         if (inter[] && cs[] > 0 && cs[] < 1 && contact_angle[]) {
-            extra[] = (int)contact_line_border(point, cr, cs, contact_angle[]);
+            extra[] = (int)contact_line_border(point, cr, cs, contact_angle[], 1e-2);
         }
 #else
         extra[] = inter[] && cs[] > 0 && cs[] < 1 && contact_angle[];

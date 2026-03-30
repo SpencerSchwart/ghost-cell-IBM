@@ -173,15 +173,17 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
                 tempnf = (coord){-s*tempnf.x, tempnf.y, tempnf.z};
                 alpha = 0; // inital guess
             }
-            
-            normalize2(&tempns);
-            coord nc = normal_contact (tempns, tempnf, contact_angle[i]);
-            normalize_sum(&tempns);
-            normalize_sum(&nc);
+           
+            double alphacr = alphafh[i];
+            if (c.wetting.theta_s < 180) { // only use nc when the surface is wettable
+                normalize2(&tempns);
+                coord nc = normal_contact (tempns, tempnf, contact_angle[i]);
+                normalize_sum(&tempns);
+                normalize_sum(&nc);
+                tempnf = nc;
+                alphacr = immersed_alpha (ch[i], cs[i], tempnf, alpha, tempns, alphas[i], c[i]);
+            }
 
-            tempnf = nc;
-            
-            double alphacr = immersed_alpha (ch[i], cs[i], tempnf, alpha, tempns, alphas[i], c[i]);
             double newc = plane_volume (tempnf, alphacr);
             cf = immersed_fraction (newc, tempnf, alphacr, tempns, alphas[i], lhs, rhs, advVolume, 0);
        }
@@ -306,28 +308,38 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
       reconstruction (ch, nfh, alphafh);
   }
   else {
-    
-    if (c.wetting.dynamic) // if using dynamic CA model, update CA in three-phase cells
-        update_contact_angle (c, c0, cs0, ns, alphas, u, contact_angle);
 
-    foreach() {
-      if (c[] < VTOL)
-        c[] = 0;
-      if (cs[] > 0 && cs[] < 1 && c[] >= cs[]-INT_TOL)
-          ch[] = 1;
-      else if (cs[] > 0 && c[] < 1 && c[])
-          ch[] = c[]/cs[];
-      else if (cs[] > 0)
-          ch[] = c[];
-      else
-          ch[] = 0;
+    if (c.wetting.theta_s >= 180) { // no wetting condition
+      foreach() {
+        if (c[] < VTOL)
+          c[] = 0;
+        ch[] = c[];
+      }
+    } else {
+
+      if (c.wetting.dynamic) // if using dynamic CA model, update CA in three-phase cells
+          update_contact_angle (c, c0, cs0, ns, alphas, u, contact_angle);
+
+      foreach() {
+        if (c[] < VTOL)
+          c[] = 0;
+        if (cs[] > 0 && cs[] < 1 && c[] >= cs[]-INT_TOL)
+            ch[] = 1;
+        else if (cs[] > 0 && c[] < 1 && c[])
+            ch[] = c[]/cs[];
+        else if (cs[] > 0)
+            ch[] = c[];
+        else
+            ch[] = 0;
+      }
+
+      scalar alphaf[];
+      vector nf[];
+
+      reconstruction(ch, nf, alphaf); // should be based on c or ch? TODO: is it even necessary?
+
+      set_contact_angle(ch, c, cs0, nf, alphaf, ns, alphas); // find ch
     }
-
-    scalar alphaf[];
-    vector nf[];
-
-    reconstruction(ch, nf, alphaf); // should be based on c or ch? TODO: is it even necessary?
-    set_contact_angle(ch, c, cs0, nf, alphaf, ns, alphas); // find ch
   }
 
   delete (tfluxl); free (tfluxl);

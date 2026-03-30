@@ -420,9 +420,6 @@ The (provisionary) face velocity field at time $t+\Delta t$ is
 obtained by interpolation from the centered velocity field. The
 acceleration term is added. */
 
-void solid_domainv2 (scalar, face vector);
-
-
 event acceleration (i++,last)
 {
   trash ({uf});
