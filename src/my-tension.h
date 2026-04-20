@@ -81,8 +81,6 @@ event stability (i++)
 We overload the acceleration event to define the potential
 $\phi=\sigma\kappa$. */
 
-scalar phig[];
-
 event acceleration (i++)
 {
   /**
@@ -114,8 +112,4 @@ event acceleration (i++)
       }
 #endif
     }
-
-    scalar phi = f.phi;
-    foreach()
-        phig[] = phi[];
 }

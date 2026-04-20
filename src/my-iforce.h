@@ -41,7 +41,7 @@ event defaults (i = 0) {
 The calculation of the acceleration is done by this event, overloaded
 from [its definition](navier-stokes/centered.h#acceleration-term) in
 the centered Navier--Stokes solver. */
-
+scalar phig[];
 event acceleration (i++)
 {
  
@@ -91,9 +91,39 @@ event acceleration (i++)
   $$ 
   */
 
+#if 0
+  foreach() {
+    scalar phi = f.phi;
+    if (on_interface(cs) && !f[] && ch[] && !extra[]) {
+       // phi[] = 0;
+       bool skip = true;
+       foreach_neighbor(1) {
+         if (extra[])
+            skip = false;
+       }
+       if (skip)
+         phi[] = 0;
+
+         if (extra[-1] || extra[1] || extra[0,-1] || extra[0,1]) {
+            foreach_dimension() {
+                for (int i = -1; i < 2; i += 2)
+                    if (extra[i]) {
+                        phi[] = phi[i];
+                    }
+            }
+        }
+    }
+  } 
+#endif
+    foreach() {
+        scalar phi = f.phi;
+        phig[] = phi[];
+    }
+
   face vector ia = a;
   foreach_face()
     for (scalar f in list)
+      //if (ch[] != ch[-1] && fm.x[] > 0.) {
       if (f[] != f[-1] && fm.x[] > 0.) {
 
 	/**
@@ -103,7 +133,7 @@ event acceleration (i++)
 	value. If all fails we set the potential to zero: this should
 	happen only because of very pathological cases e.g. weird
 	boundary conditions for the volume fraction. */
-	
+
 	scalar phi = f.phi;
 	double phif =
 	  (phi[] < nodata && phi[-1] < nodata) ?
@@ -112,11 +142,33 @@ event acceleration (i++)
 	  phi[-1] < nodata ? phi[-1] :
 	  0.;
 
+    //double val1 = ch[], val2 = ch[-1];
+    double val1 = f[]/(cs[] + SEPS), val2 = f[-1]/(cs[-1] + SEPS);
+    //double val1 = f[], val2 = f[-1];
+    #if 0
+    if ((!f[]) && cs[] < 1) {
+      bool skip = true;
+      double phia = 0;
+      int count = 0;
+      foreach_neighbor() {
+        if (extra[]) {
+          skip = false;
+        }
+        if (f[] && phi[] && extra[]) {
+          phia += phi[];
+          count++;
+        }
+      }
+      if (skip)
+        continue;
+     // phif = phia/((double)count);
+    }
+    #endif
+
 #if IBM || EMBED
     #if CA
-      double val1 = f[]? ch[]: 0;
-      double val2 = f[-1]? ch[-1]: 0;
-      //double val1 = ch[], val2 = ch[-1];
+      //double val1 = f[]? ch[]: 0;
+      //double val2 = f[-1]? ch[-1]: 0;
     #if EMBED
       ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(val1 - val2)/Delta;
     #else
@@ -129,6 +181,25 @@ event acceleration (i++)
       ia.x[] += alpha.x[]/(fm.x[] + SEPS)*phif*(f[] - f[-1])/Delta;
 #endif
       }
+
+#if 0
+    foreach_face() {
+      if (ch[] != ch[-1] && fm.x[] > 0. && fs.x[] < 1 && fs.x[] > 0) {
+        if (!f[]) {
+            double asum = 0;
+            int count = 0;
+            foreach_neighbor(1) {
+                if (extra[] && fs.x[]) {
+                    asum += ia.x[];
+                    count++;
+                }
+            }
+            if (count)
+                ia.x[] = asum/((double)count);
+        }
+      }
+    }
+    #endif
 
   /**
   On trees, we need to restore the prolongation values for the

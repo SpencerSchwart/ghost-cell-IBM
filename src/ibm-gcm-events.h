@@ -204,7 +204,7 @@ event acceleration (i++)
     }
 #endif
 
-#if 1
+#if 0
     // 2. Identify ghost cells and calculate and assign their values to enforce B.C
     foreach() {
         if (is_ghost_cell(point, cs)) {
@@ -314,9 +314,15 @@ TODO: are all of these boundary()'s necessary?
 TODO: is assigning pressure to full ghost cells necessary?
 */
 
+scalar gid[];
+scalar pid[];
+
 #if 1
 event end_timestep (i++)
 {
+    foreach()
+        pid[] = pid();
+
     u.x.mp = bi; u.y.mp = bi; 
 #if dimension == 3
     u.z.mp = bi;
@@ -329,6 +335,107 @@ event end_timestep (i++)
     }
 #endif
 
+#if 0
+    // Identify and mark ghost cells
+    int gcount = 0;
+
+    Array * gcid = array_new();
+
+    foreach(serial, reduction(+:gcount)) {
+        gid[] = -1;
+        if (is_ghost_cell(point, cs)) {
+            gid[] = gcount;
+            array_append(gcid, &gcount, sizeof(int));
+            gcount++;
+        }
+    }
+
+    char name[80];
+    sprintf(name, "%d-out", pid());
+    FILE * fp = fopen(name, "w");
+
+    long nl = gcid->len/sizeof(int);
+    long offset = 0;
+
+#if _MPI
+    MPI_Exscan(&nl, &offset, 1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
+    if (pid() == 0)
+        offset = 0;
+#endif
+
+    int * ap = gcid->p;
+
+#if 0
+    foreach(serial) {
+        if (gid[] > -1) {
+            gid[] += offset;
+        }
+    }
+
+    for (long i = 0; i < nl; i++) {
+        int old = ap[i];
+        ap[i] += offset;
+        fprintf(fp, "%d nl=%d gcid_old = %d gcid[%d] = %d offset = %d\n", pid(), nl, old, i, ap[i], offset);
+    }
+    fclose(fp);
+#endif
+
+    coord ips[nl];
+    coord uip[nl];
+    PointIBM bff[nl];
+    coord nsg[nl];
+    coord bis[nl];
+
+    foreach() {
+        if (gid[] > -1) {
+            fragment interFrag;
+            coord fluidCell, ghostCell = {x,y,z};
+            PointIBM bioff;
+
+            closest_interface (point, midPoints, cs, normals, &interFrag, &fluidCell, &bioff);
+            coord boundaryInt = boundary_int (point, interFrag, fluidCell, cs);
+
+            bis[(int)gid[]] = (coord)boundaryInt;
+            nsg[(int)gid[]] = (coord)interFrag.n;
+            bff[(int)gid[]] = (PointIBM)bioff;
+            ips[(int)gid[]] = image_point (boundaryInt, ghostCell);
+        }
+    }
+
+#if 0
+    for (long i = 0; i < nl; i++) {
+        coord ip0 = ips[i];
+        foreach_point(serial, ip0.x, ip0.y) {
+            foreach_dimension()
+                bi.x[] = bis[i].x;
+            uip[i] = image_velocity_noff (point, u, ips[i], bff[i], nsg[i], midPoints, normals, ibalphas);
+            fprintf(fp, "%d (%g, %g) nl=%d gcid[%d]=%d ips={%g, %g} uip={%g, %g} offset=%d %g\n", pid(), x, y, nl, i, ap[i], ips[i].x, ips[i].y, uip[i].x, uip[i].y, offset, cs[]);
+        }
+    }
+    fflush(fp);
+    fclose(fp);
+#endif
+
+    array_free(gcid);
+
+#if 0
+    // should move them to heap allocation using malloc
+    //coord bip[gcount]; // boundary intercept points
+    //coord uip[gcount]; // image point velocities
+    
+    //
+    foreach() {
+        if (gid[] > -1) {
+            MPI_Allreduce (MPI_IN_PLACE, size, n, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
+
+            MPI_Exscan (
+            gid[] = 
+        }
+    }
+#endif
+    
+#endif
+    
     // 3. Update the velocity B.C
     foreach() {
         if (is_ghost_cell(point, cs)) {
@@ -345,6 +452,18 @@ event end_timestep (i++)
 
             coord imageVelocity = image_velocity (point, u, imagePoint, bioff, 
                                                   midPoints, normals, ibalphas);
+#if 0                                                  
+            coord imageVelocity0 = uip[(int)gid[]];
+            coord imagePoint0 = ips[(int)gid[]];
+            PointIBM bioff0 = bff[(int)gid[]];
+            
+            if (!approx_equal_double(imageVelocity.x,imageVelocity0.x) || !approx_equal_double(imageVelocity.y, imageVelocity0.y))
+                fprintf(stderr, "%g (%g, %g) uip0 = {%g, %g} uip1 = {%g, %g} cs=%g ip0={%g, %g} ip1={%g, %g} bioff0={%d, %d} bioff1={%d, %d}\n", 
+                    gid[], x, y, imageVelocity0.x, imageVelocity0.y, imageVelocity.x, imageVelocity.y, cs[], 
+                    imagePoint0.x, imagePoint0.y, imagePoint.x, imagePoint.y, bioff0.i, bioff0.j, bioff.i, bioff.j);
+
+            imageVelocity = imageVelocity0;
+#endif
 
             if (local_bc_coordinates) {
                 coord n = interFrag.n, t1, t2;
@@ -370,15 +489,7 @@ event end_timestep (i++)
                             gcProjVelocity.x = -projVelocity.x*(delta - vb)/(delta + vb);
                         }
                         else {
-                             double delta = 0;
-                            foreach_dimension()
-                                delta += sq(ghostCell.x - imagePoint.x);
-                            delta = sqrt(delta)/(2*Delta);
-
-                            double multiplier = delta <= 1? 1: 1;
-                            //if (ind.x == 0) multiplier = 1; 
-                            //fprintf(stderr, "multiplier = %g delta = %g\n", multiplier, delta);
-                            gcProjVelocity.x = 2*vb - projVelocity.x*multiplier;
+                            gcProjVelocity.x = 2*vb - projVelocity.x;
                         }
                     }
                     else { // neumann

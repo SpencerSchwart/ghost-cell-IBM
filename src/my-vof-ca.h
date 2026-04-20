@@ -153,12 +153,21 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
     if (un == 0)
         cf = 0;
     else if (cs0[i] >= 1.) {
-        cf = (c[i] <= 0. || c[i] >= 1.)? c[i] : rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
+        cf = (c[i] <= VTOL || c[i] >= 1 - VTOL)? c[i] : rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
+        if (approx_equal_double(cf, 0) && approx_equal_double(c[i], 1))
+            fprintf(stderr, "WARNING: cf = %g for a cell with c = %g\n", cf, c[i]);
+        #if 0
+            fprintf(stderr, "1: %g (%g, %g) c[%d]=%g cf=%g nf={%g, %g} af=%g rhs.x=%g un=%g f=%g\n",
+                indicator.x, x, y, i, c[i], cf, tempnf.x, tempnf.y, alphafh[i], rhs.x, un, 
+                rectangle_fraction (tempnf, alphafh[i], lhs, rhs));
+        #endif
     }
     else if (cs0[i] > 0. && cs0[i] < 1.) {
         coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
 
-        double advVolume = fabs(un)*fs.x[];
+        double fvf = rectangle_fraction (tempns, alphas[i], lhs, rhs);
+
+        double advVolume = fabs(un)*fvf;
 
         if (c[i] <= 0.)
             cf = 0.;
@@ -177,6 +186,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
             double alphacr = alphafh[i];
             if (c.wetting.theta_s < 180) { // only use nc when the surface is wettable
                 normalize2(&tempns);
+                normalize2(&tempnf);
                 coord nc = normal_contact (tempns, tempnf, contact_angle[i]);
                 normalize_sum(&tempns);
                 normalize_sum(&nc);
@@ -185,13 +195,23 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
             }
 
             double newc = plane_volume (tempnf, alphacr);
-            cf = immersed_fraction (newc, tempnf, alphacr, tempns, alphas[i], lhs, rhs, advVolume, 0);
+            cf = immersed_fraction (newc, tempnf, alphacr, tempns, alphas[i], lhs, rhs, advVolume, print = 1);
+
+
+            //fprintf(stderr, "1: %g (%g, %g) cf=%g nc={%g, %g} ar=%g ns={%g, %g} as=%g rhs.x=%g un=%g\n",
+            //    indicator.x, x, y, cf, tempnf.x, tempnf.y, alphacr, tempns.x, tempns.y, alphas[i], rhs.x, un);
        }
        else
            cf = 0;
     }
     else 
         cf = 0;
+
+#if 0
+    if (fs.x[])
+    fprintf(stderr, "1.1: %g (%g, %g) cf=%g c[%d]=%g un=%g uf=%g fs=%g cs[%d]=%g \n",
+        indicator.x, x, y, cf, i, c[i], un, uf.x[], fs.x[], i, cs[i]);
+#endif
 
 #if IBM
     flux[] = cf*uf.x[]*fs.x[];
@@ -269,9 +289,14 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 #endif
 
 #if IBM
+      //double c0 = c[];
       c[]  += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
       ch[] += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
-
+#if 0
+      if (on_interface(cs) && c[])
+        fprintf(stderr, "2: %g (%g, %g) c0=%g c1=%g flux[]=%g flux[1]=%g\n",
+            indicator.x, x, y, c0, c[], flux[], flux[1]);
+#endif
       scalar t, tc, tflux;
       for (t, tc, tflux in tracers, tcl, tfluxl)
         t[] += dt*(tflux[] - tflux[1] + tc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[]))/(val*Delta);
@@ -298,10 +323,12 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
     fprintf(stderr, "crsum != crsum_clamp: %0.14g != %0.14g\nRedistributing volume...\n",
             crsum, crsum_clamp);
     //redistribute_volume(c, cs);
+    #if 1
     foreach() {
         if (c[] > cs[] || c[] < 0)
             c[] = clamp(c[], 0, cs[]);
     }
+    #endif
   }
 
   if (!last) {
@@ -329,6 +356,20 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
             ch[] = c[]/cs[];
         else if (cs[] > 0)
             ch[] = c[];
+        else if (cs[] <= 0 && f.wetting.theta_s <= 90) {
+        //else if (cs[] <= 0) {
+            bool fill = false;
+            foreach_neighbor(1) {
+              if (cs[] && c[] && !extra[]) 
+                fill = true;
+              if (cs[] && !c[]) {
+                fill = false;
+                break;
+              }
+            }
+
+            ch[] = fill? 1: 0;
+        }
         else
             ch[] = 0;
       }
@@ -337,8 +378,10 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
       vector nf[];
 
       reconstruction(ch, nf, alphaf); // should be based on c or ch? TODO: is it even necessary?
-
+    
+      //fprintf(stderr, "STARTING CA\n");
       set_contact_angle(ch, c, cs0, nf, alphaf, ns, alphas); // find ch
+      //fprintf(stderr, "ENDING CA\n");
     }
   }
 

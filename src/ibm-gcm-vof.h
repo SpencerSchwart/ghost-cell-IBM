@@ -2,7 +2,7 @@
 ###### TWO PHASE FUNCTIONS FOR IBM ###### 
 */
 
-#define BI_TOL 1e-11 // TODO: standardize tolerance for root solvers
+#define BI_TOL 1e-13 // TODO: standardize tolerance for root solvers
 
 #include "fractions.h"
 #include "ibm-utils.h"
@@ -314,11 +314,19 @@ int interface_intersect (coord nf, double alphaf, coord ns, double alphas,
 {
 #if dimension == 2
     coord pt;
+    if (fabs(nf.y) > 1e-5 && fabs(ns.y) > 1e-5) {
+        pt.x = (alphas/(ns.y + SEPS) - alphaf/(nf.y + SEPS)) /
+               ((ns.x/(ns.y + SEPS)) - (nf.x/(nf.y + SEPS)) + SEPS);
 
-    pt.x = (alphas/(ns.y + SEPS) - alphaf/(nf.y + SEPS)) /
-                  ((ns.x/(ns.y + SEPS)) - (nf.x/(nf.y + SEPS)) + SEPS);
+        pt.y = (alphaf/(nf.y + SEPS)) - (nf.x*pt.x)/(nf.y + SEPS);
+    }
+    else {
+        pt.y = (alphas/(ns.x + SEPS) - alphaf/(nf.x + SEPS)) /
+               ((ns.y/(ns.x + SEPS)) - (nf.y/(nf.x + SEPS)) + SEPS);
 
-    pt.y = (alphaf/(nf.y + SEPS)) - (nf.x*pt.x)/(nf.y + SEPS);
+        pt.x = (alphaf/(nf.x + SEPS)) - (nf.y*pt.y)/(nf.x + SEPS);
+    }
+
 
     foreach_dimension() {
         if (pt.x < lhs.x || pt.x > rhs.x) {
@@ -715,9 +723,11 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     if (lhs.x == rhs.x || c <= 0)
         return 0;
 
+#if 0
     if (rhs.x < 0.5 && advVolume) {
         rhs.x = fit_volume (advVolume, pls.n, pls.alpha, rhs.x);
     }
+#endif
 
     double ufdt = rhs.x; // advection plane is always the +x plane
     const plane padv = {{1,0,0}, ufdt};
@@ -833,10 +843,10 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
 
     double cvy = line_intersect (alphas, ns, x = -0.5); // intercept of solid interface on left face
 
-    double rhsx = 0;
+    //double rhsx = 0;
     if (rhs.x < 0.5 && areaLiquid < 1 && advVolume) {
         cvy = clamp(cvy, -0.5, 0.5);
-#if 1
+#if 0
         rhsx = fit_volume (advVolume, ns, alphas, rhs.x);
         rhs.x = rhsx;
         rhsb.x = rhsx;
@@ -876,15 +886,17 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     int nump = 0; // # of real points
     for (int i = 0; i < 9; ++i) {
         double placement = region_check2((plane){nf, alphaf}, (plane){ns, alphas}, poly[i]);
-        if ((placement >= 0 || fabs(placement) < VTOL) && poly[i].x != nodata) // should be < nodata?
+        if ((placement >= 0 || fabs(placement) < INT_TOL) && poly[i].x != nodata) // should be < nodata?
             nump++;
         else 
             poly[i].x = nodata, poly[i].y = nodata;
     }
 
-    if (nump == 0) // we don't do anything if the region has no interface fragments
+    if (nump < 3) { // we don't do anything if the region has no interface fragments
+        if (nump != 0 && print)
+          fprintf(stderr, "WARNING: polygon has less than three points! %d < 3\n", nump);
         return 0;
-
+    }
     coord cf[nump]; // holds real points
     int count = 0;
     for (int i = 0; i < 9; ++i)
@@ -968,7 +980,7 @@ double fit_volume_error (const void* data, double newx)
 // adjust ufdt to match the advected volume with the real advection volume
 double fit_volume (double advVolume, coord ns, double alphas, double ufdt)
 {
-    if (advVolume < 1e-9)
+    if (advVolume < 1e-14)
         return ufdt;
 
     double oldx = ufdt;
@@ -978,7 +990,7 @@ double fit_volume (double advVolume, coord ns, double alphas, double ufdt)
 
     double xmin = -0.5, xmax = 0.5, newx = HUGE;
 
-    int maxitr = 30;
+    int maxitr = 100;
     int itr = rsolver_brent (&newx, xmin, xmax, &tcell, fit_volume_error, 
                              tolerance = 1e-14, maxitr = maxitr, warning = 0);
     
@@ -1068,6 +1080,33 @@ void real_fluid (scalar f, scalar fr, vector nf, scalar alphaf, vector ns, scala
             fr[] = f[] * cs[];
     }
 }
+
+/**
+this function calculates the real volume fraction of f that lays 
+outside of the solid immersed boundary, cs. */
+
+double real_volume (scalar f, scalar cs, face vector cf)
+{
+    scalar alphaf[], alphas[];
+    vector nf[], ns[];
+
+    reconstruction_cs(cs, cf, ns, alphas);
+    reconstruction(f, nf, alphaf);
+
+    double vreal = 0;
+    foreach(reduction(+:vreal)) {
+        if (on_interface(cs) && on_interface(f))
+            vreal += immersed_fraction (f[], (coord){nf.x[], nf.y[], nf.z[]}, alphaf[],
+                                           (coord){ns.x[], ns.y[], ns.z[]}, alphas[],
+                                           (coord){-0.5,-0.5,-0.5},
+                                           (coord){ 0.5, 0.5, 0.5})*cs[]*pow(Delta, dimension)*cm[];
+        else {
+            vreal += f[]*cs[]*pow(Delta, dimension)*cm[];
+        }
+    }
+    return vreal;
+}
+
 
 
 /**
@@ -1500,6 +1539,286 @@ static inline bool empty_interfacial (Point point, scalar c)
   }
   else if (c[] > 0 && c[] < cs[])
     return true;
-  else
-    return false;
+  return false;
 }
+
+/** checks to see if the given point either containts a fragment of c or
+is full (c = 1) but has an empty neighbor (c = 0) */
+static inline bool full_interfacial (Point point, scalar c)
+{
+  if (c[] >= 1.) {
+    for (int i = -1; i <= 1; i += 2)
+      foreach_dimension()
+	    if (c[i] <= 0.)
+	      return true;
+  }
+  else if (c[] > 0 && c[] < 1)
+    return true;
+  return false;
+}
+
+/** 
+returns the outward pointing normal of a scalar field c 
+considering the case when the interface perfectly aligns
+with the cell face. */
+
+coord full_interfacial_normal (Point point, scalar c, double * alpha)
+{
+  coord n = {0,0,0};
+  if (c[] >= 1.) {
+    for (int i = -1; i <= 1; i += 2)
+      foreach_dimension() {
+	    if (c[i] <= 0.) {
+          n.x = i;
+          *alpha = -i*0.5;
+          return n;
+        }
+      }
+  }
+  return n;
+}
+
+/**
+# *draw_vof_contact()*: displays VOF-reconstructed interfaces considering the contact angle boundary condition
+
+* *c*: the name (as a string) of the Volume-Of-Fluid field.
+* *s*: the (optional) name of the face fraction field.
+* *edges*: whether to display the edges or the facets.
+* *larger*: makes each cell larger by this factor. This helps close
+   the gaps in the VOF interface representation. Default is 1.1 in 3D
+   and when edges are not displayed, otherwise it is 1.
+* *filled*: in 2D, whether to fill the inside (1) or outside (-1).
+* *color*: use this field to color each interface fragment.
+* *min*, *max*: the minimum and maximum values to use for color mapping.
+* *spread*: the "spread factor" to use if *min* and *max* are not
+   defined. The maximum and minimum values will be taken as the average
+   plus or minus *spread* times the standard deviation. Default is 5. If
+   negative, the minimum and maximum values of the field are used.
+* *linear*: if *true* the color will be linearly interpolated for each
+   vertex of the facet.
+* *map*: the colormap to use. Default is *jet*.
+* *fc[]*: an array of red, green, blue values between 0 and 1 which
+  defines the facet color.
+* *lc[]*: an array of red, green, blue values between 0 and 1 which
+  defines the line color.
+* *lw*: the line width.
+*/
+
+#if 0
+trace
+bool draw_vof_contact (char * c, char * s = NULL, bool edges = false,
+	       double larger = 0., int filled = 0,
+	       char * color = NULL,
+	       double min = 0, double max = 0, double spread = 0,
+	       bool linear = false,
+	       Colormap map = jet,
+	       float fc[3] = {0}, float lc[3] = {0}, float lw = 1.,
+	       bool expr = false,
+	       COLORBAR_PARAMS)
+{
+  scalar d = lookup_field (c);
+  if (d.i < 0) {
+    fprintf (stderr, "draw_vof(): no field named '%s'\n", c);
+    return false;
+  }
+  face vector fs = lookup_vector (s);
+  
+  colorize_args();
+  
+  double cmin = 1e-3; // do not reconstruct fragments smaller than this
+
+#if TREE
+  // make sure we prolongate properly
+  void (* prolongation) (Point, scalar) = d.prolongation;
+  if (prolongation != fraction_refine) {
+    d.prolongation = fraction_refine;
+    d.dirty = true;
+  }
+#endif // TREE
+    
+  bview * view = draw();
+#if dimension == 2
+  if (filled) {
+    glColor3f (fc[0], fc[1], fc[2]);
+    glNormal3d (0, 0, view->reversed ? -1 : 1);
+    foreach_visible (view) {
+      if ((filled > 0 && d[] >= 1.) || (filled < 0 && d[] <= 0.)) {
+	glBegin (GL_QUADS);
+	glvertex2d (view, x - Delta_x/2., y - Delta_y/2.);
+	glvertex2d (view, x + Delta_x/2., y - Delta_y/2.);
+	glvertex2d (view, x + Delta_x/2., y + Delta_y/2.);
+	glvertex2d (view, x - Delta_x/2., y + Delta_y/2.);
+	glEnd();
+	view->ni++;
+      }
+      else if (d[] > 0. && d[] < 1.) {
+	coord n = facet_normal (point, d, fs), r = {1.,1.};
+	if (filled < 0)
+	  foreach_dimension()
+	    n.x = - n.x;
+	double alpha = plane_alpha (filled < 0. ? 1. - d[] : d[], n);
+	alpha += (n.x + n.y)/2.;
+	foreach_dimension()
+	  if (n.x < 0.) alpha -= n.x, n.x = - n.x, r.x = - 1.;
+	coord v[5];
+	int nv = 0;
+	if (alpha >= 0. && alpha <= n.x) {
+	  v[nv].x = alpha/n.x, v[nv++].y = 0.;
+	  if (alpha <= n.y)
+	    v[nv].x = 0., v[nv++].y = alpha/n.y;
+	  else if (alpha >= n.y && alpha - n.y <= n.x) {
+	    v[nv].x = (alpha - n.y)/n.x, v[nv++].y = 1.;
+	    v[nv].x = 0., v[nv++].y = 1.;
+	  }
+	  v[nv].x = 0., v[nv++].y = 0.;
+	}
+	else if (alpha >= n.x && alpha - n.x <= n.y) {
+	  v[nv].x = 1., v[nv++].y = (alpha - n.x)/n.y;
+	  if (alpha >= n.y && alpha - n.y <= n.x) {
+	    v[nv].x = (alpha - n.y)/n.x, v[nv++].y = 1.;
+	    v[nv].x = 0., v[nv++].y = 1.;
+	  }
+	  else if (alpha <= n.y)
+	    v[nv].x = 0., v[nv++].y = alpha/n.y;
+	  v[nv].x = 0., v[nv++].y = 0.;
+	  v[nv].x = 1., v[nv++].y = 0.;
+	}
+	glBegin (GL_POLYGON);
+	if (r.x*r.y < 0.)
+	  for (int i = nv - 1; i >= 0; i--)
+	    glvertex2d (view, x + r.x*(v[i].x - 0.5)*Delta,
+			y + r.y*(v[i].y - 0.5)*Delta);
+	else
+	  for (int i = 0; i < nv; i++)
+	    glvertex2d (view, x + r.x*(v[i].x - 0.5)*Delta,
+			y + r.y*(v[i].y - 0.5)*Delta);
+	glEnd ();
+	view->ni++;
+      }
+    }
+  }
+  else // !filled
+    draw_lines (view, lc, lw) {
+      glBegin (GL_LINES);
+      foreach_visible (view)
+	if (cfilter (point, d, cmin)) {
+	  coord n = facet_normal (point, d, fs);
+	  double alpha = plane_alpha (d[], n);
+	  coord segment[2];
+	  if (facets (n, alpha, segment) == 2) {
+	    glvertex2d (view, x + segment[0].x*Delta, y + segment[0].y*Delta);
+	    glvertex2d (view, x + segment[1].x*Delta, y + segment[1].y*Delta);
+	    view->ni++;
+	  }
+	}
+      glEnd ();
+    }
+#else // dimension == 3
+  if (!larger)
+    larger = edges || (color && !linear) ? 1. : 1.1;
+  if (edges)
+    draw_lines (view, lc, lw) {
+      foreach_visible (view)
+	if (cfilter (point, d, cmin)) {
+	  coord n = facet_normal (point, d, fs);
+	  double alpha = plane_alpha (d[], n);
+	  coord v[12];
+	  int m = facets (n, alpha, v, larger);
+	  if (m > 2) {
+	    glBegin (GL_LINE_LOOP);
+	    for (int i = 0; i < m; i++)
+	      glvertex3d (view,
+			  x + v[i].x*Delta, y + v[i].y*Delta, z + v[i].z*Delta);
+	    glEnd ();
+	    view->ni++;
+	  }
+	}
+    }
+  else // !edges
+    colorize() {
+      foreach_visible (view)
+	if (cfilter (point, d, cmin)) {
+	  coord n = facet_normal (point, d, fs);
+	  double alpha = plane_alpha (d[], n);
+	  coord v[12];
+	  int m = facets (n, alpha, v, larger);
+	  if (m > 2) {
+	    glBegin (GL_POLYGON);
+	    for (int i = 0; i < m; i++) {
+	      if (linear) {
+		color_vertex (interp (point, v[i], col));
+	      }
+	      else {
+		color_facet();
+	      }
+	      glnormal3d (view, n.x, n.y, n.z);
+	      glvertex3d (view,
+			  x + v[i].x*Delta, y + v[i].y*Delta, z + v[i].z*Delta);
+	    }
+	    glEnd ();
+	    view->ni++;
+	  }
+	}
+    }
+#endif // dimension == 3
+
+#if TREE
+  // revert prolongation
+  if (prolongation != fraction_refine) {
+    d.prolongation = prolongation;
+    d.dirty = true;
+  }
+#endif // TREE
+
+  if (expr) delete({col});
+  return true;
+}
+#endif
+
+/**
+## Interface output
+
+This function "draws" interface facets in a file. The segment
+endpoints are defined by pairs of coordinates. Each pair of endpoints
+is separated from the next pair by a newline, so that the resulting
+file is directly visualisable with gnuplot.
+
+The input parameters are a volume fraction field `c`, an optional file
+pointer `fp` (which defaults to stdout) and an optional face
+vector field `s` containing the surface fractions.
+
+If `s` is specified, the surface fractions are used to compute the
+interface normals which leads to a continuous interface representation
+in most cases. Otherwise the interface normals are approximated from
+the volume fraction field, which results in a piecewise continuous
+(i.e. geometric VOF) interface representation. */
+
+trace
+void output_facets_contact (scalar c, FILE * fp = stdout, face vector s = {{-1}})
+{
+  foreach (serial)
+    if (c[] > 1e-6 && c[] < 1. - 1e-6) {
+      coord n = facet_normal (point, c, s);
+      double alpha = plane_alpha (c[], n);
+#if dimension == 1
+      fprintf (fp, "%g\n", x + Delta*alpha/n.x);
+#elif dimension == 2
+      coord segment[2];
+      if (facets (n, alpha, segment) == 2)
+	fprintf (fp, "%g %g\n%g %g\n\n", 
+		 x + segment[0].x*Delta, y + segment[0].y*Delta, 
+		 x + segment[1].x*Delta, y + segment[1].y*Delta);
+#else // dimension == 3
+      coord v[12];
+      int m = facets (n, alpha, v, 1.);
+      for (int i = 0; i < m; i++)
+	fprintf (fp, "%g %g %g\n",
+		 x + v[i].x*Delta, y + v[i].y*Delta, z + v[i].z*Delta);
+      if (m > 0)
+	fputc ('\n', fp);
+#endif
+    }
+
+  fflush (fp);
+}
+

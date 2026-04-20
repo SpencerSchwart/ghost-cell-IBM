@@ -261,10 +261,7 @@ double get_hysteresis_angle (double c, double s, coord pint, coord ns, double al
 
     double theta_min = 0, theta_max = M_PI; // range
 
-    //fprintf(stderr, "starting root solver\n");
-    int itr = rsolver_brent (&theta, theta_min, theta_max, &tcell, get_hysteresis_error, tolerance = 1e-10);
-    //fprintf(stderr, "rsolver done in %d iterations\n", itr);
-
+    rsolver_brent (&theta, theta_min, theta_max, &tcell, get_hysteresis_error, tolerance = 1e-10);
     return csign? M_PI - theta: theta;
 }
 
@@ -288,6 +285,31 @@ int is_contact_cell (double c, double s, coord nf, coord ns, double alphas, doub
 
     if (alphaf)
         *alphaf = alphac;
+
+    return points;
+}
+
+/**
+Checks to see if a cell contains the contact point using the imposed contact angled boundary condition */
+int is_contact_cell_bc (Point point, scalar c, scalar cs, face vector fs, coord * pint = NULL)
+{
+    // calculate desired interface (normal, then intercept/alpha)
+    coord ns = facet_normal (point, cs, fs);
+    double alphas = plane_alpha(cs[], ns);
+
+    coord nf = interface_normal (point, c);
+
+    normalize2(&ns);
+    coord nc = normal_contact (ns, nf, contact_angle[]);
+    normalize_sum(&ns); normalize_sum(&nc);
+
+    double alphac = immersed_alpha(c[], cs[], nc, 0, ns, alphas, c[]);
+
+    coord p;
+    int points = interface_intersect(nc, alphac, ns, alphas, pint = &p);
+    
+    if (pint)
+        *pint = p;
 
     return points;
 }
@@ -412,7 +434,7 @@ void update_contact_angle (scalar c, scalar c0, scalar cs, vector ns,
                 
                 pint = lines_intersect(nc, alphac, ns0, alphas[]);
                 coord pintg = local_to_global_coord(point, pint);
-                coord pintg0 = pintg;
+                //coord pintg0 = pintg;
 
                 // shift interpolation point
                 int s = receding? -1: 1, o = 1;
@@ -482,7 +504,7 @@ void update_contact_angle (scalar c, scalar c0, scalar cs, vector ns,
     foreach() {
         if (check[] == -1 || check[] == 4) {
             double theta = contact_angle[];
-            double theta0 = theta;
+            //double theta0 = theta;
             bool pinned = false;
             foreach_neighbor() {
                 if (check[] == 1 || check[] == 2 || check[] == 3) { // use CA of pinned cell
@@ -555,29 +577,97 @@ void clean_fluid_real (scalar f, scalar fr, scalar cs)
 
 /** 
  */
-bool contact_line_border(Point point, scalar c, scalar cs, double angle, double tolerance = 1e-2)
+bool contact_line_border (Point point, scalar c, scalar cs, double angle, double tolerance = 1e-2)
 {
 
-    int vol = angle >= pi/2.? cs[]: 0;
+    int vol = angle >= pi/2.? 1: 0;
 
+    for (int i = -1; i <= 1; i++)
+        for (int j = -1; j <= 1; j++) {
+            if ((i == 0 && j == 0) || abs(i) == abs(j))
+                continue;
+            else {
+                if (cs[i,j] > 0 && cs[i,j] < 1 && approx_equal_double(c[i,j], vol, tolerance))
+                    return true;
+            }
+        }
+
+#if 0
     /** check left-right */
     for(int i = -1; i <= 1; i += 2)
-       if (cs[i] > 0 && cs[i] < 1 && approx_equal_double(c[i], vol, tolerance))
+       if (cs[i] > 0 && cs[i] < 1 && approx_equal_double(c[i], vol*cs[i], tolerance)) 
            return true;
 
     /** check top-bottom */
     for(int j = -1; j <= 1; j += 2)
-       if (cs[0,j] > 0 && cs[0,j] < 1 && approx_equal_double(c[0,j], vol, tolerance))
+       if (cs[0,j] > 0 && cs[0,j] < 1 && approx_equal_double(c[0,j], vol*cs[0,j], tolerance))
            return true;
 
+#if dimension == 3
     /** check front-back */
     for(int k = -1; k <= 1; k += 2)
-       if (cs[0,0,k] > 0 && cs[0,0,k] < 1 && approx_equal_double(c[0,0,k], vol, tolerance))
+       if (cs[0,0,k] > 0 && cs[0,0,k] < 1 && approx_equal_double(c[0,0,k], vol*cs[0,0,k], tolerance))
            return true;
-     
+#endif
+#endif
     return false;
 }
 
+static inline bool has_n_border (Point point, scalar c, double tolerance = INT_TOL)
+{
+    for (int i = -1; i <= 1; i++) {
+        for (int j = -1; j <= 1; j++) {
+            if ((i == 0 && j == 0) || (abs(i) == abs(j)))
+                continue;
+            else {
+                if (cs[i,j] && c[i,j] <= tolerance)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+static inline bool has_border (Point point, scalar c, double tolerance = INT_TOL)
+{
+
+    for (int i = -1; i <= 1; i++)
+        for (int j = -1; j <= 1; j++) {
+            if (i == 0 && j == 0)
+                continue;
+            else {
+                if (c[i,j] >= tolerance)
+                    return true;
+            }
+        }
+
+
+#if 0
+    /** check left-right */
+    for(int i = -1; i <= 1; i += 2)
+       if (c[i] >= tolerance)
+           return true;
+
+    /** check top-bottom */
+    for(int j = -1; j <= 1; j += 2)
+       if (c[0,j] >= tolerance)
+           return true;
+
+#if dimension == 3
+    /** check front-back */
+    for(int k = -1; k <= 1; k += 2)
+       if (c[0,0,k] >= tolerance)
+           return true;
+#endif
+#endif
+
+    return false;
+}
+
+
+#include "heights.h"
+
+//#include "curvature.h"
 
 /**
 This function extends the normal reconstruction() function in fractions.h by
@@ -586,10 +676,18 @@ field, f, it fills fields n and alpha with the each cells normal and intercept, 
 
 TODO: clean up function! e.g., better variable names and remove unnecessary variables*/
 
+vector hg[];
+
+vector hfg0[], hfg1[], hfg2[];
+//scalar kappag0[];
+
 void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha, 
                                   vector ns, scalar alphas, scalar inter, 
                                   scalar ghostInter, scalar extra)
 {
+    //heights(c, hfg0);
+
+#if 0
     scalar c0[];
     foreach() {
         if (cs[] > 0 && cs[] < 1 && (cr[] <= 1e-6 || cr[] >= cs[] - 1e-6) &&
@@ -604,16 +702,30 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
         else
             ghostInter[] = 0;
     }
-
+#endif
     foreach() {
-
         //inter[] = c[] > 0 && c[] < cs[];
-        inter[] = cr[] > VTOL && cr[] < cs[] - VTOL;
-
+        inter[] = cr[] > VTOL && cr[] < cs[] - INT_TOL;
 #if 1
-        if (inter[] && cs[] > 0 && cs[] < 1 && contact_angle[]) {
-            extra[] = (int)contact_line_border(point, cr, cs, contact_angle[], 1e-2);
+        if (inter[] && contact_angle[] && full_interfacial(point, cs)) {
+           //&& (has_n_border(point, c, 0.))) {
+            if (cs[] > 0 && cs[] < 1) {
+                extra[] = (int)contact_line_border(point, c, cs, contact_angle[], 1e-2);
+                //extra[] = 1;
+            }
+            else { // full cell
+                bool caCell = false;
+                foreach_neighbor() {
+                    if (cs[] && cr[]/cs[] <= INT_TOL) {
+                        caCell = true;
+                        break;
+                    }
+                }
+                extra[] = caCell;
+            }
         }
+        else
+            extra[] = 0;
 #else
         extra[] = inter[] && cs[] > 0 && cs[] < 1 && contact_angle[];
 
@@ -630,48 +742,84 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
         }
 #endif
 #endif
-        if (extra[]) {
-            coord ns = facet_normal (point, cs, fs);
-            double alphas = line_alpha (cs[], ns);
-            coord nf;
+    }
 
-            double norm = 0;
-            foreach_dimension() {
-                nf.x = n.x[];
-                norm += sq(nf.x);
+    foreach() {
+        if (extra[]) {
+            coord ns0;
+            double alphas0 = 0;
+            if (cs[] == 1) {
+                ns0 = full_interfacial_normal(point, cs, &alphas0);
+            }
+            else {
+                ns0 = (coord){ns.x[], ns.y[], ns.z[]};
+                alphas0 = alphas[];
             }
 
-            if (!norm) {
+            coord nf = {n.x[], n.y[], n.z[]};
+            if (!nf.x && !nf.y && !nf.z) {
                 extra[] = 0;
                 continue;
             }
 
             normalize (&nf);
-            normalize2 (&ns);
-            coord nc = normal_contact (ns, nf, contact_angle[]);
+            normalize2 (&ns0);
+            coord nc = normal_contact (ns0, nf, contact_angle[]);
             normalize_sum(&nc);
+            normalize_sum(&ns0);
 
-            foreach_dimension() 
+            foreach_dimension()
                 n.x[] = nc.x;
 
-            alpha[] = immersed_alpha(c[], cs[], nc, alpha[], ns, alphas, cr[]);
-            if (extra[]) {
-                c[] = plane_volume (nc, alpha[]);
-                if (c[] <= 0) { // so ch and cr are consistent! prevents sudden removal of gginter
-                    cr[] = 0;
-                    if (!is_interior_cell(point, cs, cr) && level == depth()) {
-                        int near = 0;
-                        foreach_neighbor() 
-                            if (c[] > 0 && cs[]) { near = 1; break; }
-                        ghostInter[] = near;
-                    }
-                }
-                inter[] = c[] > 0 && c[] < 1;
-                extra[] = inter[] && cs[] > 0 && cs[] < 1 && !ghostInter[] && cr[] < cs[]-1e-6 && contact_angle[];
+            alpha[] = immersed_alpha(c[], cs[], nc, alpha[], ns0, alphas0, cr[]);
+
+            coord pint = lines_intersect (nc, alpha[], ns0, alphas0);
+
+            //if (fabs(pint.x) >= 0.6 || fabs(pint.y) >= 0.6)
+            //   extra[] = 0;
+
+            c[] = max(plane_volume(nc, alpha[]), cr[]);
+
+            //fprintf(stderr, "(%g, %g) c=%g nc={%g, %g} ac=%g ns={%g, %g} as=%g cr=%g\n",
+            //    x, y, c[], n.x[], n.y[], alpha[], ns.x[], ns.y[], alphas[], cr[]);
+
+            #if 0
+            if (c[] <= 0) { // so ch and cr are consistent! prevents sudden removal of gginter
+                cr[] = 0;
             }
+            #endif
+#if 0
+                if (!is_interior_cell(point, cs, cr) && level == depth()) {
+                    int near = 0;
+                    foreach_neighbor() 
+                        if (c[] > 0 && cs[]) { near = 1; break; }
+                    ghostInter[] = near;
+                }
+            }
+            inter[] = c[] > 0 && c[] < 1;
+            extra[] = inter[] && cs[] > 0 && cs[] < 1 && !ghostInter[] && cr[] < cs[]-1e-6 && contact_angle[];
+#endif            
         }
     }
 
+    foreach() {
+        ghostInter[] = 0;
+        if (on_interface(cs) && !extra[] && level == depth()) {
+        //if (on_interface(cs) && (cr[] <= VTOL || cr[] >= cs[] - VTOL) && !extra[] && 
+        //    !is_interior_cell(point, cs, cr)) {
+            bool isghost = false;
+            foreach_neighbor() {
+                if (extra[]) {
+                    isghost = true;
+                    break;
+                }
+            }
+            if (isghost)
+                ghostInter[] = 1;
+        }
+    }
+
+    extra.dirty = true;
     boundary ({c, cr, n, alpha, inter, ghostInter, extra});
 }
 
@@ -706,6 +854,8 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
     boundary({c0});
     #endif
 
+    //heights(c, hfg1);
+
     // 3. look for ghost and pure solid cells near triple point to enforce B.C
     foreach() {
         c0[] = c[];
@@ -715,10 +865,13 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
 
             // 3.a. Calculate weights
             foreach_neighbor() {
-                if (extra[]) {
-                    // why fr0? to mitigate problems for a very slow moving contact line and
+                if (extra[] && is_active(cell)) {
+                    // why cr0? to mitigate problems for a very slow moving contact line and
                     // a new cell only gets a little bit of f (due to the low velocity/flux)
-                    double cellWeight = cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
+                    double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
+
+                    double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
+                    cellWeight /= pow(dc,15);
 
                     totalWeight += cellWeight;
 
@@ -770,43 +923,76 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
             double ghostf = 0., totalWeight = 0.;
             coord ghostCell = {x,y,z};
 
+            double gr0 = gf0[];
+            double fr0 = cr0[];
+            double cs0 = cs[];
+
             // 3.c. extrapolate f from direct neighbors to get initial guess
-            int cond0 = cr0[] <= 1e-6;
-            coord ns0 = {-ns.x[], -ns.y[], -ns.z[]}, nf1;
+            //int cond0 = cr0[] <= INT_TOL;
+            coord ns0 = {ns.x[], ns.y[], ns.z[]}, nf1;
+            double alphas0 = alphas[];
 
             foreach_neighbor() {
-                if (extra[]) {
+                if (extra[] && is_active(cell)) {
                     nf1 = (coord){nf.x[], nf.y[], nf.z[]};
 
+#if 0
                     if ((contact_angle[] > 3.*pi/4. || contact_angle[] < pi/4.) &&
-                        cond0 && dot_product_norm(nf1, ns0) <= 0)
+                        cond0 && dot_product_norm(nf1, ns0) >= 0)
                         continue;
-
+#endif
                     coord leftPoint = {x, y, z}, rightPoint;
                     foreach_dimension() {
                         leftPoint.x = (ghostCell.x - leftPoint.x) / Delta - 0.5;
                         rightPoint.x = leftPoint.x + 1.;
                     }
+                    double fa = rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+                    double alpha = plane_alpha(fa, nf1);
+
+                    normalize_sum(&ns0);
+                    double fr = immersed_fraction(fa, nf1, alpha, ns0, alphas0, (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5});
+#if 1
                     
-                    double cellWeight = cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
+                    //if (!approx_equal_double(gr0, fr) && !(contact_angle[] < pi/2. && fr0 <= VTOL)) {
+                    //if (!approx_equal_double(gr0, fr) && fr < gr0) { //TODO: THIS IS BAD FOR GENERAL CASES IMPROVE
+                    if (!approx_equal_double(gr0, fr)) { //TODO: THIS IS BAD FOR GENERAL CASES IMPROVE
+
+                        const tripoint tcell = fill_tripoint (fr0, nf1, alpha, ns0, alphas0, fa, cs0);
+                        double alphatmp = ghost_alpha(tcell, -0.6, 0.6);
+                        fa = plane_volume(nf1, alphatmp);
+                        //fprintf(stderr, "(%g, %g) (%g, %g) gr0=%g fr=%g nf={%g, %g} af=%g ns={%g, %g} as=%g cr=%g fa=%g\n",
+                        //    ghostCell.x, ghostCell.y, x, y, gr0, fr, nf.x[], nf.y[], alpha, ns.x[], ns.y[], alphas[], cr0[], fa);
+                    }
+#endif
+                    double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
+
+                    double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
+                    cellWeight /= pow(dc,15);
 
                     totalWeight += cellWeight;
 
-                    ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+                    ghostf += cellWeight * fa;
                 }
             }
 
             if (totalWeight > 0.) {
-                c[] = ghostf / totalWeight;
+                c[] = max(ghostf / totalWeight, cr0[]);
                 if (c[] > 1 - INT_TOL) c[] = 1; // is this good?
             }
+
+            #if 0
             // 3.e otherwise, cell should not be used to enforce C.A.
-            else if (ghostf <= 0 && cr0[] <= 1e-6 ) {
+            else if (ghostf <= 0 && cr0[] <= INT_TOL) {
                 c[] = 0;
             }
+            #endif
         }
         c1[] = c[];
     }
+
+    //heights(c, hfg2);
+
+    //curvature(c, kappag0, f.sigma, add = false);
 
 #if 0
     scalar ctmp[];
@@ -854,6 +1040,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
         #endif
     }
 #endif
-    clean_fluid (c, cs);
+    //clean_fluid (c, cs);
     boundary ({c, cr0});
 }
+

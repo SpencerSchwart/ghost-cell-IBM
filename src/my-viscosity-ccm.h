@@ -4,13 +4,14 @@ struct Viscosity {
   face vector mu;
   scalar rho;
   double dt;
-  double (* ibm_flux_x) (Point, scalar, vector, double *);
-  double (* ibm_flux_y) (Point, scalar, vector, double *);
+  //double (* ibm_flux_x) (Point, scalar, vector, double *);
+  //double (* ibm_flux_y) (Point, scalar, vector, double *);
+  double (* ibm_flux) (Point, scalar, vector, double *);
 };
 
 #define lambda ((coord){0.,0.,0.})
 
-#if 1
+#if 0
 #define face_condition(ibmf, ibm)						\
   (ibmf.x[i,j] > 0.5 && ibmf.y[i,j + (j < 0)] && ibmf.y[i-1,j + (j < 0)] &&	\
    ibm[i,j] && ibm[i-1,j])
@@ -48,8 +49,8 @@ static void relax_diffusion (scalar * a, scalar * b, int l, void * data)
     double dt = p->dt;
     vector u = vector(a[0]), r = vector(b[0]);
 
-    double (* ibm_flux_x) (Point, scalar, vector, double *) = p->ibm_flux_x;
-    double (* ibm_flux_y) (Point, scalar, vector, double *) = p->ibm_flux_y;
+    double (* ibm_flux) (Point, scalar, vector, double *) = p->ibm_flux;
+    //double (* ibm_flux_y) (Point, scalar, vector, double *) = p->ibm_flux_y;
     foreach_level_or_leaf (l, nowarning) {
         double avgmu = 0.;
         foreach_dimension()
@@ -57,7 +58,7 @@ static void relax_diffusion (scalar * a, scalar * b, int l, void * data)
         avgmu = dt*avgmu + SEPS;
         foreach_dimension() {
             double c = 0.;
-            double d = ibm_flux_x ? ibm_flux_x (point, u.x, mu, &c) : 0.;
+            double d = ibm_flux ? ibm_flux (point, u.x, mu, &c) : 0.;
             scalar s = u.x;
             double a = 0.;
             foreach_dimension()
@@ -118,8 +119,8 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
             foreach_dimension()
             	a += g.x[] - g.x[1];
             res.x[] = r.x[] - (rho[] + lambda.x)*u.x[] - dt*a/Delta;
-            if (ibm_flux_x) {
-            	double c, d = ibm_flux_x (point, u.x, mu, &c);
+            if (ibm_flux) {
+            	double c, d = ibm_flux (point, u.x, mu, &c);
             	res.x[] -= dt*(c + d*u.x[]);
               }
             if (fabs (res.x[]) > maxres)
@@ -192,19 +193,18 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
         }
     }
 
-    face vector muibm[];
+    face vector mufs[];
     foreach_face() {
-        muibm.x[] = mu.x[]*ibmf.x[];
+        mufs.x[] = mu.x[]*fs.x[];
     }
 
-    restriction ({muibm, rho, cm, ibm, ibmf, fm});
-    struct Viscosity p = { muibm, rho, dt };
-    #if 1
+    restriction ({mufs, rho, cm, cs, fs, fm});
+    struct Viscosity p = { mufs, rho, dt };
+    #if 0
     p.ibm_flux_x = ibm_flux_x;
     p.ibm_flux_y = ibm_flux_y;
     #else
-    p.ibm_flux_x = NULL;
-    p.ibm_flux_y = NULL;
+    p.ibm_flux = ibm_flux;
     #endif
 
     mgstats ustat =  mg_solve ((scalar *){u}, (scalar *){r},
@@ -215,7 +215,7 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
     return ustat;
 }
 
-#if 1
+#if 0
 #undef face_gradient_x
 #define face_gradient_x(a,i) ((a[i] - a[i-1])/Delta)
 #undef face_gradient_y
