@@ -2,10 +2,16 @@
 Header file containing helper functions for IBM. */
 
 #define VTOL 1e-11
-#define INT_TOL 1e-7    // tolerance used for volume fraction fields (interface tolerance)
+#define INT_TOL 1e-6    // tolerance used for volume fraction fields (interface tolerance)
 
 #define distance(a,b) sqrt(sq(a) + sq(b))
 #define distance3D(a,b,c) sqrt(sq(a) + sq(b) + sq(c))
+
+#if dimension == 2
+#define distance_coord(a,b) (sqrt(sq(a.x - b.x) + sq(a.y - b.y)))
+#else
+#define distance_coord(a,b) (sqrt(sq(a.x - b.x) + sq(a.y - b.y) + sq(a.z - b.z)))
+#endif
 
 #define on_interface(a) (a[] > 0+INT_TOL && a[] < 1-INT_TOL)
 //#define on_interface(a,_TOL) (a[] > 0+_TOL && a[] < 1.-_TOL)
@@ -91,6 +97,40 @@ double dot_product_angle (coord a, coord b)
     double product = clamp(dot_product(a, b), -1, 1);
     assert(fabs(product) <= 1);
     return acos(dot_product(a, b));
+}
+
+double magnitude_coord (coord a)
+{
+    double mag = 0;
+    foreach_dimension()
+        mag += sq(a.x);
+    return sqrt(mag);
+}
+
+coord subtract_coord (coord a, coord b)
+{
+    coord c;
+    foreach_dimension()
+        c.x = a.x - b.x;
+    return c; 
+}
+
+bool equals_coord (coord a, coord b)
+{
+#if dimension == 2
+    return a.x == b.x && a.y == b.y;
+#else
+    return a.x == b.x && a.y == b.y && a.z == b.z;
+#endif
+}
+
+bool empty_coord (coord a)
+{
+#if dimension == 2
+    return !a.x && !a.y;
+#else
+    return !a.x && !a.y && !a.z;
+#endif
 }
 
 /*
@@ -407,3 +447,130 @@ void vorticity2 (const vector u, scalar omega)
   }
 }
 
+/**
+## Simple field statistics 
+
+The *normf()* function returns the (volume) average, RMS norm, max
+norm and volume for field *f*. */
+
+typedef struct {
+  double avg, rms, l2, max, volume;
+} norm2;
+
+norm2 normf2 (scalar f)
+{
+  double avg = 0., rms = 0., l2 = 0., max = 0., volume = 0.;
+  foreach(reduction(max:max) reduction(+:avg) 
+	  reduction(+:rms) reduction(+:l2) reduction(+:volume)) 
+    if (f[] != nodata && dv() > 0.) {
+      double v = fabs(f[]);
+      if (v > max) max = v;
+      volume += dv();
+      avg    += dv()*v;
+      rms    += dv()*sq(v);
+      l2     += sq(v);
+    }
+  norm2 n;
+  n.avg = volume ? avg/volume : 0.;
+  n.rms = volume ? sqrt(rms/volume) : 0.;
+  n.l2 = l2;
+  n.max = max;
+  n.volume = volume;
+  return n;
+}
+
+macro foreach_direct_neighbor (int self = 0, Point point = point, break = (_k = _l = _nn + 1)) {
+  {
+    const int _nn = 1;
+    const int _ig = point.i, _jg = point.j;
+    int ig = 0, jg = 0;
+    for (int _k = - _nn; _k <= _nn; _k++) {
+      point.i = _ig + _k;
+      for (int _l = - _nn; _l <= _nn; _l++) {
+	    point.j = _jg + _l;
+        bool allow_center = !self? !(_l == 0 && _k == 0)  && abs(_l) != abs(_k): (abs(_l) != abs(_k)) || (_l == 0 && _k == 0);
+        if (allow_center) 
+        {
+	      POINT_VARIABLES();
+	      {...}
+        }
+      }
+    }
+    point.i = _ig; point.j = _jg;
+  }
+}
+
+
+macro foreach_near_neighbor (int self = 0, Point point = point, break = (_k = _l = _nn + 1)) {
+  {
+    const int _nn = 1;
+    const int _ig = point.i, _jg = point.j;
+    int ig = 0, jg = 0;
+    for (int _k = - _nn; _k <= _nn; _k++) {
+      point.i = _ig + _k;
+      for (int _l = - _nn; _l <= _nn; _l++) {
+	    point.j = _jg + _l;
+        bool allow_center = !self? !(_l == 0 && _k == 0): true;
+        if (allow_center) 
+        {
+	      POINT_VARIABLES();
+	      {...}
+        }
+      }
+    }
+    point.i = _ig; point.j = _jg;
+  }
+}
+
+Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0)
+{
+  if (rank)
+    *rank = -2;
+
+  for (int l = depth(); l >= 0; l--) {
+    Point point = {0};
+    point.level = l;
+    int n = 1 << point.level;
+    point.i = (xp - X0)/L0*n + GHOSTS;
+#if dimension >= 2
+    point.j = (yp - Y0)/L0*n + GHOSTS;
+#endif
+#if dimension >= 3
+    point.k = (zp - Z0)/L0*n + GHOSTS;
+#endif
+    if (point.i >= 0 && point.i < n + 2*GHOSTS
+#if dimension >= 2
+        && point.j >= 0 && point.j < n + 2*GHOSTS
+#endif
+#if dimension >= 3
+        && point.k >= 0 && point.k < n + 2*GHOSTS
+#endif
+	) {
+      if (allocated(0) && is_local(cell) && is_leaf(cell)) {
+        if (rank) 
+            *rank = cell.pid;
+    	return point;
+      }
+      else if (allocated(0) && is_leaf(cell) && !is_local(cell))
+        if (rank)
+            *rank = cell.pid;
+    }
+    else
+      break;
+  }
+  Point point = {0};
+  point.level = -1;
+  return point;
+}
+
+macro2 foreach_point_ibm (double _x = 0., double _y = 0., double _z = 0., int * rank = NULL,
+            		      char flags = 0, Reduce reductions = None)
+{
+  {
+    int ig = 0, jg = 0, kg = 0; NOT_UNUSED(ig); NOT_UNUSED(jg); NOT_UNUSED(kg);
+    coord _p = { _x, _y, _z };
+    Point point = locate_ibm (_p.x, _p.y, _p.z, rank); // fixme
+    if (point.level >= 0)
+      {...}
+  }
+}

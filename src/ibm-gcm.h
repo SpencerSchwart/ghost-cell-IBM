@@ -47,11 +47,11 @@ typedef struct fragment {
 } fragment;
 
 
-void fill_fragment (double c, coord n, fragment * frag)
+void fill_fragment (double c, coord n, double alpha, fragment * frag)
 {
     frag->c = c;
     frag->n = n;
-    frag->alpha = plane_alpha (c, n);
+    frag->alpha = alpha;
 }
 
 typedef struct PointIBM {
@@ -61,7 +61,12 @@ typedef struct PointIBM {
 bid immersed;
 
 attribute {
-    vector mp; // boundary intercepts (TODO: should name this better)
+    vector mp;     // boundary intercepts (TODO: should name this better)
+
+    struct ibm {
+        coord (*normal)(coord);
+        coord (*bi)(coord);
+    } ibm;
 }
 
 static inline
@@ -74,7 +79,7 @@ double ibm_area_center (Point point, scalar s, double* x1, double* y1, double* z
 
 macro2
 double dirichlet (double expr, Point point = point,
-		  scalar s = _s, bool * data = data)
+                  scalar s = _s, bool * data = data)
 {
   return data ? ibm_area_center (point, s, &x, &y, &z),
     ((bool *)data)[0] = true, expr : 2.*expr - s[];
@@ -82,14 +87,15 @@ double dirichlet (double expr, Point point = point,
 
 macro2
 double dirichlet_homogeneous (double expr, Point point = point,
-			      scalar s = _s, bool * data = data)
+                              scalar s = _s, bool * data = data)
 {
-  return data ? ((bool *)data)[0] = true, 0 : - s[];
+  return data ? ibm_area_center (point, s, &x, &y, &z),
+    ((bool *)data)[0] = true, 0 : -s[];
 }
 
 macro2
 double neumann (double expr, Point point = point,
-		scalar s = _s, bool * data = data)
+                scalar s = _s, bool * data = data)
 {
   return data ? ibm_area_center (point, s, &x, &y, &z),
     ((bool *)data)[0] = false, expr : Delta*expr + s[];
@@ -97,14 +103,24 @@ double neumann (double expr, Point point = point,
 
 macro2
 double neumann_homogeneous (double expr, Point point = point,
-			    scalar s = _s, bool * data = data)
+                            scalar s = _s, bool * data = data)
 {
+  return data ? ibm_area_center (point, s, &x, &y, &z),
+    ((bool *)data)[0] = false, 0 : s[];
   return data ? ((bool *)data)[0] = false, 0 : s[];
 }
 
 macro2
 double navier (double expr, Point point = point,
-		  scalar s = _s, bool * data = data)
+               scalar s = _s, bool * data = data)
+{
+  return data ? ibm_area_center (point, s, &x, &y, &z),
+    ((bool *)data)[0] = true, ((bool *)data)[1] = true, expr : 2.*expr - s[];
+}
+
+macro2
+double navier_homogeneous (double expr, Point point = point,
+                           scalar s = _s, bool * data = data)
 {
   return data ? ibm_area_center (point, s, &x, &y, &z),
     ((bool *)data)[0] = true, ((bool *)data)[1] = true, expr : 2.*expr - s[];
@@ -156,7 +172,7 @@ bool empty_neighbor (Point point, coord * pc, coord * n, scalar cs)
 
 
 /*
-Checks to see if the given point has at least 1 fluid neigbor touching one of
+Checks to see if the given point has at least 1 fluid neighbor touching one of
 it's faces. If so, returns true.
 
 TODO: change algorithm to only check neighbors, not the cell itself (cs[0,0])
@@ -165,6 +181,12 @@ TODO: change algorithm to only check neighbors, not the cell itself (cs[0,0])
 
 bool fluid_neighbor (Point point, scalar cs)
 {
+#if 1
+    foreach_neighbor(1)
+        if (cs[] > GCV)
+            return true;
+#endif
+#if 0
     // check left and right neighbors
     for(int i = -1; i <= 1; i++)
         if (cs[i] > GCV)
@@ -181,7 +203,7 @@ bool fluid_neighbor (Point point, scalar cs)
         if (cs[0, 0, k] > GCV)
             return true; 
 #endif
-
+#endif
     return false;
 }
 
@@ -250,16 +272,272 @@ adequately, but this can be improved.
 TODO: Clean up and streamline function.
 */
 
-coord closest_interface (Point point, vector midPoints, scalar cs, vector normals,
+scalar pts[];
+
+coord closest_interface (Point point, vector midPoints, scalar cs, vector normals, scalar alphas,
                          fragment * frag, coord * fluidCell, PointIBM * bioff)
 {
+    pts[] = 0;
     fragment temp_frag;
-    coord temp_midPoint, temp_fluidCell = {0,0};
+    coord temp_midPoint, temp_fluidCell = {0,0}, cc = {x, y, z};
     coord n;
     PointIBM ptemp = {0,0,0};
 
     double min_distance = 1e6;
+#if 0
+    foreach_neighbor() {
+        double dx = midPoints.x[] - cc.x;
+        double dy = midPoints.y[] - cc.y;
+        double dz = midPoints.z[] - cc.z;
 
+        n = (coord){normals.x[], normals.y[], normals.z[]};
+        
+        if ((midPoints.x[] || midPoints.y[] || midPoints.z[]) && 
+             distance3D(dx, dy, dz) < min_distance) {
+
+            temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+
+            temp_fluidCell = (coord){x, y, z};
+
+            fill_fragment (cs[], n, alphas[], &temp_frag);
+
+            min_distance = distance3D(dx, dy, dz);
+            //ptemp = (PointIBM){sign2(x - cc.x), sign2(y - cc.y), sign2(z - cc.z)};
+            ptemp = (PointIBM){(int)((x - cc.x)/Delta), (int)((y - cc.y)/Delta), (int)((z - cc.z)/Delta)};
+        }
+
+#if 0
+        if (cs[] > 0 && cs[] < 1)
+          fprintf(stderr, "(%g, %g) || (%g, %g) dtemp=%g min_dist=%g cs=%g n={%g, %g} as=%g ptemp={%d, %d}\n", 
+            cc.x, cc.y, x, y, distance3D(dx, dy, dz), min_distance, cs[], n.x, n.y, alphas[], ptemp.i, ptemp.j);
+#endif
+    }
+
+#endif
+
+#if 1
+    bool found = false;
+    double offmin = 1e6;
+    #if 1
+    foreach_neighbor() {
+        if (cs[] > 0 && cs[] < 1) {
+            n = (coord){normals.x[], normals.y[], normals.z[]};
+
+            coord poff = {(cc.x - x)/Delta, (cc.y - y)/Delta, (cc.z - z)/Delta}, bi = {0,0,0};
+            double t = (alphas[] - dot_product(poff, n)) / (dot_product(n, n));
+            foreach_dimension()
+                bi.x = poff.x + t*n.x;
+
+            coord boundaryIntGlobal = {0, 0, 0}, fluidCell = {x, y, z};
+
+            foreach_dimension()
+                boundaryIntGlobal.x = fluidCell.x + (bi.x*Delta);
+
+            if (fabs(bi.x) > 0.5 || fabs(bi.y) > 0.5 || fabs(bi.z) > 0.5)
+                continue;
+
+            found = true;
+            double offmin_temp = distance_coord(boundaryIntGlobal, cc)/Delta;
+
+            if (offmin_temp < offmin) {
+                offmin = offmin_temp;
+                temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+                temp_fluidCell = (coord){x, y, z};
+
+                //normalize_sum(&n);
+
+                fill_fragment (cs[], n, alphas[], &temp_frag);
+                //ptemp = (PointIBM){sign2(x - cc.x), sign2(y - cc.y), sign2(z - cc.z)};
+                ptemp = (PointIBM){(int)((x - cc.x)/Delta), (int)((y - cc.y)/Delta), (int)((z - cc.z)/Delta)};
+                //fprintf(stderr, "(%g, %g) || (%g, %g) offmin_temp=%g offmin=%g bi={%g, %g} big={%g, %g} n={%g, %g} a=%g t=%g ptemp={%d, %d} poff={%g, %g} %d %d\n", 
+                //    cc.x, cc.y, x, y, offmin_temp, offmin, bi.x, bi.y, boundaryIntGlobal.x, boundaryIntGlobal.y, n.x, n.y, alphas[], t, ptemp.i, ptemp.j, poff.x, poff.y, outside, found);
+            }
+        }
+    }
+    #endif
+    #if 1
+    if (!found) {
+    #if 1
+      foreach_neighbor() {
+        double dx = midPoints.x[] - cc.x;
+        double dy = midPoints.y[] - cc.y;
+        double dz = midPoints.z[] - cc.z;
+
+        n = (coord){normals.x[], normals.y[], normals.z[]};
+        
+        if ((midPoints.x[] || midPoints.y[] || midPoints.z[]) && 
+             distance3D(dx, dy, dz) < min_distance) {
+
+            temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+
+            temp_fluidCell = (coord){x, y, z};
+
+            fill_fragment (cs[], n, alphas[], &temp_frag);
+
+            min_distance = distance3D(dx, dy, dz);
+            //ptemp = (PointIBM){sign2(x - cc.x), sign2(y - cc.y), sign2(z - cc.z)};
+            ptemp = (PointIBM){(int)((x - cc.x)/Delta), (int)((y - cc.y)/Delta), (int)((z - cc.z)/Delta)};
+        }
+      }
+      #else
+      foreach_neighbor(1) {
+      if (cs[] > 0 && cs[] < 1) {
+        temp_fluidCell = (coord){x, y, z};
+        n = (coord){normals.x[], normals.y[], normals.z[]};
+
+        coord pint[2];
+        int nc = facets(n, alphas[], pint);
+        for (int i = 0; i < nc; i++) {
+            coord p;
+            foreach_dimension()
+                p.x = temp_fluidCell.x + pint[i].x*Delta;
+
+             if (distance_coord(p, cc) < min_distance) {
+               temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+
+               fill_fragment (cs[], n, alphas[], &temp_frag);
+
+               min_distance = distance_coord(p, cc);
+               ptemp = (PointIBM){sign2(x - cc.x), sign2(y - cc.y), sign2(z - cc.z)};               
+             }
+         }
+         
+      }
+      }
+      #endif
+    #endif
+  }
+#endif
+
+#if 0
+    coord navg = {0,0,0};
+    int count = 0;
+    bool found = false;
+    double wt = 0;
+    foreach_neighbor() {
+        if (cs[] > 0 && cs[] < 1) {
+            coord nt = {normals.x[], normals.y[], normals.z[]};
+            coord mp = {midPoints.x[], midPoints.y[], midPoints.z[]};
+            double weight = 1./(sq(distance_coord(mp, cc)));
+            wt += weight;
+            foreach_dimension()
+                navg.x += weight*nt.x;
+            count++;
+        }
+    }
+    assert(count);
+    foreach_dimension()
+        navg.x /= wt;
+#if 1
+    foreach_neighbor(1) {
+        if (cs[] > 0 && cs[] < 1) {
+            coord cco = {x - cc.x, y - cc.y, z - cc.z};
+            coord nt = (coord){normals.x[], normals.y[], normals.z[]};
+            double t = (alphas[] - dot_product(cco, nt)) / (dot_product(navg, nt));
+            coord pint;
+            foreach_dimension()
+                pint.x = cco.x + t*navg.x;
+            if (fabs(pint.x) <= 0.5 && fabs(pint.y) <= 0.5 && fabs(pint.z) <= 0.5) {
+                found = true;
+
+                //fprintf(stderr, "(%g, %g) || (%g, %g) navg={%g, %g} nt={%g, %g} cco={%g, %g} t=%g pint={%g, %g}\n",
+                //    cco.x, cco.y, x, y, navg.x, navg.y, nt.x, nt.y, cco.x, cco.y, t, pint.x, pint.y);
+
+                temp_fluidCell = (coord){x, y, z};
+                temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+
+                fill_fragment (cs[], navg, alphas[], &temp_frag);
+                ptemp = (PointIBM){sign2(x - cc.x), sign2(y - cc.y), sign2(z - cc.z)};           
+            }
+        }
+    }
+#endif
+    if (!found) {
+      foreach_neighbor(1) {
+        double dx = midPoints.x[] - cc.x;
+        double dy = midPoints.y[] - cc.y;
+        double dz = midPoints.z[] - cc.z;
+
+        n = (coord){normals.x[], normals.y[], normals.z[]};
+        
+        if ((midPoints.x[] || midPoints.y[] || midPoints.z[]) && 
+             distance3D(dx, dy, dz) < min_distance) {
+
+            temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+
+            temp_fluidCell = (coord){x, y, z};
+
+            fill_fragment (cs[], n, alphas[], &temp_frag);
+
+            min_distance = distance3D(dx, dy, dz);
+            ptemp = (PointIBM){sign2(x - cc.x), sign2(y - cc.y), sign2(z - cc.z)};
+        }
+      }
+    }
+    
+#endif
+
+#if 0
+    double offmin = 1e6;
+    ptemp2 = (PointIBM){0,0,0};
+    foreach_neighbor(1) {
+        if (cs[] > 0 && cs[] < 1) {
+            n = (coord){normals.x[], normals.y[], normals.z[]};
+
+            double mag = distance3D(n.x, n.y, n.z) + SEPS;
+
+            normalize2(&n);
+
+            coord fluidCell = {x, y, z};
+            double offset = 0;
+            foreach_dimension()
+                offset += n.x * sign2(fluidCell.x - cc.x);
+            coord boundaryInt = {(alphas[] / mag + offset) * n.x,
+                                 (alphas[] / mag + offset) * n.y,
+                                 (alphas[] / mag + offset) * n.z};
+
+            coord boundaryIntGlobal = {0,0,0};
+
+            foreach_dimension()
+                boundaryIntGlobal.x = cc.x + (boundaryInt.x*Delta);
+
+            double offmin_temp = distance_coord(boundaryIntGlobal, fluidCell)/Delta;
+            //if (fabs(boundaryIntGlobal.x - fluidCell.x) > 0.5*Delta && fabs(boundaryIntGlobal.y - fluidCell.y) > 0.5*Delta)
+            //    continue;
+
+            //double offmin_temp = distance_coord(boundaryIntGlobal, cc)/Delta;
+
+            if (offmin_temp < offmin) {
+                offmin = offmin_temp;
+                ptemp2 = (PointIBM){sign2(x - cc.x), sign2(y - cc.y), sign2(z - cc.z)};
+                #if 1
+                temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+                temp_fluidCell = (coord){x, y, z};
+
+                normalize_sum(&n);
+
+                fill_fragment (cs[], n, alphas[], &temp_frag);
+                ptemp = (PointIBM){sign2(x - cc.x), sign2(y - cc.y), sign2(z - cc.z)};
+                #endif
+            }
+
+#if 0
+            fprintf(stderr, "(%g, %g) || (%g, %g) offmin_temp=%g offmin=%g bi={%g, %g} big={%g, %g} ptemp2 = {%d, %d}\n", 
+                cc.x, cc.y, x, y, offmin_temp, offmin, boundaryInt.x, boundaryInt.y, boundaryIntGlobal.x, boundaryIntGlobal.y, ptemp2.i, ptemp2.j);
+#endif
+        }
+    }
+#endif
+
+#if 0
+    if (ptemp2.i != ptemp.i || ptemp2.j != ptemp.j) {
+        fprintf(stderr, "WARNING ptemps don't match eachtother! (%d, %d) != (%d, %d)\n",
+            ptemp2.i, ptemp2.j, ptemp.i, ptemp.j);
+        pts[] = 1;
+    }
+#endif
+
+#if 0
      for(int i = -1; i <= 1; i++) {
         double dx = midPoints.x[i] - x;
         double dy = midPoints.y[i] - y;
@@ -272,7 +550,7 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
 
             n.x = normals.x[i]; n.y = normals.y[i]; n.z = normals.z[i];
 
-            fill_fragment (cs[i], n, &temp_frag);
+            fill_fragment (cs[i], n, alphas[i], &temp_frag);
             temp_fluidCell.x = i*Delta + x;
             temp_fluidCell.y = y;
             temp_fluidCell.z = z;
@@ -293,7 +571,7 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
 
             n.x = normals.x[0,j]; n.y = normals.y[0,j]; n.z = normals.z[0,j];
 
-            fill_fragment (cs[0,j], n, &temp_frag);
+            fill_fragment (cs[0,j], n, alphas[0,j], &temp_frag);
             temp_fluidCell.x = x;
             temp_fluidCell.y = j*Delta + y;
             temp_fluidCell.z = z;
@@ -314,7 +592,7 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
 
             n.x = normals.x[0,0,k]; n.y = normals.y[0,0,k]; n.z = normals.z[0,0,k];
 
-            fill_fragment (cs[0,0,k], n, &temp_frag);
+            fill_fragment (cs[0,0,k], n, alphas[0,0,k], &temp_frag);
             temp_fluidCell.x = x;
             temp_fluidCell.y = y;
             temp_fluidCell.z = k*Delta + z;
@@ -323,7 +601,7 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
         }
      }
 #endif
-
+#endif
     *fluidCell = temp_fluidCell;
     *frag = temp_frag;
     *bioff = ptemp;
@@ -332,34 +610,83 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
 }
 
 
+coord interpolate_normal (Point point, coord bi, coord fc, PointIBM bioff, vector mps, vector ns)
+{
+#if dimension == 2
+    coord n1 = {ns.x[bioff.i, bioff.j, bioff.k], 
+                ns.y[bioff.i, bioff.j, bioff.k],
+                ns.z[bioff.i, bioff.j, bioff.k]};
+    
+    coord mp1 = {mps.x[bioff.i, bioff.j, bioff.k], 
+                 mps.y[bioff.i, bioff.j, bioff.k],
+                 mps.z[bioff.i, bioff.j, bioff.k]};
+    
+    PointIBM ioff = {sign(bi.x - mp1.x), sign(bi.y - mp1.y), sign(bi.z - mp1.z)};
+    
+    coord n2 = {ns.x[bioff.i + ioff.i, bioff.j, bioff.k], 
+                ns.y[bioff.i + ioff.i, bioff.j, bioff.k],
+                ns.z[bioff.i + ioff.i, bioff.j, bioff.k]};
+    
+    coord mp2 = {mps.x[bioff.i + ioff.i, bioff.j, bioff.k], 
+                 mps.y[bioff.i + ioff.i, bioff.j, bioff.k],
+                 mps.z[bioff.i + ioff.i, bioff.j, bioff.k]};
+
+    coord n2t = {ns.x[bioff.i, bioff.j + ioff.j, bioff.k], 
+                ns.y[bioff.i, bioff.j + ioff.j, bioff.k],
+                ns.z[bioff.i, bioff.j + ioff.j, bioff.k]};
+    
+    coord mp2t ={mps.x[bioff.i, bioff.j + ioff.j, bioff.k], 
+                mps.y[bioff.i, bioff.j + ioff.j, bioff.k],
+                mps.z[bioff.i, bioff.j + ioff.j, bioff.k]};
+
+    if (!empty_coord(n2) && !empty_coord(n2t)) {
+        double d1 = distance_coord (mp2, bi);
+        double d2 = distance_coord (mp2t, bi);
+        if (d2 < d1) {
+            mp2 = mp2t;
+            n2 = n2t;
+        }
+    }
+    else if (empty_coord(n2)) {
+        mp2 = mp2t;
+        n2 = n2t;
+    }
+
+    coord n = {0};
+    if ((!n2.x && !n2.y && !n2.z) || equals_coord(n1, n2)) {
+        //printf(stderr, "WARNING, no neighbor with normal\n");
+        n = n1;
+    }
+     else {
+         foreach_dimension() {
+             double m = (n1.x - n2.x) / (mp1.x - mp2.x + SEPS);
+             n.x = m*(bi.x - mp1.x) + n1.x;
+         }
+     }
+
+     normalize_sum(&n);
+     return n;
+
+#else // dimension == 3
+
+#endif // dimension == 3
+}
+
 /*
 The function below returns the boundary intercept coordinate given a fragment,
 fluid cell coordinates, and volume fraction field (cs).
-
-TODO: Show derivation.
-TODO: Handle degenerative case when boundary intercept is outside of cell.
 */
 
-coord boundary_int (Point point, fragment frag, coord fluidCell, scalar cs)
+coord boundary_int (Point point, fragment frag, coord fc, scalar cs)
 {
-    double mag = distance3D(frag.n.x, frag.n.y, frag.n.z) + SEPS;
-    coord n = frag.n, ghostCell = {x,y,z};
-
-    //fprintf(stderr, "n = {%g, %g} gc={%g, %g} fc={%g, %g}\n", n.x, n.y, x, y, fluidCell.x, fluidCell.y);
-    normalize2(&n);
-
-    double offset = 0;
-    offset += n.x * -sign2(fluidCell.x - x);
-    offset += n.y * -sign2(fluidCell.y - y);
-    offset += n.z * -sign2(fluidCell.z - z);
-    coord boundaryInt = {(-frag.alpha / mag - offset) * n.x, // is - correct? or should be positive alpha?
-                         (-frag.alpha / mag - offset) * n.y,
-                         (-frag.alpha / mag - offset) * n.z};
-
-    foreach_dimension()
-        boundaryInt.x = ghostCell.x + (boundaryInt.x*Delta);
-
-    return boundaryInt;
+    coord n = frag.n;
+    coord poff = {(x - fc.x)/Delta, (y - fc.y)/Delta, (z - fc.z)/Delta}, bi = {0,0,0};
+    double t = (frag.alpha - dot_product(poff, n)) / (dot_product(n, n) + SEPS);
+    foreach_dimension() {
+        bi.x = poff.x + t*n.x; // calculate BI
+        bi.x = fc.x + bi.x*Delta;
+    }
+    return bi;
 }
 
 coord direction_vector (coord p0, coord p1)
@@ -373,16 +700,35 @@ image_point takes in the coordinates of the boundary intercept and ghost cell an
 returns the coordinates of the image point.
 */
 
-coord image_point (coord boundaryInt, coord ghostCell)
+coord image_point (coord bi, coord gc, coord n = {0})
+{
+     coord ip = {0};
+     
+     if (empty_coord(n)) {
+        foreach_dimension()
+            ip.x = gc.x + 2*(bi.x - gc.x);
+     }
+     else {
+        double dist = distance_coord(bi, gc);
+        normalize2(&n);
+
+        foreach_dimension()
+            ip.x = gc.x + 2*dist*n.x;
+     }
+     return ip;
+}
+
+coord image_point2 (coord boundaryInt, coord ghostCell)
 {
      double dx = boundaryInt.x - ghostCell.x;
      double dy = boundaryInt.y - ghostCell.y;
      double dz = boundaryInt.z - ghostCell.z;
 
-     coord imagePoint = {ghostCell.x + 2*dx, ghostCell.y + 2*dy, ghostCell.z + 2*dz};
+     coord imagePoint = {ghostCell.x + 1.5*dx, ghostCell.y + 1.5*dy, ghostCell.z + 1.5*dz};
 
      return imagePoint;
 }
+
 
 /*
 Similarly to image_point, fresh_image_point calculates the imagepoint for "fresh cells"
@@ -643,7 +989,9 @@ void fluid_only (Point point, const int n, double rmatrix[n],
 
     // a. Check to see if point is in a ghost cell, if so, move it to the interface
     //    and recalculate the node's value considering the immersed boundary condition.
-    if (cs[xx,yy,zz] <= 0.5 && cs[xx,yy,zz] > 0.) {
+
+#if 1
+    if (cs[xx,yy,zz] <= GCV && cs[xx,yy,zz] > 0.) {
         *pcell = (coord){midPoints.x[xx,yy,zz], midPoints.y[xx,yy,zz], midPoints.z[xx,yy,zz]};
 
         // move point more if cell is inside domain boundary
@@ -675,6 +1023,7 @@ void fluid_only (Point point, const int n, double rmatrix[n],
             type = 1;
         }
     }
+#endif
 
     if (type == 0) { // normal or dirichlet
 #if dimension == 2
@@ -756,7 +1105,7 @@ void get_interpolation_matrix (Point point, int m, int n, double matrix[m][n], c
     }
 }
 
-coord image_velocity (Point point, vector u, coord imagePoint, PointIBM bioff, 
+coord image_velocity (Point point, vector u, coord imagePoint, coord n, 
                       vector midPoints, vector normals, scalar alphas)
 {
     // 1. Calculate offsets 
@@ -811,9 +1160,7 @@ coord image_velocity (Point point, vector u, coord imagePoint, PointIBM bioff,
 #endif
 
     // 3. Project velocity to normal and tangent(s) direction
-    coord n = {normals.x[bioff.i,bioff.j,bioff.k], 
-               normals.y[bioff.i,bioff.j,bioff.k], 
-               normals.z[bioff.i,bioff.j,bioff.k]}, t1, t2;
+    coord t1, t2;
     normal_and_tangents (&n, &t1, &t2);
 
     for (int i = 0; i < rows; ++i) {
@@ -1480,6 +1827,14 @@ Again, this function is taken from embed.h. It removes any cell with inconsisten
 volume/surface fractions.
 */
 
+
+struct Cleanup {
+  scalar c;
+  face vector s;
+  double smin;   // minimum surface fraction (optional)
+  bool opposite; // whether to eliminate 'thin tubes' (optional)
+};
+
 trace
 int fractions_cleanup (scalar c, face vector s,
 		       double smin = 0., bool opposite = false)
@@ -1497,16 +1852,19 @@ int fractions_cleanup (scalar c, face vector s,
     /**
     Face fractions of empty cells must be zero. */
    
-    foreach_face()
-      if (s.x[] && ((!c[] || !c[-1]) || s.x[] < smin))
-	s.x[] = 0.;
+    foreach_face() {
+      if (s.x[] && ((!c[] || !c[-1]) || s.x[] < smin || ((c[] > 0 && c[] < smin && level == depth()) || (c[-1] > 0 && c[-1] < smin && level == depth())))) {
+        //fprintf(stderr, "small cell detected (%g, %g) s.x=%g\n", x, y, s.x[]);
+        s.x[] = 0.;
+      }
+    }
 
     changed = 0;
     foreach(reduction(+:changed))
       if (c[] > 0. && c[] < 1.) {
-	int n = 0;
-	foreach_dimension() {
-	  for (int i = 0; i <= 1; i++)
+        int n = 0;
+        foreach_dimension() {
+          for (int i = 0; i <= 1; i++)
 	    if (s.x[i] > 0.)
 	      n++;
 
@@ -1991,14 +2349,14 @@ double skin_friction (vector u, face vector mu, scalar cf)
 
 /*
 bilinear_ibm is another function taken from embed. If the parent cell is completely
-inside the solib boundary, then simple injection is performed (i.e., the value of 
+inside the solid boundary, then simple injection is performed (i.e., the value of 
 the child is set to that of the parent).
 
 This is used in the multigrid solver, and is found to significantly improve 
 convergence of the pressure solver.
 */
 
-#if MULTIGRID
+#if 0 && MULTIGRID
 static inline double bilinear_ibm (Point point, scalar s)
 {
     if (!coarse(cs) || !coarse(cs,child.x)) {

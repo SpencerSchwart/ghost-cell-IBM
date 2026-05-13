@@ -1,5 +1,5 @@
 
-vector bi[];
+vector bis[];
 
 /*
 "vof" event executes at the beginning of the event loop (before advection) but
@@ -25,6 +25,7 @@ event update_metric (i++)
 
     foreach_face() {
        if (cs[] > 0 || cs[-1] > 0 || is_ghost_cell (point, cs))
+       //if (cs[] > 0 || cs[-1] > 0)
             gcf.x[] = 1;
        else
             gcf.x[] = 0;
@@ -39,121 +40,479 @@ event update_metric (i++)
 #endif
 }
 
+scalar ibalphas[];
+vector normals[];
+vector midPoints[];
 
-#if 0
-/*
-###### NOT NECESSARY FOR STATIONARY SOLID ######
-
-The advection_term event is overloaded so the one below is executed first. This
-is to handle "fresh" cells created by moving boundary. We do this by interpolating
-the fresh cell's velocity (and pressure?) to create a smoother transition from
-solid/ghost cell --> fluid cell.
-
-Note the volume fraction field of the previous time step, cs0, is updated in this event.
-
-TODO: 3D implementation
-TODO: better verify if its working well
-*/
-
-#ifdef MOVING
-scalar fresh[];
-event advection_term (i++)
+coord interpolate_image_point(coord ip, coord nsg, int * rank = NULL) 
 {
-    vector normals[];
-    vector midPoints[];
+    //double ux = nodata, uy=nodata;
+    coord uip = {nodata};
+    //foreach_point(ip.x, ip.y, reduction(min:ux) reduction(min:uy)) {
+    foreach_point_ibm(ip.x, ip.y, ip.z, rank, serial) {
 
-    // 1. Initalize fields to hold interface normals and fragment midpoints
-    //    TODO: this pass can be improved, if not avoided entirely.
+        //fprintf(fp, "(%g, %g): point = (%g, %g) pid=%g %g\n", x, y, ip0.x, ip0.y, pid(), pid[]);
+        //fflush(fp);
+        //foreach_dimension()
+        //    bi.x[] = bis[i].x;
+
+        uip = image_velocity (point, u, ip, nsg, midPoints, normals, ibalphas);
+
+        //uip[i] = image_velocity_noff (point, u, ips[i], bff[i], nsg[i], midPoints, normals, ibalphas);
+	//ux = uip.x, uy = uip.y;
+    }
+    //return (coord){ux,uy};
+    return uip;
+}
+
+void fill_interface_data() {
     foreach() {
         coord midPoint, n;
         if (on_interface(cs)) {
-            centroid_point (point, cs, &midPoint, &n);
+            centroid_point (point, cs, &midPoint, &n, &ibalphas[]);
             foreach_dimension() {
                 midPoints.x[] = midPoint.x;
                 normals.x[] = -n.x;
             }
+            ibalphas[] *= -1;
         }
         else if (cs[] == 1 && empty_neighbor (point, &midPoint, &n, cs)) {
             foreach_dimension() {
                 midPoints.x[] = midPoint.x;
                 normals.x[] = -n.x;
             }
+            ibalphas[] = 0;
         }
         else {
             foreach_dimension() {
                 midPoints.x[] = 0;
                 normals.x[] = 0;
             }
+            ibalphas[] = 0;
         }
     }
 
-    boundary({midPoints, normals});
+    boundary({midPoints, normals, ibalphas});
+}
 
-    // 2. Find fresh cells and calculate their velocity.
-    foreach() {
-        if (is_fresh_cell(cs0, cs)) {
-            fragment interFrag;
-            coord freshCell = {x,y}, boundaryInt, n;
-            fresh[] = 1;
-            ibm_geometry (point, &boundaryInt, &n);
-            foreach_dimension()
-                boundaryInt.x = freshCell.x + boundaryInt.x * Delta;
-            coord imagePoint = fresh_image_point (boundaryInt, freshCell);
-            coord imageVelocity = image_velocity (point, u, imagePoint, midPoints);
-#if 1
-            p[] = image_pressure (point, p, imagePoint);
-            pf[] = image_pressure (point, pf, imagePoint);
+scalar gid[], gbid[];
+scalar pid[];
+
+#if _MPI
+
+typedef struct {
+    int id;    // ID in array
+    double x, y, z;
+    double nx, ny, nz;
+} MPIcoord;
+
 #endif
-           double bix = boundaryInt.x, biy = boundaryInt.y, biz = boundaryInt.z;
-            foreach_dimension() {
-                u.x[] = (imageVelocity.x + uibm_x(bix,biy,biz)) / 2;
+
+void update_gc_velocity()
+{
+
+    foreach()
+      pid[] = pid();
+
+    boundary({pid});
+
+    u.x.mp = bis; u.y.mp = bis; 
+#if dimension == 3
+    u.z.mp = bis;
+#endif
+
+#if 1
+
+    /**
+    First count all ghost cells. */
+    int gcount = 0, gbcount = 0;
+
+    Array * gcid  = array_new();
+
+    foreach(serial, reduction(+:gcount) reduction(+:gbcount)) {
+        gid[] = gbid[] = -1;
+        if (is_ghost_cell(point, cs)) {
+            gid[] = gcount;
+            array_append(gcid, &gcount, sizeof(int));
+            gcount++;
+        }
+    }
+
+#if 0
+    char name[80];
+    sprintf(name, "%d-out", pid());
+    FILE * fp = fopen(name, "w");
+#endif
+
+    /**
+    Allocate arrays for storing the, IP, IP velocity, and normals for each GC */
+    long nl  = gcid->len/sizeof(int);
+#if 1
+
+    coord ips[nl];
+    coord uip[nl];
+    coord nsg[nl];
+
+    foreach() {
+        if (gid[] > -1) {
+            fragment interFrag;
+            coord fc, gc = {x,y,z};
+            PointIBM bioff;
+
+            coord bi, ip, n;
+            if (cs.ibm.bi) 
+                bi = cs.ibm.bi(gc);
+            else {
+                closest_interface (point, midPoints, cs, normals, ibalphas, &interFrag, &fc, &bioff);
+                bi = boundary_int (point, interFrag, fc, cs);
+                n = interpolate_normal (point, bi, fc, bioff, midPoints, normals);
+            }
+            if (cs.ibm.normal)
+                n = cs.ibm.normal(gc);
+            ip = image_point (bi, gc, n);
+
+            nsg[(int)gid[]] = n;
+            ips[(int)gid[]] = ip;
+        }
+    }
+
+#endif
+
+    /**
+    When using MPI, an image point may lay in another rank, requiring extra communication. 
+    We identify these problematic points and store its index in the bips (bad image points) array.
+    We also have to store the rank the IP belongs to in an array, bpid. */
+
+#if _MPI
+    Array * bips  = array_new();
+    Array * bpid  = array_new();
+#endif
+
+#if 1
+    for (int i = 0; i < nl; i++) {
+	//fprintf(fp, "(%g, %g) pid=%g", ips[i].x, ips[i].y, pid());
+	//fflush(fp);
+
+        int rank = -1;
+        uip[i] = interpolate_image_point(ips[i], nsg[i], &rank);
+
+        if (uip[i].x == nodata) {
+            fprintf(fp, "HELP! GC rank = %d, IP rank = %d\n", pid(), rank);
+            array_append(bips, &i, sizeof(int));
+            array_append(bpid, &rank, sizeof(int));
+        }
+
+        fflush(fp);
+
+	//fprintf(fp, " uip=(%g, %g)\n", uip[i].x, uip[i].y);
+#if 0
+        coord ip0 = ips[i];
+        foreach_point(ip0.x, ip0.y, reduction(min:val)) {
+	    fprintf(fp, "(%g, %g): point = (%g, %g) pid=%g %g\n", x, y, ip0.x, ip0.y, pid(), pid[]);
+	    fflush(fp);
+            foreach_dimension()
+                bis.x[] = bi[i].x;
+            //uip[i] = image_velocity (point, u, ips[i], nsg[i], midPoints, normals, ibalphas);
+            //uip[i] = image_velocity_noff (point, u, ips[i], bff[i], nsg[i], midPoints, normals, ibalphas);
+        }
+#endif
+    }
+
+    /**
+    If "bad" image points exists, we count the total number for each rank and store it
+    in an array whose indices correspond to all active processes. We then communicate this
+    array to processors. */
+
+#if _MPI
+    int scount[npe()]; // send
+    int rcount[npe()]; // receive
+
+    for (int r = 0; r < npe(); r++) {
+        scount[r] = 0;
+        rcount[r] = 0;
+    }
+
+    int send_total = bips->len/sizeof(int);
+
+    int * ip_rank = bpid->p;
+    int * ip_ids = bips->p;
+
+    for (int i = 0; i < send_total; i++) {
+        scount[ip_rank[i]]++;
+    }
+
+    MPI_Alltoall(scount, 1, MPI_INT, rcount, 1, MPI_INT, MPI_COMM_WORLD);
+
+    /**
+    Calcuate the total number of receiving indices. Note we already calculated
+    the number of ones being sent. Then we allocate an array for points we will send
+    and receive. */
+
+    int recv_total = 0;
+    for (int r = 0; r < npe(); r++) 
+        recv_total += rcount[r];
+
+    MPIcoord * send_ips = malloc (send_total * sizeof(MPIcoord));
+    MPIcoord * recv_ips = malloc (recv_total * sizeof(MPIcoord));
+
+    /**
+    After we exchange how many "bad" IPs each process both has (send) and needs to interpolate
+    for other processes (receive), we need to calculate the starting index for each process in
+    the count arrays. We store these starting index in these displacement arrays. */
+
+    int sdispls[npe()];
+    int rdispls[npe()];
+
+    /**
+    The starting index for pid 0 is always 0. */
+
+    sdispls[0] = 0;
+    rdispls[0] = 0;
+
+    for (int r = 1; r < npe(); r++) {
+        sdispls[r] = sdispls[r - 1] + scount[r - 1];
+        rdispls[r] = rdispls[r - 1] + rcount[r - 1];
+    }
+
+    /**
+    We now need to fill the send_ips array with all of the image point coordinates.
+    However, we need to make sure it is sorted and grouped by rank so that it
+    corresponds to the displacement array sdispls. To do so, we create a temporary 
+    copy. */
+
+    int sdisp_temp[npe()];
+    
+    for (int r = 0; r < npe(); r++)
+        sdisp_temp[r] = sdispls[r];
+
+    for (int i = 0; i < send_total; i++) {
+        int id = ip_ids[i];  // grab id in main array
+        coord ipt = ips[id]; // grab IP
+        coord n = nsg[id];   // grab normal
+
+        int rank = ip_rank[i];  // grab IP home rank
+        
+        int index = sdisp_temp[rank];
+        send_ips[index] = (MPIcoord){id, ipt.x, ipt.y, ipt.z, n.x, n.y, n.z};
+
+        sdisp_temp[rank]++;
+    }
+
+    /**
+    Before we can communicate the IP to their respective rank, we must first
+    convert the count and displacement arrays into byte format since user defined
+    types, like MPIcoord, are not natively supported in MPI. */
+
+    int scount_byte[npe()];
+    int rcount_byte[npe()]; 
+    int sdispls_byte[npe()];
+    int rdispls_byte[npe()];
+
+    for (int r = 0; r < npe(); r++) {
+        scount_byte[r] = scount[r] * sizeof(MPIcoord); 
+        rcount_byte[r] = rcount[r] * sizeof(MPIcoord); 
+        sdispls_byte[r] = sdispls[r] * sizeof(MPIcoord);
+        rdispls_byte[r] = rdispls[r] * sizeof(MPIcoord);
+    }
+
+    MPI_Alltoallv(send_ips, scount_byte, sdispls_byte, MPI_BYTE,
+                  recv_ips, rcount_byte, rdispls_byte, MPI_BYTE,
+                  MPI_COMM_WORLD);
+
+    /**
+    Interpolate all of the received IPs and store them in an array to be communicated.
+    Note we do not have to sort this array, since recv_ips is already sorted. */
+
+    MPIcoord * uip_send = malloc(recv_total * sizeof(MPIcoord));
+
+    for (int i = 0; i < recv_total; i++) {
+
+        MPIcoord data = recv_ips[i];
+        coord ip = {data.x, data.y, data.z};
+        coord n = {data.nx, data.ny, data.nz};
+        
+        int rank = -1;
+        coord uip = interpolate_image_point(ip, n, &rank);
+
+        assert(rank == pid());
+
+        uip_send[i] = (MPIcoord){data.id, uip.x, uip.y, uip.z};
+    }
+
+    MPIcoord * uip_recv = malloc(send_total * sizeof(MPIcoord));
+
+    MPI_Alltoallv(uip_send, rcount_byte, rdispls_byte, MPI_BYTE,
+                  uip_recv, scount_byte, sdispls_byte, MPI_BYTE,
+                  MPI_COMM_WORLD);
+
+    /**
+    The interpolated IP values originally requested are now stored in uip_recv.
+    We store them back in the main uip array with the rest of the data. */
+
+    for (int i = 0; i < send_total; i++) {
+        MPIcoord data = uip_recv[i];
+        uip[data.id] = (coord){data.x, data.y, data.z};
+    }
+
+#endif
+
+    fflush(fp);
+    fclose(fp);
+#endif
+
+    array_free(gcid);
+
+#if _MPI
+    if (uip_send) free(uip_send);
+    if (uip_recv) free(uip_recv);
+    if (send_ips) free(send_ips);
+    if (recv_ips) free(recv_ips);
+    
+    array_free(bips);
+    array_free(bpid);
+#endif
+
+#endif
+
+    scalar gcin[];
+
+    //bool avg_deep = !cs.ibm.bi && !cs.ibm.expression && !cs.ibm.normal;
+    bool avg_deep = false;
+    //bool avg_deep = true;
+
+    foreach() {
+        gcin[] = -1;
+        if (is_ghost_cell(point, cs)) {
+
+            bool inside = true;
+            foreach_direct_neighbor() 
+                if (gc[])
+                    inside = false;
+
+            gcin[] = inside? 1: 0;
+            
+            if (avg_deep && inside) {
+                foreach_dimension()
+                    u.x[] = 0;
+                continue;
+            }
+
+            fragment interFrag;
+            coord fc, gc = {x,y,z};
+            PointIBM bioff;
+
+            coord bi = {0,0,0}, ip, n;
+            if (cs.ibm.bi)
+                bi = cs.ibm.bi(gc);
+            else {
+                closest_interface (point, midPoints, cs, normals, ibalphas, &interFrag, &fc, &bioff);
+                bi = boundary_int (point, interFrag, fc, cs);
+
+                n = interpolate_normal (point, bi, fc, bioff, midPoints, normals);
+            }
+            if (cs.ibm.normal)
+                n = cs.ibm.normal(gc);
+            ip = image_point(bi, gc, n);
+
+            foreach_dimension()
+                bis.x[] = bi.x;
+
+            //coord imageVelocity = image_velocity (point, u, ip, n, 
+            //                                      midPoints, normals, ibalphas);
+
+            coord imageVelocity = uip[(int)gid[]];
+
+            if (local_bc_coordinates) {
+                coord t1, t2;
+                normal_and_tangents (&n, &t1, &t2);
+
+                coord projVelocity = {dot_product(imageVelocity, n),
+                                      dot_product(imageVelocity, t1),
+                                      dot_product(imageVelocity, t2)};
+
+                coord gcProjVelocity = {0,0,0};
+
+                foreach_dimension() {
+                    bool bctype[2] = {false, false};
+                    double vb = u.x.boundary[immersed] (point, point, u.x, bctype);
+                    bool dirichlet = bctype[0], navier = bctype[1];
+                    if (dirichlet) {
+                        if (navier) {
+                            double delta = 0;
+                            foreach_dimension()
+                                delta += sq(gc.x - ip.x);
+                            delta = sqrt(delta)/(2*Delta);
+                            vb /= Delta;
+
+                            gcProjVelocity.x = -projVelocity.x*(delta - vb)/(delta + vb);
+                        }
+                        else {
+                            gcProjVelocity.x = 2*vb - projVelocity.x;
+                        }
+                    }
+                    else { // neumann
+                            gcProjVelocity.x = projVelocity.x;
+                    }
+                }
+
+                double gcn = gcProjVelocity.x, gct1 = gcProjVelocity.y, gct2 = gcProjVelocity.z;
+                foreach_dimension()
+                    u.x[] = gcn*n.x + gct1*t1.x + gct2*t2.x;
+            }
+            else { // !local_bc_coordinates, i.e. use n ≡ x, t ≡ y, and r ≡ z.
+                foreach_dimension() {
+                    bool dirichlet = false;
+                    double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+                    if (dirichlet) {
+                        u.x[] = 2*vb - imageVelocity.x;
+                    }
+                    else {
+                        u.x[] = imageVelocity.x;
+                    }
+                }
+            }
+       }
+       else if (cs[] == 0) {
+           foreach_dimension() {
+               u.x[] = 0.;
+           }
+       }
+    }
+
+#if 0
+    if (avg_deep) {
+        foreach() {
+            if (gcin[] == 1) {
+
+                coord ugc = {0,0};
+                int count = 0;
+                foreach_near_neighbor() {
+                   if (u.x[]) {
+                       foreach_dimension()
+                           ugc.x += u.x[];
+                       count++;
+                   }
+               }
+               if (count) {
+                   foreach_dimension()
+                       u.x[] = ugc.x/(double)count;
+               }
             }
         }
-        else if (is_ghost_cell(point, cs)) {
-           fragment interFrag;
-           coord fluidCell, ghostCell = {x,y};
-
-           closest_interface (point, midPoints, cs, normals, &interFrag, &fluidCell);
-           coord boundaryIntercept = boundary_int (point, interFrag, fluidCell, cs);
-           coord imagePoint = image_point (boundaryIntercept, ghostCell);
-#if 0  
-           if (cs[] > 0 && cs0[] <= 0) {
-               p[] = image_pressure (point, p, imagePoint);
-               pf[] = image_pressure (point, pf, imagePoint);
-           }
+    }
 #endif
-        }
-        else
-            fresh[] = 0;
-    }
-
-    foreach() {
-        cs0[] = cs[];
-    }
-    boundary({u});
+    boundary((scalar *){u, bis});
 }
-#endif
-#endif
 
-/*
-The accleration event is exectued after the advection and viscous events, so u here
-is the intermediate velocity field. The purpose of this event is to update the ghost
-cell's velocity to better enforce the no slip B.C. since u has changed.
-
-TODO: is calculating and assigning pressure necessary here?
-TODO: is assigning pressure to full ghost cells necessary? probably not
-*/
-
-const coord ind = {0,1,2};
-
-scalar ibalphas[];
-vector normals[];
-vector midPoints[];
-#if 1
-event acceleration (i++)
-//event projection (i++)
+event end_timestep(i++)
 {
-    trash({normals, midPoints});
+    fill_interface_data(); 
+    update_gc_velocity();
+}
+
+#if 0
+event acceleration (i++)
+{
     // 1. Initalize fields to hold interface normals and fragment midpoints
     //    TODO: this pass can be improved, if not avoided entirely.
     foreach() {
@@ -314,15 +673,12 @@ TODO: are all of these boundary()'s necessary?
 TODO: is assigning pressure to full ghost cells necessary?
 */
 
-scalar gid[];
-scalar pid[];
+#if 0
 
-#if 1
+scalar gid[];
+
 event end_timestep (i++)
 {
-    foreach()
-        pid[] = pid();
-
     u.x.mp = bi; u.y.mp = bi; 
 #if dimension == 3
     u.z.mp = bi;
@@ -497,6 +853,23 @@ event end_timestep (i++)
                     }
                 }
 
+#if 0
+                //double r = sqrt(sq(imagePoint.x) + sq(imagePoint.y));
+                double r = sqrt(sq(ghostCell.x) + sq(ghostCell.y));
+
+
+                if (r > 0.5*(0.5+0.25)) 
+                {
+                  gcProjVelocity.x = 0;
+                  gcProjVelocity.y = -(r*(sq(0.5/r) - 1.)/(sq(0.5/0.25) - 1.));
+                  //gcProjVelocity.y = -sq(0.25)/(sq(0.25) + sq(0.5))*(sq(0.5)/r + r);
+                }
+                else {
+                  gcProjVelocity.x = 0;
+                  gcProjVelocity.y = (r*(sq(0.5/r) - 1.)/(sq(0.5/0.25) - 1.));
+                  //gcProjVelocity.y = sq(0.25)/(sq(0.25) + sq(0.5))*(sq(0.5)/r + r);
+                }
+#endif
                 double gcn = gcProjVelocity.x, gct1 = gcProjVelocity.y, gct2 = gcProjVelocity.z;
                 foreach_dimension()
                     u.x[] = gcn*n.x + gct1*t1.x + gct2*t2.x;
@@ -523,3 +896,4 @@ event end_timestep (i++)
     boundary((scalar *){u, bi});
 }
 #endif
+
