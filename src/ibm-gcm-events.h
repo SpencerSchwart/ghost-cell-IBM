@@ -87,7 +87,7 @@ typedef struct {
 coord interpolate_image_point (coord ip, coord nsg, int * rank = NULL) 
 {
     coord uip = {nodata};
-    foreach_image_point (ip.x, ip.y, ip.z, rank, serial) 
+    foreach_image_point (ip.x, ip.y, ip.z, rank) 
         uip = image_velocity (point, u, ip, nsg, midPoints, normals, ibalphas);
     return uip;
 }
@@ -107,11 +107,11 @@ void update_gc_velocity()
 
     /**
     First count all ghost cells. */
-    int gcount = 0, gbcount = 0;
+    int gcount = 0;
 
     Array * gcid  = array_new();
 
-    foreach(serial, reduction(+:gcount) reduction(+:gbcount)) {
+    foreach(serial, reduction(+:gcount)) {
         gid[] = gbid[] = -1;
         if (is_ghost_cell(point, cs)) {
             gid[] = gcount;
@@ -171,6 +171,7 @@ void update_gc_velocity()
 
 #if _MPI
         if (uip[i].x == nodata) {
+            assert (rank >= 0 && rank < npe());
             array_append(bips, &i, sizeof(int));
             array_append(bpid, &rank, sizeof(int));
         }
@@ -299,7 +300,7 @@ void update_gc_velocity()
         int rank = -1;
         coord uip = interpolate_image_point(ip, n, &rank);
 
-        assert(rank == pid());
+        assert(rank == pid() && uip.x != nodata);
 
         uip_send[i] = (MPIcoord){data.id, uip.x, uip.y, uip.z};
     }

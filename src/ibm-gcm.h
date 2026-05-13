@@ -192,14 +192,13 @@ bool fluid_neighbor (Point point, scalar cs)
 match_level is used to make sure that the neighboring fluid cell (assuming there 
 is one) does not contain children that are ghost cells which can undesireably lead 
 to two layers of ghost cells and constant refining/coarsening.
-
-TODO: only check N, S, E, and W neighbors, not entire 3x3 stencil
 */
 
 bool match_level (Point point, scalar cs)
 {
     foreach_neighbor(1) {
-        if (cs[] > GCV && is_leaf(cell) && is_active(cell))
+        //if (cs[] > GCV && is_leaf(cell) && is_active(cell))
+        if (cs[] > GCV && is_leaf(cell))
             return true;
     }
     return false;
@@ -213,7 +212,7 @@ cs > 0.5, and the volume fraction is less than or equal to 0.5.
 
 bool is_ghost_cell (Point point, scalar cs)
 {
-   return cs[] <= GCV && fluid_neighbor(point, cs) && match_level(point, cs);
+    return cs[] <= GCV && fluid_neighbor(point, cs) && match_level(point, cs);
 }
 
 
@@ -825,7 +824,7 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
     int xOffset = 0, yOffset = 0, zOffset = 0;
     image_offsets (point, imagePoint, &xOffset, &yOffset, &zOffset);
     
-    //assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
+    assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
 
     coord imageCell = {x + Delta*xOffset, y + Delta*yOffset, z + Delta*zOffset};
     

@@ -551,9 +551,12 @@ Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0
             *rank = cell.pid;
     	return point;
       }
-      else if (allocated(0) && is_leaf(cell) && !is_local(cell))
+      else if (allocated(0) && is_leaf(cell) && !is_local(cell)) {
         if (rank)
             *rank = cell.pid;
+        point.level = -1;
+        return point;
+      }
     }
     else
       break;
