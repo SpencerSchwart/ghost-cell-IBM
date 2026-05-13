@@ -2,7 +2,7 @@
 ###### TWO PHASE FUNCTIONS FOR IBM ###### 
 */
 
-#define BI_TOL 1e-13 // TODO: standardize tolerance for root solvers
+#define BI_TOL 1e-12 // TODO: standardize tolerance for root solvers
 
 #include "fractions.h"
 #include "ibm-utils.h"
@@ -1022,6 +1022,9 @@ double get_real_error (const void* data, double alpha)
     double fa = rectangle_fraction (tcell.nf, alpha, lhs, rhs);
     double frcalc = tcell.s*immersed_fraction (fa, tcell.nf, alpha, tcell.ns, 
                                                tcell.alphas, lhs, rhs);
+
+    //fprintf(stderr, "|| alpha=%g fa=%g frcalc=%g tcell.s=%g error=%.15f\n", alpha, fa, frcalc, tcell.s, frcalc - tcell.fr);
+
     return frcalc - clamp(tcell.fr, 0, tcell.s);
 }
 
@@ -1551,6 +1554,27 @@ static inline bool full_interfacial (Point point, scalar c)
       foreach_dimension()
 	    if (c[i] <= 0.)
 	      return true;
+  }
+  else if (c[] > 0 && c[] < 1)
+    return true;
+  return false;
+}
+
+
+/**
+check to see if the given cell has a vertex that perfectly coincides with the solid boundary. */
+static inline bool vertex_interfacial (Point point, scalar c)
+{
+  if (c[] >= 1.) {
+    for (int i = -1; i <= 1; i++)
+        for (int j = -1; j <= 1; j++) {
+            if (i == 0 && j == 0)
+                continue;
+            else {
+                if (!cs[i,j])
+                    return true;
+            }
+        }
   }
   else if (c[] > 0 && c[] < 1)
     return true;

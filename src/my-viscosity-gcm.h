@@ -33,10 +33,13 @@ static void relax_diffusion (scalar * a, scalar * b, int l, void * data)
             foreach_dimension()
                 a += mu.x[1]*s[1] + mu.x[]*s[-1];
             u.x[] = gc[]*(dt*a + r.x[]*sq(Delta)) /
-                         (sq(Delta) * (rho[] + lambda.x) + avgmu); 
+                     (sq(Delta) * (rho[] + lambda.x) + avgmu); 
         }
     }
 }
+
+void fill_interface_data();
+void update_gc_velocity();
 
 static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
                                   void * data)
@@ -47,6 +50,10 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
     double dt = p->dt;
     vector u = vector(a[0]), r = vector(b[0]), res = vector(resl[0]);
     double maxres = 0.;
+
+    //fill_interface_data(); 
+    //update_gc_velocity();
+
 #if TREE
     foreach_dimension() {
         scalar s = u.x;
@@ -73,10 +80,7 @@ static double residual_diffusion (scalar * a, scalar * b, scalar * resl,
             double a = 0.;
             foreach_dimension()
                 a += mu.x[0]*face_gradient_x (s, 0) - mu.x[1]*face_gradient_x (s, 1);
-            res.x[] = r.x[] - (rho[] + lambda.x) * u.x[] - dt * a / Delta;
-
-            if (cs[] <= GCV)
-                res.x[] = 0;
+            res.x[] = gc[]? r.x[] - (rho[] + lambda.x) * u.x[] - dt * a / Delta: 0;
 
             if (fabs (res.x[]) > maxres)
                 maxres = fabs (res.x[]);
@@ -100,8 +104,9 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
 #if AXI
         val = cm[];
 #endif
-        rho2[] = rho[]*val/(cs[] + SEPS);
+        //rho2[] = rho[]*val/(cs[] + SEPS);
         //rho2[] = cs[]*rho[]*val;
+        rho2[] = 1;
         foreach_dimension() {
             r.x[] = rho2[] * u.x[];
         }

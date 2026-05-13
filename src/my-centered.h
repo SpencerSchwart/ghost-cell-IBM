@@ -33,7 +33,8 @@ for viscosity. */
 #if EMBED
 #include "viscosity-embed.h"
 #elif IBM
-#include "my-viscosity-gcm.h"
+//#include "my-viscosity-gcm.h"
+#include "viscosity-ibm.h"
 #else
 #include "viscosity.h"
 #endif // EMBED
@@ -191,18 +192,18 @@ event defaults (i = 0)
   for (scalar s in {p, pf})
     s.embed_gradient = pressure_embed_gradient;
 #elif IBM
-  uf.x.refine = refine_face;
-  foreach_dimension() {
-    //uf.x.refine = refine_ibm_face_x;
-    uf.x.prolongation = refine_ibm_face_x;
-  }
+  //uf.x.refine = refine_face;
+  //foreach_dimension() {
+  //  //uf.x.refine = refine_ibm_face_x;
+  //  uf.x.prolongation = refine_ibm_face_x;
+  //}
   for (scalar s in {p, pf, u, g}) {
-    s.restriction = restriction_ibm_linear;
-    s.refine = s.prolongation = refine_ibm_linear;
+    //s.restriction = restriction_ibm_linear;
+    //s.refine = s.prolongation = refine_ibm_linear;
     s.depends = list_add (s.depends, cs);
   }
-  for (scalar s in {p, pf})
-    s.ibm_gradient = pressure_ibm_gradient;
+  //for (scalar s in {p, pf})
+  //  s.ibm_gradient = pressure_ibm_gradient;
 #endif
 #endif // TREE
 
@@ -426,7 +427,7 @@ event acceleration (i++,last)
   trash ({uf});
   foreach_face() {
     if (fs.x[])
-      uf.x[] = fm.x[]*(face_value (u.x, 0) + dt*a.x[]/fs.x[]);
+      uf.x[] = fm.x[]*(face_value (u.x, 0) + dt*a.x[]);
   }
 }
 

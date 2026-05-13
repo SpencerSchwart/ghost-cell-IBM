@@ -171,9 +171,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
         if (c[i] <= 0.)
             cf = 0.;
-        else if (c[i] >= cs0[i]-INT_TOL) // interfacial cell is full
+        else if (c[i] >= cs0[i]-VTOL) // interfacial cell is full
             cf = 1;
-        else if (c[i] > 0. && c[i] < cs0[i]-INT_TOL) { // three-phase
+        else if (c[i] > 0. && c[i] < cs0[i]-VTOL) { // three-phase (TODO: try INT_TOL and see the effects)
             double alpha = alphafh[i];
             if (!tempnf.x && !tempnf.y && !tempnf.z) {
                 coord off = {0,0,0};
@@ -327,6 +327,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
     foreach() {
         if (c[] > cs[] || c[] < 0)
             c[] = clamp(c[], 0, cs[]);
+        if (c[] > 0 && cs[] > 0 && c[]/cs[] > 1 - VTOL)
+            c[] = cs[];
     }
     #endif
   }

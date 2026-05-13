@@ -92,6 +92,17 @@ event properties (i++)
             ff = sf[]/cs[];
         else if (!cs[] && cs[-1])
             ff = sf[-1]/cs[-1];
+        else if (!cs[] && !cs[-1] && u.x[]) {
+            int count = 0;
+            foreach_neighbor(1) {
+              if (cs[] > 0) {
+                ff += sf[]/cs[];
+                count++;
+              }
+            }
+            if (count)
+              ff /= (double)count;
+        }
         alphav.x[] = fs.x[]/rho(ff);
         if (mu1 || mu2) {
           face vector muv = mu;

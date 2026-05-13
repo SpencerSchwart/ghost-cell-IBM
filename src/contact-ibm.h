@@ -4,8 +4,8 @@
 
 #include "mls.h"
 
-#undef INT_TOL
-#define INT_TOL 1e-10
+//#undef INT_TOL
+//#define INT_TOL 1e-10
 
 scalar contact_angle[];
 
@@ -582,16 +582,24 @@ bool contact_line_border (Point point, scalar c, scalar cs, double angle, double
 
     int vol = angle >= pi/2.? 1: 0;
 
+#if 1
+    foreach_near_neighbor() {
+        if (cs[] > 0 && cs[] < 1 && approx_equal_double(c[], vol, tolerance))
+            return true;
+    }
+#endif
+#if 0
     for (int i = -1; i <= 1; i++)
         for (int j = -1; j <= 1; j++) {
             if ((i == 0 && j == 0) || abs(i) == abs(j))
+            //if (i == 0 && j == 0)
                 continue;
             else {
                 if (cs[i,j] > 0 && cs[i,j] < 1 && approx_equal_double(c[i,j], vol, tolerance))
                     return true;
             }
         }
-
+#endif
 #if 0
     /** check left-right */
     for(int i = -1; i <= 1; i += 2)
@@ -707,7 +715,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
         //inter[] = c[] > 0 && c[] < cs[];
         inter[] = cr[] > VTOL && cr[] < cs[] - INT_TOL;
 #if 1
-        if (inter[] && contact_angle[] && full_interfacial(point, cs)) {
+        if (inter[] && contact_angle[] && (full_interfacial(point, cs) || vertex_interfacial(point, cs))) {
            //&& (has_n_border(point, c, 0.))) {
             if (cs[] > 0 && cs[] < 1) {
                 extra[] = (int)contact_line_border(point, c, cs, contact_angle[], 1e-2);
@@ -748,10 +756,30 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
         if (extra[]) {
             coord ns0;
             double alphas0 = 0;
+            #if 1
             if (cs[] == 1) {
-                ns0 = full_interfacial_normal(point, cs, &alphas0);
+                //ns0 = full_interfacial_normal(point, cs, &alphas0);
+                coord ns_avg = {0,0,0};
+                int count = 0;
+                foreach_direct_neighbor() {
+                  if (on_interface(cs)) {
+                    count++;
+                    foreach_dimension()
+                      ns_avg.x += ns.x[];
+                  }
+                }
+                if (count) {
+                  foreach_dimension()
+                    ns_avg.x /= (double)count;
+                  
+                }
+                ns0 = ns_avg;
+                alphas0 = 0.5;
+                //continue;
             }
-            else {
+            else 
+            #endif
+            {
                 ns0 = (coord){ns.x[], ns.y[], ns.z[]};
                 alphas0 = alphas[];
             }
@@ -780,14 +808,18 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
 
             c[] = max(plane_volume(nc, alpha[]), cr[]);
 
-            //fprintf(stderr, "(%g, %g) c=%g nc={%g, %g} ac=%g ns={%g, %g} as=%g cr=%g\n",
-            //    x, y, c[], n.x[], n.y[], alpha[], ns.x[], ns.y[], alphas[], cr[]);
+            //fprintf(stderr, "(%g, %g) c=%g nc={%g, %g} ac=%g ns={%g, %g} as=%g cr=%g cs=%g\n",
+            //    x, y, c[], n.x[], n.y[], alpha[], ns0.x, ns0.y, alphas0, cr[], cs[]);
 
             #if 0
             if (c[] <= 0) { // so ch and cr are consistent! prevents sudden removal of gginter
                 cr[] = 0;
             }
             #endif
+            if (c[] >= 1) {
+                fprintf(stderr, "WARNING: extrapolation cell (%g, %g) got c = %g\n", x, y, c[]);
+                extra[] = 0;
+            }
 #if 0
                 if (!is_interior_cell(point, cs, cr) && level == depth()) {
                     int near = 0;
@@ -865,13 +897,13 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
 
             // 3.a. Calculate weights
             foreach_neighbor() {
-                if (extra[] && is_active(cell)) {
+                if (extra[] == 1) {
                     // why cr0? to mitigate problems for a very slow moving contact line and
                     // a new cell only gets a little bit of f (due to the low velocity/flux)
                     double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
 
                     double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
-                    cellWeight /= pow(dc,15);
+                    cellWeight /= pow(dc,1);
 
                     totalWeight += cellWeight;
 
@@ -933,7 +965,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
             double alphas0 = alphas[];
 
             foreach_neighbor() {
-                if (extra[] && is_active(cell)) {
+                if (extra[] == 1) {
                     nf1 = (coord){nf.x[], nf.y[], nf.z[]};
 
 #if 0
@@ -955,7 +987,8 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
                     
                     //if (!approx_equal_double(gr0, fr) && !(contact_angle[] < pi/2. && fr0 <= VTOL)) {
                     //if (!approx_equal_double(gr0, fr) && fr < gr0) { //TODO: THIS IS BAD FOR GENERAL CASES IMPROVE
-                    if (!approx_equal_double(gr0, fr)) { //TODO: THIS IS BAD FOR GENERAL CASES IMPROVE
+                    #if 1
+                    if (!approx_equal_double(gr0, fr)) { 
 
                         const tripoint tcell = fill_tripoint (fr0, nf1, alpha, ns0, alphas0, fa, cs0);
                         double alphatmp = ghost_alpha(tcell, -0.6, 0.6);
@@ -963,11 +996,12 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
                         //fprintf(stderr, "(%g, %g) (%g, %g) gr0=%g fr=%g nf={%g, %g} af=%g ns={%g, %g} as=%g cr=%g fa=%g\n",
                         //    ghostCell.x, ghostCell.y, x, y, gr0, fr, nf.x[], nf.y[], alpha, ns.x[], ns.y[], alphas[], cr0[], fa);
                     }
+                    #endif
 #endif
                     double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
 
                     double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
-                    cellWeight /= pow(dc,15);
+                    cellWeight /= pow(dc,1);
 
                     totalWeight += cellWeight;
 
