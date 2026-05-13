@@ -563,7 +563,7 @@ Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0
   return point;
 }
 
-macro2 foreach_point_ibm (double _x = 0., double _y = 0., double _z = 0., int * rank = NULL,
+macro2 foreach_image_point (double _x = 0., double _y = 0., double _z = 0., int * rank = NULL,
             		      char flags = 0, Reduce reductions = None)
 {
   {
