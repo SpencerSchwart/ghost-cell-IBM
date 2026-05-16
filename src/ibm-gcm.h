@@ -137,7 +137,7 @@ TODO: should only check neighbors sharing a face, N, S, E, or W.
 
 bool empty_neighbor (Point point, coord * pc, coord * n, scalar cs)
 {
-    coord pc_temp, cellCenter = {x, y, z};
+    coord pc_temp = {x, y, z}, cellCenter = {x, y, z};
     double cs_temp = cs[];
     double max_d = 1e6;
     int neighbor = 0;
@@ -251,12 +251,9 @@ adequately, but this can be improved.
 TODO: Clean up and streamline function.
 */
 
-scalar pts[];
-
 coord closest_interface (Point point, vector midPoints, scalar cs, vector normals, scalar alphas,
                          fragment * frag, coord * fluidCell, PointIBM * bioff)
 {
-    pts[] = 0;
     fragment temp_frag;
     coord temp_midPoint, temp_fluidCell = {0,0}, cc = {x, y, z};
     coord n;
@@ -268,6 +265,8 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
     foreach_neighbor() {
         if (cs[] > 0 && cs[] < 1) {
             n = (coord){normals.x[], normals.y[], normals.z[]};
+
+            assert(!empty_coord(n));
 
             coord poff = {(cc.x - x)/Delta, (cc.y - y)/Delta, (cc.z - z)/Delta}, bi = {0,0,0};
             double t = (alphas[] - dot_product(poff, n)) / (dot_product(n, n));
@@ -388,6 +387,7 @@ coord interpolate_normal (Point point, coord bi, coord fc, PointIBM bioff, vecto
     coord n1 = {ns.x[bioff.i, bioff.j, bioff.k], 
                 ns.y[bioff.i, bioff.j, bioff.k],
                 ns.z[bioff.i, bioff.j, bioff.k]};
+
     return n1;
 
 #endif // dimension == 3
@@ -1590,8 +1590,6 @@ double skin_friction (vector u, face vector mu, scalar cf)
             coord tau = {0,0,0};
            
 #if dimension == 2
-            //coord tt = {-n.y, n.x}; // tangent vector
-            //coord dudt = ibm_gradient (point, u, b, tt);
             foreach_dimension()
                 tau.x -= mua* (dudn.x * (sq(n.x) + 1.) + 
                                dudn.y * -n.x * -n.y);
@@ -1601,7 +1599,7 @@ double skin_friction (vector u, face vector mu, scalar cf)
                 tau.x -= mua * (dudn.x * (sq(n.x) + 1.) + 
                                 dudn.y * -n.x * -n.y +
                                 dudn.z * -n.x * -n.z);
-            cf[] = distance3D(tau.x, tau.y, tau.z);
+            cf[] = magnitude_coord(tau);
 #endif
             cftotal += cf[];
         }

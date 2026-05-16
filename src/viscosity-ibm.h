@@ -331,7 +331,7 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
   We need $\mu$ and $\rho$ on all levels of the grid. */
  
   restriction ({mu, rho2, gc});
-  struct Viscosity p = { mu, rho, dt };
+  struct Viscosity p = { mu, rho2, dt };
   return mg_solve ((scalar *){u}, (scalar *){r},
 		   residual_viscosity, relax_viscosity, &p, nrelax, res, minlevel=1,
            tolerance = TOLERANCE_MU ? TOLERANCE_MU: TOLERANCE);
