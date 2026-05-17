@@ -17,7 +17,7 @@
 User can define GCV themselves in the source file */
 
 #ifndef GCV
-#define GCV 1e-2 // if fluid volume fraction > GCV, its a fluid cell
+#define GCV 1e-6 // if fluid volume fraction > GCV, its a fluid cell
 #endif
 
 #undef SEPS
@@ -216,6 +216,19 @@ bool is_ghost_cell (Point point, scalar cs)
 }
 
 
+bool is_deep_ghost_cell (Point point)
+{
+    bool inside = true;
+    foreach_direct_neighbor() {
+        if (cm[] > 0) {
+            inside = false;
+            break;
+        }
+    }
+    return inside;
+}
+
+
 /*
 centroid_point returns the area of the interfrace fragment in a give cell. It
 takes in the volume fraction field cs and fills midPoint with the interfacial 
@@ -368,8 +381,9 @@ coord interpolate_normal (Point point, coord bi, coord fc, PointIBM bioff, vecto
     }
 
     coord n = {0};
-    if ((!n2.x && !n2.y && !n2.z) || equals_coord(n1, n2)) {
-        //printf(stderr, "WARNING, no neighbor with normal\n");
+    if (empty_coord(n2) || equals_coord(n1, n2)) {
+        //fprintf(stderr, "WARNING, no neighbor with normal GC = (%g, %g) BI = (%g, %g) FC = (%g, %g) %d %d\n",
+        //    x, y, bi.x, bi.y, fc.x, fc.y, empty_coord(n2), equals_coord(n1, n2));
         n = n1;
     }
      else {
@@ -957,106 +971,6 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
     (void) zz; (void) k;
 
     return imageVelo;
-}
-
-/*
-The function below uses interpolation to find the velocity at the image point and
-returns it given a vector field, u, the coordinates of the image point, and an array
-containing all boundary intercept points.
-
-TODO: Streamline and clean-up code.
-TODO: Extend to handle higher-order interpolation schemes, i.e. larger matrices.
-TODO: Combine with image_velocity to have only 1 function. Or generalize functions
-      to handle any vector or scalar?
-TODO: 
-*/
-
-double image_pressure (Point point, scalar p, coord imagePoint) 
-{
-
-    int xOffset = 0, yOffset = 0, zOffset;
-    image_offsets (point, imagePoint, &xOffset, &yOffset, &zOffset);
-    
-    assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
-
-    coord imageCell = {x + Delta * xOffset, y + Delta * yOffset, z + Delta * zOffset};
-
-    int i = sign(imagePoint.x - imageCell.x);
-    int j = sign(imagePoint.y - imageCell.y);
-    int k = sign(imagePoint.z - imageCell.z);
-
-    int xx = xOffset, yy = yOffset, zz = zOffset;
-
-    double pressure[(int)pow(2, dimension)]; // 4 in 2D, 8 in 3D
-    pressure[0] = p[xx,yy,zz];
-    pressure[1] = p[xx+i,yy,zz];
-    pressure[2] = p[xx+i,yy+j,zz];
-    pressure[3] = p[xx,yy+j,zz];
-#if dimension == 3
-    pressure[4] = p[xx,yy,zz+k];
-    pressure[5] = p[xx+i,yy,zz+k];
-    pressure[6] = p[xx+i,yy+j,zz+k];
-    pressure[7] = p[xx,yy+j,zz+k];
-#endif
-
-    coord p0 = {imageCell.x, imageCell.y, imageCell.z};
-    coord p1 = {imageCell.x + i*Delta, imageCell.y, imageCell.z};
-    coord p2 = {imageCell.x + i*Delta, imageCell.y + j*Delta, imageCell.z};
-    coord p3 = {imageCell.x, imageCell.y + j*Delta, imageCell.z};
-#if dimension == 3
-    coord p4 = {imageCell.x, imageCell.y, imageCell.z + k*Delta};
-    coord p5 = {imageCell.x + i*Delta, imageCell.y, imageCell.z + k*Delta};
-    coord p6 = {imageCell.x + i*Delta, imageCell.y + j*Delta, imageCell.z + k*Delta};
-    coord p7 = {imageCell.x, imageCell.y + j*Delta, imageCell.z + k*Delta};
-#endif
-
-#if dimension == 2
-    double vanderPressure[4][5] = {
-        {p0.x*p0.y, p0.x, p0.y, 1, pressure[0]},
-        {p1.x*p1.y, p1.x, p1.y, 1, pressure[1]},
-        {p2.x*p2.y, p2.x, p2.y, 1, pressure[2]},
-        {p3.x*p3.y, p3.x, p3.y, 1, pressure[3]},
-    };
-
-    int m = 4, n = 5;
-    double coeff[4];
-#else
-    double vanderPressure[8][9] = {
-        {p0.x*p0.y*p0.z, p0.x*p0.y, p0.x*p0.z, p0.y*p0.z, p0.x, p0.y, p0.z, 1, pressure[0]},
-        {p1.x*p1.y*p1.z, p1.x*p1.y, p1.x*p1.z, p1.y*p1.z, p1.x, p1.y, p1.z, 1, pressure[1]},
-        {p2.x*p2.y*p2.z, p2.x*p2.y, p2.x*p2.z, p2.y*p2.z, p2.x, p2.y, p2.z, 1, pressure[2]},
-        {p3.x*p3.y*p3.z, p3.x*p3.y, p3.x*p3.z, p3.y*p3.z, p3.x, p3.y, p3.z, 1, pressure[3]},
-        {p4.x*p4.y*p4.z, p4.x*p4.y, p4.x*p4.z, p4.y*p4.z, p4.x, p4.y, p4.z, 1, pressure[4]},
-        {p5.x*p5.y*p5.z, p5.x*p5.y, p5.x*p5.z, p5.y*p5.z, p5.x, p5.y, p5.z, 1, pressure[5]},
-        {p6.x*p6.y*p6.z, p6.x*p6.y, p6.x*p6.z, p6.y*p6.z, p6.x, p6.y, p6.z, 1, pressure[6]},
-        {p7.x*p7.y*p7.z, p7.x*p7.y, p7.x*p7.z, p7.y*p7.z, p7.x, p7.y, p7.z, 1, pressure[7]},
-    };
-
-    int m = 8, n = 9;
-    double coeff[8];
-#endif
-
-    gauss_elim (m, n, vanderPressure, coeff);
-
-#if dimension == 2
-    double temp_pressure = coeff[0] * imagePoint.x*imagePoint.y +
-                           coeff[1] * imagePoint.x +
-                           coeff[2] * imagePoint.y +
-                           coeff[3];
-#else
-    double temp_pressure = coeff[0] * imagePoint.x * imagePoint.y * imagePoint.z +
-                           coeff[1] * imagePoint.x * imagePoint.y +
-                           coeff[2] * imagePoint.x * imagePoint.z +
-                           coeff[3] * imagePoint.y * imagePoint.z +
-                           coeff[4] * imagePoint.x +
-                           coeff[5] * imagePoint.y +
-                           coeff[6] * imagePoint.z +
-                           coeff[7];
-#endif
-
-    (void) zz; (void) k;
-
-    return temp_pressure;
 }
 
 #undef rows

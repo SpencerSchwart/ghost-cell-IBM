@@ -45,7 +45,7 @@ vector midPoints[];
 void fill_interface_data() {
     foreach() {
         coord midPoint, n;
-        if (on_interface(cs)) {
+        if (cs[] > 0 && cs[] < 1) {
             centroid_point (point, cs, &midPoint, &n, &ibalphas[]);
             foreach_dimension() {
                 midPoints.x[] = midPoint.x;
@@ -98,8 +98,6 @@ void update_gc_velocity()
     foreach()
       pid[] = pid();
 
-    boundary({pid});
-
     u.x.mp = bis; u.y.mp = bis; 
 #if dimension == 3
     u.z.mp = bis;
@@ -122,6 +120,7 @@ void update_gc_velocity()
 
     /**
     Allocate arrays for storing the, IP, IP velocity, and normals for each GC */
+
     long nl  = gcid->len/sizeof(int);
 
     coord ips[nl];

@@ -479,6 +479,7 @@ norm2 normf2 (scalar f)
   return n;
 }
 
+#if dimension == 2
 macro foreach_direct_neighbor (int self = 0, Point point = point, break = (_k = _l = _nn + 1)) {
   {
     const int _nn = 1;
@@ -499,8 +500,11 @@ macro foreach_direct_neighbor (int self = 0, Point point = point, break = (_k = 
     point.i = _ig; point.j = _jg;
   }
 }
+#else
 
+#endif
 
+#if dimension == 2
 macro foreach_near_neighbor (int self = 0, Point point = point, break = (_k = _l = _nn + 1)) {
   {
     const int _nn = 1;
@@ -521,6 +525,9 @@ macro foreach_near_neighbor (int self = 0, Point point = point, break = (_k = _l
     point.i = _ig; point.j = _jg;
   }
 }
+#else
+
+#endif
 
 Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0)
 {
@@ -551,7 +558,7 @@ Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0
             *rank = cell.pid;
     	return point;
       }
-      else if (allocated(0) && is_leaf(cell) && !is_local(cell)) {
+      else if (allocated(0) && !is_local(cell) && is_leaf(cell)) {
         if (rank)
             *rank = cell.pid;
         point.level = -1;

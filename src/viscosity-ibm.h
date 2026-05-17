@@ -245,8 +245,9 @@ static double residual_viscosity (scalar * a, scalar * b, scalar * resl,
   
   foreach_dimension() {
     face vector taux[];
-    foreach_face(x)
+    foreach_face(x) {
       taux.x[] = 2.*mu.x[]*(u.x[] - u.x[-1])/Delta;
+    }
     #if dimension > 1
       foreach_face(y)
 	taux.y[] = mu.y[]*(u.x[] - u.x[0,-1] + 
@@ -259,13 +260,32 @@ static double residual_viscosity (scalar * a, scalar * b, scalar * resl,
 			   (u.z[1,0,-1] + u.z[1,0,0])/4. -
 			   (u.z[-1,0,-1] + u.z[-1,0,0])/4.)/Delta;
     #endif
+
+    /**
+    Very small cells (cs < 0.1) typically have a ghost cell on its diagonal
+    with an IP/BI much further away than the surrounding ones. This causes issues whenever
+    we are approximating the normal based on the PLIC interface. Therefore, we want to avoid
+    using these diagonal or "deep" ghost cells in the shear stress calculation. We do this by
+    using the constant viscosity formulation
+    $$
+    \nabla \cdot [\mu ( \nabla \mathbf{u} + \nabla^T \mathbf{u})] =
+    \nabla \cdot (\mu \nabla^T \mathbf{u}) = \nabla^2 (\mu \mathbf{u})
+    $$
+    which yields the laplacian operator acting on u, avoiding cells along the diagonal of the stencil.*/
+
+    scalar s = u.x;
+    face vector g[];
+
+     foreach_face() 
+         g.x[] = mu.x[] * face_gradient_x (s, 0);
+
     foreach (reduction(max:maxres)) {
       double d = 0.;
-      foreach_dimension()
-        d += taux.x[1] - taux.x[];
-      res.x[] = gc[]? r.x[] - lambda.x*u.x[] + dt/rho[]*d/Delta: 0;
+        foreach_dimension()
+          d += cs[] > 0.1? taux.x[1] - taux.x[]: g.x[1] - g.x[];
+        res.x[] = gc[]? r.x[] - lambda.x*u.x[] + dt/rho[]*d/Delta: 0;
       if (fabs (res.x[]) > maxres)
-	maxres = fabs (res.x[]);
+        maxres = fabs (res.x[]);
     }
   }
 #else
