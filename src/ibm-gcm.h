@@ -181,7 +181,8 @@ TODO: change algorithm to only check neighbors, not the cell itself (cs[0,0])
 
 bool fluid_neighbor (Point point, scalar cs)
 {
-    foreach_neighbor(1)
+    //foreach_neighbor(1)
+    foreach_direct_neighbor()
         if (cs[] > GCV)
             return true;
     return false;
@@ -216,6 +217,7 @@ bool is_ghost_cell (Point point, scalar cs)
 }
 
 
+#if dimension == 2
 bool is_deep_ghost_cell (Point point)
 {
     bool inside = true;
@@ -227,7 +229,7 @@ bool is_deep_ghost_cell (Point point)
     }
     return inside;
 }
-
+#endif
 
 /*
 centroid_point returns the area of the interfrace fragment in a give cell. It
@@ -265,7 +267,7 @@ TODO: Clean up and streamline function.
 */
 
 coord closest_interface (Point point, vector midPoints, scalar cs, vector normals, scalar alphas,
-                         fragment * frag, coord * fluidCell, PointIBM * bioff)
+                         fragment * frag, coord * fluidCell, PointIBM * bioff, coord nu)
 {
     fragment temp_frag;
     coord temp_midPoint, temp_fluidCell = {0,0}, cc = {x, y, z};
@@ -277,12 +279,16 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
     double offmin = 1e6;
     foreach_neighbor() {
         if (cs[] > 0 && cs[] < 1) {
-            n = (coord){normals.x[], normals.y[], normals.z[]};
+            n = !empty_coord(nu)? nu: (coord){normals.x[], normals.y[], normals.z[]};
+
+            coord nplic = (coord){normals.x[], normals.y[], normals.z[]};
+
+            double alpha = alphas[];
 
             assert(!empty_coord(n));
 
             coord poff = {(cc.x - x)/Delta, (cc.y - y)/Delta, (cc.z - z)/Delta}, bi = {0,0,0};
-            double t = (alphas[] - dot_product(poff, n)) / (dot_product(n, n));
+            double t = (alpha - dot_product(poff, nplic)) / (dot_product(n, nplic));
             foreach_dimension()
                 bi.x = poff.x + t*n.x;
 
@@ -302,7 +308,7 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
                 temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
                 temp_fluidCell = (coord){x, y, z};
 
-                fill_fragment (cs[], n, alphas[], &temp_frag);
+                fill_fragment (cs[], n, alpha, &temp_frag);
                 ptemp = (PointIBM){(int)((x - cc.x)/Delta), (int)((y - cc.y)/Delta), (int)((z - cc.z)/Delta)};
             }
         }
@@ -313,8 +319,10 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
         double dy = midPoints.y[] - cc.y;
         double dz = midPoints.z[] - cc.z;
 
-        n = (coord){normals.x[], normals.y[], normals.z[]};
-        
+        n = !empty_coord(nu)? nu: (coord){normals.x[], normals.y[], normals.z[]};
+       
+        double alpha = alphas[];
+
         if ((midPoints.x[] || midPoints.y[] || midPoints.z[]) && 
              distance3D(dx, dy, dz) < min_distance) {
 
@@ -322,7 +330,7 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
 
             temp_fluidCell = (coord){x, y, z};
 
-            fill_fragment (cs[], n, alphas[], &temp_frag);
+            fill_fragment (cs[], n, alpha, &temp_frag);
 
             min_distance = distance3D(dx, dy, dz);
             ptemp = (PointIBM){(int)((x - cc.x)/Delta), (int)((y - cc.y)/Delta), (int)((z - cc.z)/Delta)};
@@ -338,13 +346,13 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
 }
 
 
-coord interpolate_normal (Point point, coord bi, coord fc, PointIBM bioff, vector mps, vector ns)
+coord interpolate_normal (Point point, coord bi, PointIBM bioff, vector mps, vector ns)
 {
+#if 1
 #if dimension == 2
     coord n1 = {ns.x[bioff.i, bioff.j, bioff.k], 
                 ns.y[bioff.i, bioff.j, bioff.k],
                 ns.z[bioff.i, bioff.j, bioff.k]};
-    
     coord mp1 = {mps.x[bioff.i, bioff.j, bioff.k], 
                  mps.y[bioff.i, bioff.j, bioff.k],
                  mps.z[bioff.i, bioff.j, bioff.k]};
@@ -360,12 +368,12 @@ coord interpolate_normal (Point point, coord bi, coord fc, PointIBM bioff, vecto
                  mps.z[bioff.i + ioff.i, bioff.j, bioff.k]};
 
     coord n2t = {ns.x[bioff.i, bioff.j + ioff.j, bioff.k], 
-                ns.y[bioff.i, bioff.j + ioff.j, bioff.k],
-                ns.z[bioff.i, bioff.j + ioff.j, bioff.k]};
+                 ns.y[bioff.i, bioff.j + ioff.j, bioff.k],
+                 ns.z[bioff.i, bioff.j + ioff.j, bioff.k]};
     
     coord mp2t ={mps.x[bioff.i, bioff.j + ioff.j, bioff.k], 
-                mps.y[bioff.i, bioff.j + ioff.j, bioff.k],
-                mps.z[bioff.i, bioff.j + ioff.j, bioff.k]};
+                 mps.y[bioff.i, bioff.j + ioff.j, bioff.k],
+                 mps.z[bioff.i, bioff.j + ioff.j, bioff.k]};
 
     if (!empty_coord(n2) && !empty_coord(n2t)) {
         double d1 = distance_coord (mp2, bi);
@@ -380,6 +388,9 @@ coord interpolate_normal (Point point, coord bi, coord fc, PointIBM bioff, vecto
         n2 = n2t;
     }
 
+    //fprintf(stderr, "(%g, %g) bi=(%g, %g) fc=(%g, %g) mp1=(%g, %g) mp2=(%g, %g) n1=(%g, %g) n2=(%g, %g)\n",
+    //    x, y, bi.x, bi.y, fc.x, fc.y, mp1.x, mp1.y, mp2.x, mp2.y, n1.x, n1.y, n2.x, n2.y);
+
     coord n = {0};
     if (empty_coord(n2) || equals_coord(n1, n2)) {
         //fprintf(stderr, "WARNING, no neighbor with normal GC = (%g, %g) BI = (%g, %g) FC = (%g, %g) %d %d\n",
@@ -387,13 +398,51 @@ coord interpolate_normal (Point point, coord bi, coord fc, PointIBM bioff, vecto
         n = n1;
     }
      else {
+     #if 1
+
+        normalize(&n1);
+        normalize(&n2);
+
+        coord t1 = {-n1.y, n1.x};
+
+        double s1 = dot_product(mp1, t1);
+        double s2 = dot_product(mp2, t1);
+        double sb = dot_product(bi, t1);
+
+        bool check = (sb > s1 && sb < s2) || (sb > s2 && sb < s1) || (sb == s1) || (sb == s2);
+        if (!check)
+            fprintf(stderr, "(%g, %g) bi=(%g, %g) mp1=(%g, %g) mp2=(%g, %g) t1=(%g, %g) s1=%g sb=%g s2=%g\n",
+                x, y, bi.x, bi.y, mp1.x, mp1.y, mp1.x, mp1.y, t1.x, t1.y, s1, sb, s2);
+        assert(check);
+
+        double m = (sb - s1) / (s2 - s1 + SEPS);
+
+        foreach_dimension()
+            n.x = n1.x + m*(n2.x - n1.x);
+
+         #if 0
          foreach_dimension() {
              double m = (n1.x - n2.x) / (mp1.x - mp2.x + SEPS);
              n.x = m*(bi.x - mp1.x) + n1.x;
          }
+         #endif
+     #else
+
+        double angle1 = fabs(atan((mp1.y - bi.y)/(mp1.x - bi.x + SEPS)));
+        double angle2 = fabs(atan((mp2.y - bi.y)/(mp2.x - bi.x + SEPS)));
+
+        foreach_dimension() {
+            n.x = (n1.x/(angle1+SEPS) + n2.x/(angle2+SEPS))*(angle1 + angle2);
+        }
+
+        normalize_sum(&n); 
+       //fprintf(stderr, "| angle1=%g angle2=%g n=(%g, %g)\n", angle1, angle2, n.x, n.y);
+        
+     #endif
      }
 
      normalize_sum(&n);
+
      return n;
 
 #else // dimension == 3
@@ -405,6 +454,153 @@ coord interpolate_normal (Point point, coord bi, coord fc, PointIBM bioff, vecto
     return n1;
 
 #endif // dimension == 3
+#else
+    coord n0 = {ns.x[bioff.i, bioff.j, bioff.k], 
+                ns.y[bioff.i, bioff.j, bioff.k],
+                ns.z[bioff.i, bioff.j, bioff.k]};
+
+    coord mp0 = {mps.x[bioff.i, bioff.j, bioff.k], 
+                 mps.y[bioff.i, bioff.j, bioff.k],
+                 mps.z[bioff.i, bioff.j, bioff.k]};
+
+    normalize(&n0);
+
+    double wt = 0;
+    double dtheta = 0;
+    foreach_neighbor() {
+        if (cs[] > 0 && cs[] < 1) {
+            coord ni = (coord){ns.x[], ns.y[], ns.z[]};
+            normalize(&ni);
+
+            if (dot_product(n0, ni) < 0.)
+              foreach_dimension()
+                ni.x *= -1.;
+
+            coord mpi = (coord){mps.x[], mps.y[], mps.z[]};
+                double wi = 1./(sq(distance_coord(mpi, bi)) + sq(Delta));
+
+                if (dot_product(n0, ni) < 0.)
+                  foreach_dimension()
+                    ni.x *= -1.;
+
+                dtheta += wi*atan2(n0.x*ni.y - n0.y*ni.x, n0.x*ni.x + n0.y*ni.y);
+
+                wt += wi;
+        }
+    }
+
+    dtheta /= wt + SEPS;
+
+    coord n;
+    n.x = n0.x*cos(dtheta) - n0.y*sin(dtheta);
+    n.y = n0.x*sin(dtheta) + n0.y*cos(dtheta);
+    
+    normalize_sum(&n);
+    return n;
+
+#endif
+}
+
+coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
+                              vector mps, vector ns)
+{
+
+    bool quad = false;
+    bool weighted = true;
+
+    coord n_anchor = {ns.x[bioff.i, bioff.j, bioff.k],
+                      ns.y[bioff.i, bioff.j, bioff.k], 0};
+    normalize(&n_anchor);
+    coord t = {-n_anchor.y, n_anchor.x, 0};
+    //double sb = dot_product(bi, t);
+    double sb = 0;
+
+    // Accumulators for LSQ fit n.x(s) = a_x + b_x*s and n.y(s) = a_y + b_y*s
+    double Ss = 0, Sss = 0;
+    double Snx = 0, Ssnx = 0, Sny = 0, Ssny = 0;
+    double Kwi = 0;
+    int K = 0;
+
+
+    coord gc = {x, y, z};
+
+    double Ssss = 0, Ss4 = 0, Sssnx = 0, Sssny = 0;
+
+    foreach_neighbor() {
+        if (cs[] > 0 && cs[] < 1 - 1e-4) {
+            coord mp_i = {mps.x[], mps.y[], 0};
+            coord n_i  = {ns.x[],  ns.y[],  0};
+            normalize(&n_i);
+            if (dot_product(n_i, n_anchor) < 0)
+                foreach_dimension() n_i.x *= -1;
+
+            double si = dot_product(subtract_coord(mp_i, bi), t)/Delta;
+
+            double wi = weighted? 1./(sq(distance_coord(mp_i, gc)/Delta) + 4): 1;
+
+            Ss  += si*wi;       Sss  += si*si*wi;
+            Snx += n_i.x*wi;    Ssnx += si*n_i.x*wi;
+            Sny += n_i.y*wi;    Ssny += si*n_i.y*wi;
+
+            if (quad) {
+                Ssss  += si*si*si;
+                Ss4   += si*si*si*si;
+                Sssnx += si*si*n_i.x;
+                Sssny += si*si*n_i.y;
+            }
+
+            Kwi += wi;
+            K++;
+        }
+    }
+
+    coord n;
+    
+    if (K < 2) {
+        fprintf(stderr, "WARNING: not enough cells for LSQ normal interpolation, %d < 2\n", K);
+        n = n_anchor;
+    }
+    else if (quad && K >= 3) {
+
+        coord A1 = {Kwi, Ss, Sss};
+        coord A2 = {Ss, Sss, Ssss};
+        coord A3 = {Sss, Ssss, Ss4};
+        double det = determinant_cols(A1, A2, A3);
+
+        if (fabs(det) < 1e-10) {
+            fprintf(stderr, "WARNING quadratic |det| = |%g| < %g\n", det, 1e-10);
+            n = n_anchor;
+        } 
+        else {
+            coord Bx = {Snx, Ssnx, Sssnx};
+            double ax = determinant_cols(Bx, A2, A3) / det;
+
+            coord By = {Sny, Ssny, Sssny};
+            double ay = determinant_cols(By, A2, A3) / det;
+
+            n.x = ax;
+            n.y = ay;
+            n.z = 0;
+        }
+    }
+    else {
+        double det = Kwi*Sss - Ss*Ss;
+
+        // Tangent projection nearly collapses (rare); fall back to anchor
+        if (fabs(det) < 1e-10) {
+            fprintf(stderr, "WARNING linear |det| = |%g| < 1e-10\n", det);
+            n = n_anchor;
+        } 
+        else {
+            double ax = (Sss*Snx - Ss*Ssnx) / det;
+            double ay = (Sss*Sny - Ss*Ssny) / det;
+            n.x = ax;
+            n.y = ay;
+            n.z = 0;
+       }
+    }
+    normalize_sum(&n);
+    return n;
 }
 
 /*
@@ -412,13 +608,12 @@ The function below returns the boundary intercept coordinate given a fragment,
 fluid cell coordinates, and volume fraction field (cs).
 */
 
-coord boundary_int (Point point, fragment frag, coord fc, scalar cs)
+coord boundary_int (Point point, coord ngc, coord nplic, double alpha, coord fc, scalar cs)
 {
-    coord n = frag.n;
     coord poff = {(x - fc.x)/Delta, (y - fc.y)/Delta, (z - fc.z)/Delta}, bi = {0,0,0};
-    double t = (frag.alpha - dot_product(poff, n)) / (dot_product(n, n) + SEPS);
+    double t = (alpha - dot_product(poff, nplic)) / (dot_product(ngc, nplic) + SEPS);
     foreach_dimension() {
-        bi.x = poff.x + t*n.x; // calculate BI
+        bi.x = poff.x + t*ngc.x; // calculate BI
         bi.x = fc.x + bi.x*Delta;
     }
     return bi;
@@ -714,6 +909,7 @@ void fluid_only (Point point, const int n, double rmatrix[n],
     //    and recalculate the node's value considering the immersed boundary condition.
 
 #if 1
+    //if (cs[xx,yy,zz] <= 0.5 && cs[xx,yy,zz] > 0.) { // messes up convergence with new IBM
     if (cs[xx,yy,zz] <= GCV && cs[xx,yy,zz] > 0.) {
         *pcell = (coord){midPoints.x[xx,yy,zz], midPoints.y[xx,yy,zz], midPoints.z[xx,yy,zz]};
 
@@ -734,6 +930,7 @@ void fluid_only (Point point, const int n, double rmatrix[n],
         bool dirichlet = bctype[0], navierslip = bctype[1];
 
         if (dirichlet && !navierslip) {
+            //fprintf(stderr, "|| (%g, %g) (%d, %d) %g\n", x, y, xx, yy, bc);
             val = bc;
             type = 0;
         }
@@ -838,7 +1035,7 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
     int xOffset = 0, yOffset = 0, zOffset = 0;
     image_offsets (point, imagePoint, &xOffset, &yOffset, &zOffset);
     
-    assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
+    //assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
 
     coord imageCell = {x + Delta*xOffset, y + Delta*yOffset, z + Delta*zOffset};
     
@@ -847,6 +1044,9 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
     int k = sign(imagePoint.z - imageCell.z);
 
     int xx = xOffset, yy = yOffset, zz = zOffset;
+
+    //fprintf(stderr, "(%g, %g) IP = (%g, %g) n = (%g, %g) %d %d %d %d\n",
+    //x, y, imagePoint.x, imagePoint.y, n.x, n.y, i, j, xx, yy);
 
     // 2. Grab velocity from cells used for interpolation 
     //TODO: condense this and maybe move to separate function
@@ -899,6 +1099,16 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
                             (PointIBM){xx,yy,zz}, (PointIBM){i,j,k}, 
                             (PointIBM){boffx,boffy,boffz}, imagePoint, 
                              midPoints, normals, alphas);
+#if 0
+
+    for (int i = 0; i < rows; ++i) {
+      fprintf(stderr, "|");
+      for (int j = 0; j < cols; ++j) {
+        fprintf(stderr, " %g", veloMatrix_x[i][j]);
+      }
+      fprintf(stderr, "\n");
+    }
+#endif
 
     double veloMatrix_y[rows][cols];
     get_interpolation_matrix(point, rows, cols, veloMatrix_y, 't', velocity,
@@ -1844,6 +2054,7 @@ event metric (i = 0)
 
     // THIS DOSEN'T WORK WITH AMR, EVEN IN SERIAL
     //gc.restriction = restriction_cell_metric;
+    //gc.restriction = restriction_ibm_gc;
 
     cs0.refine = cs.refine = ibm_fraction_refine;
     cs0.prolongation = cs.prolongation = fraction_refine;

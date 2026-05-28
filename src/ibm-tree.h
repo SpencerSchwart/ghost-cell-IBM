@@ -210,6 +210,22 @@ attribute {
 }
 
 static inline void restriction_ibm_linear (Point point, scalar s)
+{
+  double sum = 0;
+  int count = 0;
+  foreach_child() {
+    sum += s[];
+    count += s[]? 1: 0;
+  }
+  s[] = sum/(count + SEPS);
+}
+
+static inline void restriction_ibm_gc (Point point, scalar s)
+{
+    s[] = cs[] > GCV? 1: 0;
+}
+
+static inline void restriction_ibm_linear2 (Point point, scalar s)
 {  
   // 0 children
   if (!cs[]) {

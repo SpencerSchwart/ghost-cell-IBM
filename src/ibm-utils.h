@@ -40,6 +40,24 @@ double determinant (coord a, coord b)
     return distance3D(c.x,c.y,c.z); // area
 }
 
+/**
+Calculate the determinant of a 3x3 matrix, of which the row vectors a1, 
+a2, and a3 are given as input. */
+double determinant_rows (coord a1, coord a2, coord a3)
+{
+    return a1.x*a2.y*a3.z + a1.y*a2.z*a3.x + a1.z*a2.x*a3.y - 
+           a1.x*a2.z*a3.y - a1.y*a2.x*a3.z - a1.z*a2.y*a3.x;
+}
+
+/**
+Calculate the determinant of a 3x3 matrix, of which the columns vectors a1, 
+a2, and a3 are given as input. */
+static inline double determinant_cols (coord a1, coord a2, coord a3)
+{
+    return a1.x*a2.y*a3.z + a2.x*a3.y*a1.z + a3.x*a1.y*a2.z - 
+           a1.x*a3.y*a2.z - a2.x*a1.y*a3.z - a3.x*a2.y*a1.z;
+}
+
 
 int approx_equal (coord p1, coord p2, double TOL = VTOL)
 {
@@ -529,6 +547,31 @@ macro foreach_near_neighbor (int self = 0, Point point = point, break = (_k = _l
 
 #endif
 
+#if dimension == 2
+macro foreach_diagonal_neighbor (int self = 0, Point point = point, break = (_k = _l = _nn + 1)) {
+  {
+    const int _nn = 1;
+    const int _ig = point.i, _jg = point.j;
+    int ig = 0, jg = 0;
+    for (int _k = - _nn; _k <= _nn; _k++) {
+      point.i = _ig + _k;
+      for (int _l = - _nn; _l <= _nn; _l++) {
+	    point.j = _jg + _l;
+        bool allow_center = !self? !(_l == 0 && _k == 0)  && abs(_l) == abs(_k): (abs(_l) == abs(_k)) || (_l == 0 && _k == 0);
+        if (allow_center) 
+        {
+	      POINT_VARIABLES();
+	      {...}
+        }
+      }
+    }
+    point.i = _ig; point.j = _jg;
+  }
+}
+#else
+
+#endif
+
 Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0)
 {
   if (rank)
@@ -584,3 +627,4 @@ macro2 foreach_image_point (double _x = 0., double _y = 0., double _z = 0., int 
       {...}
   }
 }
+
