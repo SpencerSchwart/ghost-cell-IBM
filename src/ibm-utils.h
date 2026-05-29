@@ -497,19 +497,23 @@ norm2 normf2 (scalar f)
   return n;
 }
 
+/**
+The foreach_direct_neighbor macro iterates over the cells that share a face
+with the given cell in the stencil. */
 #if dimension == 2
-macro foreach_direct_neighbor (int self = 0, Point point = point, break = (_k = _l = _nn + 1)) {
+macro foreach_direct_neighbor (int self = 0, Point point = point, break = (_k = _l = 2)) {
   {
-    const int _nn = 1;
     const int _ig = point.i, _jg = point.j;
     int ig = 0, jg = 0;
-    for (int _k = - _nn; _k <= _nn; _k++) {
+
+    for (int _k = -1; _k <= 1; _k++) {
       point.i = _ig + _k;
-      for (int _l = - _nn; _l <= _nn; _l++) {
+      for (int _l = -1; _l <= 1; _l++) {
 	    point.j = _jg + _l;
-        bool allow_center = !self? !(_l == 0 && _k == 0)  && abs(_l) != abs(_k): (abs(_l) != abs(_k)) || (_l == 0 && _k == 0);
-        if (allow_center) 
-        {
+
+        bool allow = !self? !(_l == 0 && _k == 0) && (abs(_l) != abs(_k)):
+                             (_l == 0 && _k == 0) || (abs(_l) != abs(_k));
+        if (allow) {
 	      POINT_VARIABLES();
 	      {...}
         }
@@ -519,7 +523,38 @@ macro foreach_direct_neighbor (int self = 0, Point point = point, break = (_k = 
   }
 }
 #else
+macro foreach_direct_neighbor (int self = 0, Point point = point, break = (_l = _m = _n = 2)) {
+  {
+    const int _i = point.i, _j = point.j, _k = point.k;
+    int ig = 0, jg = 0, kg = 0;
 
+    for (int _l = -1; _l <= 1; _l++) {
+      point.i = _i + _l;
+      for (int _m = -1; _m <= 1; _m++) {
+        point.j = _j + _m;
+        for (int _n = -1; _n <= 1; _n++) {
+          point.k = _k + _n;
+
+          bool check = false;
+          if (abs(_l) > 0)
+            check = _m == 0 && _n == 0;
+          else if (abs(_m) > 0)
+            check = _l == 0 && _n == 0;
+          else if (abs(_n) > 0)
+            check = _l == 0 && _m == 0;
+            
+          bool allow = !self? !(_l == 0 && _m == 0 && _n == 0) && check:
+                               (_l == 0 && _m == 0 && _n == 0) || check;
+          if (allow) {
+            POINT_VARIABLES();
+	        {...}
+          }
+        }
+      }
+    }
+    point.i = _i; point.j = _j; point.k = _k;
+  }
+}
 #endif
 
 #if dimension == 2
@@ -616,8 +651,16 @@ Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0
   return point;
 }
 
+#if 0
+macro2 foreach_image_point_stencil (double xp, double yp, double zp, char flags, Reduce reductions)
+{
+  foreach_stencil (flags, reductions)
+    {...}
+}
+#endif
+
 macro2 foreach_image_point (double _x = 0., double _y = 0., double _z = 0., int * rank = NULL,
-            		      char flags = 0, Reduce reductions = None)
+            		        char flags = 0, Reduce reductions = None)
 {
   {
     int ig = 0, jg = 0, kg = 0; NOT_UNUSED(ig); NOT_UNUSED(jg); NOT_UNUSED(kg);

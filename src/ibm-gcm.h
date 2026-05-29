@@ -17,7 +17,7 @@
 User can define GCV themselves in the source file */
 
 #ifndef GCV
-#define GCV 1e-6 // if fluid volume fraction > GCV, its a fluid cell
+#define GCV 1e-4 // if fluid volume fraction > GCV, its a fluid cell
 #endif
 
 #undef SEPS
@@ -501,6 +501,19 @@ coord interpolate_normal (Point point, coord bi, PointIBM bioff, vector mps, vec
 #endif
 }
 
+/**
+This function calculates the normal at a given pount (bi) using weighted
+(or non-weighted) Least Squares (LSQ). 
+
+Note, calculating s and r by doing $mp - bi$ makes s = r = 0 at the boundary 
+intercept, which means we only need to solve for the a coefficient given the basis
+
+n(s,r) = a + b*s + c*r
+
+where s and r are the cartesian coordinates projected onto the tangent vectors 
+t1 and t2, resp.
+TODO: weight n by surface area of fragment. Larger surface area = less noise in n. */
+
 coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
                               vector mps, vector ns)
 {
@@ -509,11 +522,10 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
     bool weighted = true;
 
     coord n_anchor = {ns.x[bioff.i, bioff.j, bioff.k],
-                      ns.y[bioff.i, bioff.j, bioff.k], 0};
-    normalize(&n_anchor);
-    coord t = {-n_anchor.y, n_anchor.x, 0};
-    //double sb = dot_product(bi, t);
-    double sb = 0;
+                      ns.y[bioff.i, bioff.j, bioff.k],
+                      ns.z[bioff.i, bioff.j, bioff.k]};
+    coord t1, t2;
+    normal_and_tangents(&n_anchor, &t1, &t2);
 
     // Accumulators for LSQ fit n.x(s) = a_x + b_x*s and n.y(s) = a_y + b_y*s
     double Ss = 0, Sss = 0;
@@ -521,26 +533,43 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
     double Kwi = 0;
     int K = 0;
 
+#if dimension == 3
+    double Sr = 0, Ssr = 0, Srr = 0;
+    double Snz = 0, Ssnz = 0, Srnz = 0;
+    double Srnx = 0, Srny = 0;
+#endif
 
     coord gc = {x, y, z};
 
     double Ssss = 0, Ss4 = 0, Sssnx = 0, Sssny = 0;
 
     foreach_neighbor() {
+
         if (cs[] > 0 && cs[] < 1 - 1e-4) {
-            coord mp_i = {mps.x[], mps.y[], 0};
-            coord n_i  = {ns.x[],  ns.y[],  0};
+
+            coord mp_i = {mps.x[], mps.y[], mps.z[]};
+            coord n_i  = {ns.x[],  ns.y[],  ns.z[]};
             normalize(&n_i);
+
             if (dot_product(n_i, n_anchor) < 0)
                 foreach_dimension() n_i.x *= -1;
 
-            double si = dot_product(subtract_coord(mp_i, bi), t)/Delta;
+            double si = dot_product(subtract_coord(mp_i, bi), t1)/Delta;
 
-            double wi = weighted? 1./(sq(distance_coord(mp_i, gc)/Delta) + 4): 1;
+            double wi = weighted? 1./(sq(distance_coord(mp_i, gc)/Delta) + 4): 1; // TODO: sq(dimension) instead of + 4?
 
             Ss  += si*wi;       Sss  += si*si*wi;
             Snx += n_i.x*wi;    Ssnx += si*n_i.x*wi;
             Sny += n_i.y*wi;    Ssny += si*n_i.y*wi;
+
+        #if dimension == 3
+            double ri = dot_product(subtract_coord(mp_i, bi), t2)/Delta;
+
+            Sr   += ri*wi;        Ssr  += si*ri*wi;
+            Srr  += ri*ri*wi;     Snz  += n_i.z*wi;
+            Ssnz += si*n_i.z*wi;  Srnz += ri*n_i.z*wi;
+            Srnx += ri*n_i.x*wi;  Srny += ri*n_i.y*wi;
+        #endif
 
             if (quad) {
                 Ssss  += si*si*si;
@@ -577,13 +606,11 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
 
             coord By = {Sny, Ssny, Sssny};
             double ay = determinant_cols(By, A2, A3) / det;
-
-            n.x = ax;
-            n.y = ay;
-            n.z = 0;
+            n = (coord){ax, ay, 0};
         }
     }
     else {
+#if dimension == 2
         double det = Kwi*Sss - Ss*Ss;
 
         // Tangent projection nearly collapses (rare); fall back to anchor
@@ -594,11 +621,33 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
         else {
             double ax = (Sss*Snx - Ss*Ssnx) / det;
             double ay = (Sss*Sny - Ss*Ssny) / det;
-            n.x = ax;
-            n.y = ay;
-            n.z = 0;
+            n = (coord) {ax, ay, 0};
        }
+#else // dimension == 3
+        coord ATA1 = {Kwi, Ss,  Sr};
+        coord ATA2 = {Ss,  Sss, Ssr};
+        coord ATA3 = {Sr,  Ssr, Srr};
+        double det = determinant_cols(ATA1, ATA2, ATA3);
+
+        if (fabs(det) < 1e-10) {
+            fprintf(stderr, "WARNING quadratic |det| = |%g| < %g\n", det, 1e-10);
+            n = n_anchor;
+        } 
+        else {
+            coord Bx = {Snx, Ssnx, Srnx};
+            double ax = determinant_cols(Bx, ATA2, ATA3) / det;
+
+            coord By = {Sny, Ssny, Srny};
+            double ay = determinant_cols(By, ATA2, ATA3) / det;
+
+            coord Bz = {Snz, Ssnz, Srnz};
+            double az = determinant_cols(Bz, ATA2, ATA3) / det;
+
+            n = (coord){ax, ay, az};
+        }
+#endif // dimension == 3
     }
+
     normalize_sum(&n);
     return n;
 }
@@ -1045,9 +1094,6 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
 
     int xx = xOffset, yy = yOffset, zz = zOffset;
 
-    //fprintf(stderr, "(%g, %g) IP = (%g, %g) n = (%g, %g) %d %d %d %d\n",
-    //x, y, imagePoint.x, imagePoint.y, n.x, n.y, i, j, xx, yy);
-
     // 2. Grab velocity from cells used for interpolation 
     //TODO: condense this and maybe move to separate function
     coord velocity[rows];
@@ -1099,16 +1145,6 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
                             (PointIBM){xx,yy,zz}, (PointIBM){i,j,k}, 
                             (PointIBM){boffx,boffy,boffz}, imagePoint, 
                              midPoints, normals, alphas);
-#if 0
-
-    for (int i = 0; i < rows; ++i) {
-      fprintf(stderr, "|");
-      for (int j = 0; j < cols; ++j) {
-        fprintf(stderr, " %g", veloMatrix_x[i][j]);
-      }
-      fprintf(stderr, "\n");
-    }
-#endif
 
     double veloMatrix_y[rows][cols];
     get_interpolation_matrix(point, rows, cols, veloMatrix_y, 't', velocity,

@@ -72,7 +72,7 @@ void fill_interface_data() {
     boundary({midPoints, normals, ibalphas});
 }
 
-scalar gid[], gidd[], gidd0[], dg0[];
+scalar gid[], dg0[];
 scalar pid[];
 
 #if _MPI
@@ -88,7 +88,11 @@ typedef struct {
 coord interpolate_image_point (coord ip, coord nsg, int * rank = NULL) 
 {
     coord uip = {nodata};
+#if _OPENMP
+    foreach_image_point (ip.x, ip.y, ip.z, rank, serial)
+#else
     foreach_image_point (ip.x, ip.y, ip.z, rank)
+#endif
         uip = image_velocity (point, u, ip, nsg, midPoints, normals, ibalphas);
     return uip;
 }
@@ -97,9 +101,15 @@ scalar neg[];
 
 void update_gc_velocity()
 {
-#if 0
+#if 1
     foreach()
       pid[] = pid();
+#endif
+
+    /**
+    MPI boundaries MUST be updated before interpolation. */
+#if _MPI
+    mpi_boundary_update ((scalar *){u});
 #endif
 
     /**
@@ -109,11 +119,9 @@ void update_gc_velocity()
     Array * gcid  = array_new();
 
     foreach(serial, reduction(+:gcount)) {
-        gid[] = gidd0[] = -1;
-        gidd[] = 0;
+        gid[] = -1;
         if (is_ghost_cell(point, cs)) {
             gid[] = gcount;
-            gidd[] = (int)is_deep_ghost_cell(point);
             array_append(gcid, &gcount, sizeof(int));
             gcount++;
         }
@@ -145,56 +153,19 @@ void update_gc_velocity()
                                normals.y[bioff.i, bioff.j, bioff.k],
                                normals.z[bioff.i, bioff.j, bioff.k]};
                 bi = boundary_int (point, nplic, nplic, interFrag.alpha, fc, cs);
-                n = interpolate_normal (point, bi, bioff, midPoints, normals);
-                //n = nplic;
-
-#if 0
-                for (int i = 0; i < 10; i++) {
-                    closest_interface (point, midPoints, cs, normals, ibalphas, &interFrag, &fc, &bioff, n);
-                    nplic = (coord){normals.x[bioff.i, bioff.j, bioff.k], 
-                                    normals.y[bioff.i, bioff.j, bioff.k],
-                                    normals.z[bioff.i, bioff.j, bioff.k]};
-                    bi = boundary_int (point, n, nplic, interFrag.alpha, fc, cs);
-                    n = interpolate_normal_lsq (point, bi, bioff, midPoints, normals);
-                }
-#endif
+                n = interpolate_normal_lsq (point, bi, bioff, midPoints, normals);
             }
-            ip = image_point (bi, gc, n);
             #if 1
-
-            coord ne = cs.ibm.normal(gc);
-
-            double nerror = acos(clamp(dot_product(n, ne) / 
-                                (magnitude_coord(n) * magnitude_coord(ne)), -1, 1));
-
-            neg[] = nerror;
-            //if (fabs(nerror) > 1e-4 && fabs(nerror) < 1e-3) 
-            //if (cs.ibm.normal && !is_deep_ghost_cell(point))
-                n = ne;
-
-            normalize_sum(&n);
-            #else
-
-            if (cs.ibm.normal) {
             coord ne = cs.ibm.normal(gc);
 
             double nerror = acos(clamp(dot_product(n, ne) / 
                                 (magnitude_coord(n) * magnitude_coord(ne)), -1, 1));
             neg[] = nerror;
-
-            double thetae = 1e-2;
-            
-            normalize(&ne);
-
-            if (false && magnitude_coord(gc) > 0.375) 
-            {
-              n.x = cos(thetae)*ne.x - sin(thetae)*ne.y;
-              n.y = sin(thetae)*ne.x + cos(thetae)*ne.y;
-            }
-
-            normalize_sum(&n);
-            }
             #endif
+            if (cs.ibm.normal)
+               n = cs.ibm.normal(gc);
+
+            ip = image_point (bi, gc, n);
 
             dg0[] = distance_coord(bi, gc)/Delta;
 
@@ -221,7 +192,6 @@ void update_gc_velocity()
 
         int rank = -1;
         uip[i] = interpolate_image_point(ips[i], nsg[i], &rank);
-
 #if _MPI
         if (uip[i].x == nodata) {
             assert (rank >= 0 && rank < npe());
@@ -241,7 +211,7 @@ void update_gc_velocity()
     If "bad" image points exists, we count the total number for each rank and store it
     in an array whose indices correspond to all active processes. We then communicate this
     array to processors. */
-
+#if 1
 #if _MPI
     int scount[npe()]; // send
     int rcount[npe()]; // receive
@@ -386,7 +356,7 @@ void update_gc_velocity()
     array_free(bpid);
 
 #endif // _MPI
-
+#endif
     array_free(gcid);
 
     u.x.mp = bis; u.y.mp = bis; 
@@ -395,30 +365,20 @@ void update_gc_velocity()
 #endif
 
     foreach() {
-        //if (is_ghost_cell(point, cs)) {
         if (gid[] > -1) {
-
-#if 0
-            if (gidd[] > 0) {
-                foreach_dimension()
-                    u.x[] = 0;
-                continue;
-            }
-                
-#endif
 
 #if 0
             fragment interFrag;
             coord fc, gc = {x,y,z};
             PointIBM bioff;
 
-            coord bi, ip, n;
+            coord bi, ip, n = {0,0,0};
             if (cs.ibm.bi) 
                 bi = cs.ibm.bi(gc);
             else {
-                closest_interface (point, midPoints, cs, normals, ibalphas, &interFrag, &fc, &bioff);
-                bi = boundary_int (point, interFrag, fc, cs);
-                n = interpolate_normal (point, bi, fc, bioff, midPoints, normals);
+                closest_interface (point, midPoints, cs, normals, ibalphas, &interFrag, &fc, &bioff, n);
+                bi = boundary_int (point, interFrag.n, interFrag.n, interFrag.alpha, fc, cs);
+                n = interpolate_normal_lsq (point, bi, bioff, midPoints, normals);
             }
             if (cs.ibm.normal)
                 n = cs.ibm.normal(gc);
