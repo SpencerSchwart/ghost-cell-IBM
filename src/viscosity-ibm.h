@@ -163,12 +163,18 @@ static void relax_viscosity (scalar * a, scalar * b, int l, void * data)
   vector ua = u;
 #endif
 
+  // TODO: make u depend on dip?
+  // TODO: refine and restriction functions for dip?
   scalar dip[];
 
   foreach_level_or_leaf (l) {
      dip[] = 0;
      if (cs[] <= GCV) {
-        int is_deep = cs[1] < GCV && cs[-1] < GCV && cs[0,1] < GCV && cs[0,-1] < GCV;
+        int is_deep = cs[1] < GCV && cs[-1] < GCV && cs[0,1] < GCV && cs[0,-1] < GCV
+#if dimension == 3
+        && cs[0,0,1] < GCV && cs[0,0,-1] < GCV
+#endif
+        ;
         dip[] = is_deep;
      }
   }
@@ -178,107 +184,51 @@ static void relax_viscosity (scalar * a, scalar * b, int l, void * data)
   foreach_level_or_leaf (l)
 #endif
   {
-    bool check = true;
-  #if 0
-    //if (gc[] && l == depth()) 
-    {
-    #if 0
-    foreach_diagonal_neighbor() {
-        if (!u.x[] && !u.y[]) {
-            check = false;
-            break;
-        }
-    }
-    #else
-    foreach_neighbor(1) {
-        if (cs[] < 1) {
-            check = false;
-            break;
-        }
-    }
-    #endif
-    }
-    //if (check)
-    #else
-    if (true) 
-    #endif
-    {
     foreach_dimension() {
       double val = gc[];
-      //if (!gc[])
-      //  val = 0;
 
       double dudxx = 2.*mu.x[1]*u.x[1] + 2.*mu.x[]*u.x[-1];
       double mus = 2.*mu.x[1] + 2.*mu.x[] + mu.y[0,1] + mu.y[];
      
       double dudyy = mu.y[0,1]*u.x[0,1] + mu.y[]*u.x[0,-1];
 
-      double dvdx_0 = (u.y[1,0] - u.y[-1,0])/2.;
-       //double dvdx_0 = !dip[1,0] && !dip[-1,0]? (u.y[1,0] - u.y[-1,0])/2.: dip[1,0]? (3*u.y[0,0] - 4*u.y[-1,0] + u.y[-2,0])/2.: (4*u.y[1,0] - 3*u.y[0,0] - u.y[2,0])/2.;
-      
-#if 1
-      if (gc[] && l == depth()) {
-        //bool check = u.y[1,1] || u.y[-1,1];
-        bool check = !dip[1,1] || !dip[-1,1];
-        if (!check)
-            fprintf(stderr, "%d (%g, %g) cs=%g %g %g %g %g\n", l, x, y, cs[], dip[1,1], dip[-1,1], u.y[1,1], u.y[-1,1]);
-        assert(check);
-      }
-#endif
-
-      double vlt = !dip[-1,1]? (u.y[-1,1] + u.y[-1,0])/2.: (u.y[-1,0] - u.y[-1,-1])*(0.5) + u.y[-1,0];
-      double vrt = !dip[1,1]? (u.y[1,1] + u.y[1,0])/2.: (u.y[1,0] - u.y[1,-1])*(0.5) + u.y[1,0];
+      double vlt = !dip[-1,1]? (ua.y[-1,1] + u.y[-1,0])/2.: (u.y[-1,0] - ua.y[-1,-1])*(0.5) + u.y[-1,0];
+      double vrt = !dip[1,1]? (ua.y[1,1] + u.y[1,0])/2.: (u.y[1,0] - ua.y[1,-1])*(0.5) + u.y[1,0];
       double dvdx1 = (vrt - vlt)/2.;
-      //double dvdx_1 = u.y[1,1] && u.y[-1,1]? (u.y[1,1] - u.y[-1,1])/2.: !u.y[1,1]? u.y[0,1] - u.y[-1,1]: u.y[1,1] - u.y[0,1];
-      //double dvdx_1 = !dip[1,1] && !dip[-1,1]? (u.y[1,1] - u.y[-1,1])/2.: dip[1,1]? u.y[0,1] - u.y[-1,1]: u.y[1,1] - u.y[0,1];
-      //double dvdx_1 = !dip[1,1] && !dip[-1,1]? (u.y[1,1] - u.y[-1,1])/2.: dip[1,1]? (3*u.y[0,1] - 4*u.y[-1,1] + u.y[-2,1])/2.: (4*u.y[1,1] - 3*u.y[0,1] - u.y[2,1])/2;
-      //double dvdx1 = (dvdx_1 + dvdx_0)/2.;
-#if 0
-      if (gc[]) {
-        bool check = u.y[1,1] || u.y[-1,1];
-        assert(check);
-      }
-#endif
 
-      double vlb = !dip[-1,-1]? (u.y[-1,0] + u.y[-1,-1])/2.: (u.y[-1,1] - u.y[-1,0])*(-0.5) + u.y[-1,0];
-      double vrb = !dip[1,-1]? (u.y[1,0] + u.y[1,-1])/2.: (u.y[1,1] - u.y[1,0])*(-0.5) + u.y[1,0];
+      double vlb = !dip[-1,-1]? (u.y[-1,0] + ua.y[-1,-1])/2.: (ua.y[-1,1] - u.y[-1,0])*(-0.5) + u.y[-1,0];
+      double vrb = !dip[1,-1]? (u.y[1,0] + ua.y[1,-1])/2.: (ua.y[1,1] - u.y[1,0])*(-0.5) + u.y[1,0];
       double dvdx2 = (vrb - vlb)/2.;
-      //double dvdx_2 = u.y[1,-1] && u.y[-1,-1]? (u.y[1,-1] - u.y[-1,-1])/2.: !u.y[1,-1]? u.y[0,-1] - u.y[-1,-1]: u.y[1,-1] - u.y[0,-1];
-      //double dvdx_2 = !dip[1,-1] && !dip[-1,-1]? (u.y[1,-1] - u.y[-1,-1])/2.: dip[1,-1]? u.y[0,-1] - u.y[-1,-1]: u.y[1,-1] - u.y[0,-1];
-      //double dvdx_2 = !dip[1,-1] && !dip[-1,-1]? (u.y[1,-1] - u.y[-1,-1])/2.: dip[1,-1]? (3*u.y[0,-1] - 4*u.y[-1,-1] + u.y[-2,-1])/2.: (4*u.y[1,-1] - 3*u.y[0,-1] - u.y[2,-1])/2.;
-      //double dvdx2 = (dvdx_0 + dvdx_2)/2.;
 
       double dvdxy = mu.y[0,1]*dvdx1 - mu.y[]*dvdx2;
-
-#if 0
-      double v1 = (u.y[1,0] + u.y[1,1])/2.;
-      double v2 = (u.y[-1,0] + u.y[-1,1])/2.;
-      double dvdx1 = (v1 - v2)/2.;
-
-      double v3 = u.y[1,-1]? (u.y[1,0] + u.y[1,-1])/2.: (u.y[1,0] + u.y[1,-1])/2.;
-      double v4 = (u.y[-1,0] + u.y[-1,-1])/2.;
-      double dvdx2 = (v3 - v4)/2.;
-#endif
-
 
       double txx = dudxx;
       double txy = dudyy + dvdxy;
 
-    #if 0
-      if (check) {
-        txy = mu.y[0,1]*(u.x[0,1] + (u.y[1,0] + ua.y[1,1])/4. - (u.y[-1,0] + ua.y[-1,1])/4.) - mu.y[]*(- u.x[0,-1] + (ua.y[1,-1] + u.y[1,0])/4. - (ua.y[-1,-1] + u.y[-1,0])/4.);
+      double sstress = txx + txy;
+#if dimension > 2
 
-      }
-      else {
-        txx = 2.*mu.x[1]*u.x[1] + 2.*mu.x[]*u.x[-1];
-        txy = mu.y[0,1]*u.x[0,1] + mu.y[]*u.x[0,-1];
-        mus = 2.*mu.x[1] + 2.*mu.x[] + mu.y[0,1] + mu.y[];
-      }
-      #endif
+      double dudww = mu.z[0,0,1]*u.x[0,0,1] + mu.z[]*u.x[0,0,-1];
+
+      double wlf = !dip[-1,0,1]? (ua.z[-1,0,1] + u.z[-1,0,0])/2.: (u.z[-1,0,0] - ua.z[-1,0,-1])*(0.5) + u.z[-1,0,0];
+      double wrf = !dip[1,0,1]? (ua.z[1,0,1] + u.z[1,0,0])/2.: (u.z[1,0,0] - ua.z[1,0,-1])*(0.5) + u.z[1,0,0];
+      double dwdx1 = (wrf - wlf)/2.;
+
+      double wlb = !dip[-1,0,-1]? (u.z[-1,0,0] + ua.z[-1,0,-1])/2.: (ua.z[-1,0,1] - u.z[-1,0,0])*(-0.5) + u.z[-1,0,0];
+      double wrb = !dip[1,0,-1]? (u.z[1,0,0] + ua.z[1,0,-1])/2.: (ua.z[1,0,1] - u.z[1,0,0])*(-0.5) + u.z[1,0,0];
+      double dwdx2 = (wrb - wlb)/2.;
+
+      double dwdxz = mu.z[0,0,1]*dwdx1 - mu.z[]*dwdx2;
+
+      double txz = dudww + dwdxz;
+      sstress += txz;
+
+      mus += mu.z[0,0,1] + mu.z[];
+#endif
 
       double den = lambda.x*sq(Delta) + dt/(rho[]+SEPS)*mus;
 
-      w.x[] = val*(r.x[]*sq(Delta) + dt/(rho[]+SEPS)*(txx + txy))/(den + SEPS);
+      w.x[] = val*(r.x[]*sq(Delta) + dt/(rho[]+SEPS)*(sstress))/(den + SEPS);
 
 #if 0
       w.x[] = val*(r.x[]*sq(Delta) + dt/(rho[]+SEPS)*(2.*mu.x[1]*u.x[1] + 2.*mu.x[]*u.x[-1]
@@ -309,27 +259,6 @@ static void relax_viscosity (scalar * a, scalar * b, int l, void * data)
 				      ));
 #endif
     }
-    }
-    #if 0
-    else {
-        double avgmu = 0.;
-        foreach_dimension()
-              avgmu += mu.x[] + mu.x[1];
-
-        double val = 1;
-        if (!gc[])
-          val = 0;
-
-        foreach_dimension() {
-            scalar s = u.x;
-            double a = 0.;
-            foreach_dimension()
-                a += mu.x[1]*s[1] + mu.x[]*s[-1];
-            w.x[] = val*(r.x[]*sq(Delta) + dt/(rho[]+SEPS)*a) /
-                        (lambda.x*sq(Delta) + dt/(rho[]+SEPS)*avgmu + SEPS);
-    }
-    }
-    #endif
   }
 
 #if JACOBI
@@ -379,73 +308,59 @@ static double residual_viscosity (scalar * a, scalar * b, scalar * resl,
   treated simultaneously. Otherwise (automatic) BCs would be applied
   component by component before each foreach_face() loop. */
  
-  //fill_interface_data(); 
-  //update_gc_velocity();
-
-  boundary ({u});
- 
   foreach() {
      dipg[] = 0;
      if (cs[] <= GCV) {
-        int is_deep = cs[1] <= GCV && cs[-1] <= GCV && cs[0,1] <= GCV && cs[0,-1] <= GCV;
+        int is_deep = cs[1] < GCV && cs[-1] < GCV && cs[0,1] < GCV && cs[0,-1] < GCV
+#if dimension == 3
+        && cs[0,0,1] < GCV && cs[0,0,-1] < GCV
+#endif
+        ;
         dipg[] = is_deep;
      }
   }
 
-  boundary ({dipg});
+  boundary ({u, dipg});
 
   foreach_dimension() {
-    scalar s = u.x;
-
-    face vector g[];
-
-     foreach_face() 
-         g.x[] = mu.x[] * face_gradient_x (s, 0);
-
+    
     face vector taux[];
     foreach_face(x) {
       taux.x[] = 2.*mu.x[]*(u.x[] - u.x[-1])/Delta;
     }
+
     #if dimension > 1
-      foreach_face(y) {
+    foreach_face(y) {
 
-       double dudy = u.x[] - u.x[0,-1];
+     double dudy = u.x[] - u.x[0,-1];
+      
+     double vlb = !dipg[-1,-1] && !dipg[-1,0]? (u.y[-1,0] + u.y[-1,-1])/2.: dipg[-1,-1]? (u.y[-1,1] - u.y[-1,0])*(-0.5) + u.y[-1,0]: (u.y[-1,-1] - u.y[-1,-2])*(0.5) + u.y[-1,-1];
+     double vrb = !dipg[1,-1]  && !dipg[1,0] ? (u.y[1,0] + u.y[1,-1])/2.: dipg[1,-1]? (u.y[1,1] - u.y[1,0])*(-0.5) + u.y[1,0]: (u.y[1,-1] - u.y[1,-2])*(0.5) + u.y[1,-1];
+     double dvdx = (vrb - vlb)/2.;
 
-        
-       //double dvdx_0 = !dipg[1,0] && !dipg[-1,0]? (u.y[1,0] - u.y[-1,0])/2.: dipg[1,0]? u.y[0,0] - u.y[-1,0]: u.y[1,0] - u.y[0,0];
-       //double dvdx_0 = !dipg[1,0] && !dipg[-1,0]? (u.y[1,0] - u.y[-1,0])/2.: dipg[1,0]? (3*u.y[0,0] - 4*u.y[-1,0] + u.y[-2,0])/2.: (4*u.y[1,0] - 3*u.y[0,0] - u.y[2,0])/2.;
-
-#if 1
-       if (gc[]) {
-         bool check = !dipg[1,-1] || !dipg[-1,-1];
-         assert(check);
-       }
-#endif 
-
-       //double dvdx_1 = !dipg[1,-1] && !dipg[-1,-1]? (u.y[1,-1] - u.y[-1,-1])/2.: dipg[1,-1]? u.y[0,-1] - u.y[-1,-1]: u.y[1,-1] - u.y[0,-1];
-       //double dvdx_1 = !dipg[1,-1] && !dipg[-1,-1]? (u.y[1,-1] - u.y[-1,-1])/2.: dipg[1,-1]? (3*u.y[0,-1] - 4*u.y[-1,-1] + u.y[-2,-1])/2.: (4*u.y[1,-1] - 3*u.y[0,-1] - u.y[2,-1])/2.;
-       //double dvdx = (dvdx_0 + dvdx_1)/2.;
-
-
-       double vlb = !dipg[-1,-1] && !dipg[-1,0]? (u.y[-1,0] + u.y[-1,-1])/2.: dipg[-1,-1]? (u.y[-1,1] - u.y[-1,0])*(-0.5) + u.y[-1,0]: (u.y[-1,-1] - u.y[-1,-2])*(0.5) + u.y[-1,-1];
-       double vrb = !dipg[1,-1]  && !dipg[1,0] ? (u.y[1,0] + u.y[1,-1])/2.: dipg[1,-1]? (u.y[1,1] - u.y[1,0])*(-0.5) + u.y[1,0]: (u.y[1,-1] - u.y[1,-2])*(0.5) + u.y[1,-1];
-       double dvdx = (vrb - vlb)/2.;
-
-       taux.y[] = mu.y[]*(dudy + dvdx)/Delta;
-
-#if 0
-        taux.y[] = true? mu.y[]*(u.x[] - u.x[0,-1] + 
-                                                   (u.y[1,-1] + u.y[1,0])/4. -
-                                                   (u.y[-1,-1] + u.y[-1,0])/4.)/Delta :
-                                                mu.y[]*(u.x[] - u.x[0,-1]);
-#endif
-      }
+     taux.y[] = mu.y[]*(dudy + dvdx)/Delta;
+    }
     #endif
+
     #if dimension > 2
-      foreach_face(z)
-	taux.z[] = mu.z[]*(u.x[] - u.x[0,0,-1] + 
-			   (u.z[1,0,-1] + u.z[1,0,0])/4. -
-			   (u.z[-1,0,-1] + u.z[-1,0,0])/4.)/Delta;
+    foreach_face(z) {
+      double dudz = u.x[] - u.x[0,0,-1];
+
+      double wlb = !dipg[-1,0,-1] && !dipg[-1,0,0]? (u.z[-1,0,0] + u.z[-1,0,-1])/2.: 
+                   dipg[-1,0,-1]? (u.z[-1,0,1] - u.z[-1,0,0])*(-0.5) + u.z[-1,0,0]: 
+                                  (u.z[-1,0,-1] - u.z[-1,0,-2])*(0.5) + u.z[-1,0,-1];
+      double wrb = !dipg[1,0,-1] && !dipg[1,0,0]? (u.z[1,0,0] + u.z[1,0,-1])/2.: 
+                   dipg[1,0,-1]? (u.z[1,0,1] - u.z[1,0,0])*(-0.5) + u.z[1,0,0]:
+                                 (u.z[1,0,-1] - u.z[1,0,-2])*(0.5) + u.z[1,0,-1];
+      double dwdx = (wrb - wlb)/2.;
+      
+      taux.z[] = mu.z[]*(dudz + dwdx)/Delta;
+#if 0
+      taux.z[] = mu.z[]*(u.x[] - u.x[0,0,-1] + 
+                        (u.z[1,0,-1] + u.z[1,0,0])/4. -
+                        (u.z[-1,0,-1] + u.z[-1,0,0])/4.)/Delta;
+#endif
+    }
     #endif
 
     /**
@@ -462,39 +377,9 @@ static double residual_viscosity (scalar * a, scalar * b, scalar * resl,
     diagonal of the stencil. */
 
     foreach (reduction(max:maxres)) {
-
-    #if 0
-      //bool check = cs[] < 0.5;
-      //bool check = false;
-      bool check = !gidd[-1,-1] && !gidd[-1,1] && 
-                   !gidd[1,-1]  && !gidd[1,1];
-    #elif 0
-      bool check = false;
-      foreach_neighbor(1)
-        if (cs[] < 1)
-            check = true;
-    #else
-    
-    #endif
-
-#if 0
-      double tau1 = taux.x[1];
-      double tau2 = taux.x[];
-      double tau3 = taux.y[0,1];
-      double tau4 = taux.y[];
-
-      if (check) {
-        tau3 = g.y[1];
-        tau4 = g.y[];
-      }
-
-      double d = tau1 - tau2 + tau3 - tau4;
-#else
       double d = 0.;
         foreach_dimension()
           d += taux.x[1] - taux.x[];
-          //d += check? g.x[1] - g.x[]: taux.x[1] - taux.x[];
-#endif
         res.x[] = gc[]? r.x[] - lambda.x*u.x[] + dt/rho[]*d/Delta: 0;
       if (fabs (res.x[]) > maxres)
         maxres = fabs (res.x[]);
@@ -561,9 +446,6 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
   }
   /**
   We need $\mu$ and $\rho$ on all levels of the grid. */
-
-  //foreach_dimension()
-  //  r.x.restriction = restriction_ibm_linear;
 
   restriction ({cs, mu, rho2, gc});
   struct Viscosity p = { mu, rho2, dt };
