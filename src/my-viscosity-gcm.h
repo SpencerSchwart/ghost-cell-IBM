@@ -112,7 +112,7 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
         }
     }
 
-    restriction ({mu, rho2, gc, fm, cm, cs});
+    restriction ({mu, rho2, cs, gc, fm, cm});
     struct Viscosity p = { mu, rho2, dt };
     return mg_solve ((scalar *){u}, (scalar *){r},
                      residual_diffusion, relax_diffusion, &p, 
