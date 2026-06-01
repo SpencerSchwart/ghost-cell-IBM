@@ -579,7 +579,29 @@ macro foreach_near_neighbor (int self = 0, Point point = point, break = (_k = _l
   }
 }
 #else
+macro foreach_near_neighbor (int self = 0, Point point = point, break = (_l = _m = _n = 2)) {
+  {
+    const int _i = point.i, _j = point.j, _k = point.k;
+    int ig = 0, jg = 0, kg = 0;
 
+    for (int _l = -1; _l <= 1; _l++) {
+      point.i = _i + _l;
+      for (int _m = -1; _m <= 1; _m++) {
+        point.j = _j + _m;
+        for (int _n = -1; _n <= 1; _n++) {
+          point.k = _k + _n;
+            
+          bool allow = !self? !(_l == 0 && _m == 0 && _n == 0): true;
+          if (allow) {
+            POINT_VARIABLES();
+	        {...}
+          }
+        }
+      }
+    }
+    point.i = _i; point.j = _j; point.k = _k;
+  }
+}
 #endif
 
 #if dimension == 2
