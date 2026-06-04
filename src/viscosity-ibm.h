@@ -442,7 +442,7 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
     foreach_dimension()
       r.x[] = u.x[];
 
-      rho2[] = cs[]? rho[]/cs[]: 0;
+      rho2[] = cs[]? rho[]*cm[]/cs[]: 0;
   }
   /**
   We need $\mu$ and $\rho$ on all levels of the grid. */

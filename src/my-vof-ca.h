@@ -18,9 +18,11 @@ static double vof_concentration_gradient_x (Point point, scalar c, scalar t)
 {
   static const double cmin = 0.5;
   double cl = c[-1], cc = c[], cr = c[1];
+  #if 0
   if (cs[-1]) cl /= cs[-1];
   if (cs[])   cc /= cs[];
   if (cs[1])  cr /= cs[1];
+  #endif
   if (t.inverse)
     cl = 1. - cl, cc = 1. - cc, cr = 1. - cr;
   if (cc >= cmin && t.gradient != zero) {
@@ -221,7 +223,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
     scalar t, gf, tflux;
     for (t,gf,tflux in tracers,gfl,tfluxl) {
-      double cf1 = cf, ci = cs[i]? c[i]/cs[i]: 0;
+      //double cf1 = cf, ci = cs[i]? c[i]/cs[i]: 0;
+      double cf1 = cf, ci = cs[i]? c[i]: 0;
       if (t.inverse)
     	cf1 = 1. - cf1, ci = 1. - ci;
       if (ci > 1e-10) {

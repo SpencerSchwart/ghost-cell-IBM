@@ -51,27 +51,31 @@ event defaults (i = 0)
   while (i > 0 && all[i].i)
     all[i] = all[i-1], i--;
   all[i] = f;
-    
+   
+   #if 1
   /**
   We then set the refinement and restriction functions for the
   components of the velocity field. The boundary conditions on
   $\mathbf{u}$ now depend on those on $f$. */
   
   foreach_dimension() {
+#if AXI
+    u.x.prolongation = momentum_refine;
+#else
     u.x.refine = u.x.prolongation = momentum_refine;
+#endif
     u.x.restriction = momentum_restriction;
     u.x.depends = list_add (u.x.depends, f);
   }
+  #endif
 #endif
 }
-
 /**
 We need to overload the stability event so that the CFL is taken into
 account (because we set stokes to true). */
 
 event stability (i++)
   dtmax = timestep (uf, dtmax);
-
 /**
 We will transport the two components of the momentum, $q_1=f \rho_1
 \mathbf{u}$ and $q_2=(1 - f) \rho_2 \mathbf{u}$. We will need to
@@ -147,7 +151,7 @@ event vof (i++) {
   foreach()
     foreach_dimension() {
       double fc = clamp(f[],0,1);
-      if (cs[]) fc /= cs[];
+      //if (cs[]) fc /= cs[];
       q1.x[] = fc*rho1*u.x[];
       q2.x[] = (1. - fc)*rho2*u.x[];
     }
@@ -178,7 +182,7 @@ event vof (i++) {
 
   foreach()
     foreach_dimension()
-      u.x[] = gc[] && cs[]? (q1.x[] + q2.x[])/(rho(f[]/cs[]) + SEPS): u.x[];
+      u.x[] = gc[]? (q1.x[] + q2.x[])/(rho(f[]) + SEPS): u.x[];
 
   /**
   We set the list of interfaces to NULL so that the default *vof()*

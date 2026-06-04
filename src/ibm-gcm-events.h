@@ -156,7 +156,7 @@ void update_gc_velocity()
                 n = interpolate_normal_lsq (point, bi, bioff, midPoints, normals);
             }
             #if 1
-            coord ne = cs.ibm.normal(gc);
+            coord ne = cs.ibm.normal? cs.ibm.normal(gc): n;
 
             double nerror = acos(clamp(dot_product(n, ne) / 
                                 (magnitude_coord(n) * magnitude_coord(ne)), -1, 1));
