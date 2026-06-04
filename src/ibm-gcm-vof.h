@@ -4,6 +4,8 @@
 
 #define BI_TOL 1e-12 // TODO: standardize tolerance for root solvers
 
+#define GEO_TOL 1e-10
+
 #include "fractions.h"
 #include "ibm-utils.h"
 
@@ -146,7 +148,7 @@ coord plane_p0 (plane pl1, plane pl2, coord d)
 
     double det = a1*b2 - a2*b1;
 
-    //assert (fabs(det) > 1e-14);
+    assert (fabs(det) > 1e-14);
 
     double u = (alpha1 * b2 - alpha2 * b1) / (det + SEPS);
     double v = (alpha2 * a1 - alpha1 * a2) / (det + SEPS);
@@ -168,15 +170,17 @@ double plane_t (coord p0, coord d, coord face)
 {
     int type = face.x? 0: face.y? 1: 2;
 
+    double dnorm = magnitude_coord(d);
+
     switch(type) {
         case 0:
-            if (fabs(d.x) < 1e-14) return HUGE;
+            if (fabs(d.x) < GEO_TOL*dnorm) return HUGE;
             return (face.x - p0.x) / d.x;
         case 1:
-            if (fabs(d.y) < 1e-14) return HUGE;
+            if (fabs(d.y) < GEO_TOL*dnorm) return HUGE;
                 return (face.y - p0.y) / d.y;
         case 2:
-            if (fabs(d.z) < 1e-14) return HUGE;
+            if (fabs(d.z) < GEO_TOL*dnorm) return HUGE;
                 return (face.z - p0.z) / d.z;                
     }
     return HUGE;
@@ -184,13 +188,14 @@ double plane_t (coord p0, coord d, coord face)
 
 int bounds_check (coord p, double ufdx = 0.5)
 {
-    return p.x <= ufdx+VTOL && fabs(p.x) <= 0.5+VTOL && fabs(p.y) <= 0.5+VTOL && fabs(p.z) <= 0.5+VTOL;
+    return p.x <= ufdx + GEO_TOL && fabs(p.x) <= 0.5 + GEO_TOL && 
+           fabs(p.y) <= 0.5 + GEO_TOL && fabs(p.z) <= 0.5 + GEO_TOL;
 }
 
 int point_is_unique (int size, coord pint[size], coord p)
 {
     for (int i = 0; i < size; ++i)
-        if (approx_equal(pint[i], p, VTOL))
+        if (approx_equal(pint[i], p, GEO_TOL))
             return 0;
     return 1;
 }
@@ -199,7 +204,7 @@ int plane_is_unique (int size, plane pint[size], plane p)
 {
     for (int i = 0; i < size; ++i)
         if (approx_equal(pint[i].n, p.n, VTOL) && 
-            approx_equal_double(pint[i].alpha, p.alpha, VTOL))
+            approx_equal_double(pint[i].alpha, p.alpha, GEO_TOL))
             return 0;
     return 1;
 }
@@ -228,8 +233,16 @@ int plane_intersect (plane pl1, plane pl2, plane padv, coord pint[2], int print 
     memcpy(cubeface_copy, cubeface, sizeof(cubeface));
     cubeface_copy[0].x = padv.alpha; // change +x plane to the advection plane
 
+    if (padv.alpha == 0)
+        fprintf(stderr, "WARNING: padv.alpha == 0!\n");
+
+    coord pint_temp[6];
+    double t_temp[6];
+
     int count = 0;
     for (int i = 0; i < 6; ++i) {
+        pint_temp[i] = (coord){nodata,nodata,nodata};
+
         double t = plane_t (p0, d, cubeface_copy[i]);
 
         if (t == HUGE)
@@ -237,17 +250,47 @@ int plane_intersect (plane pl1, plane pl2, plane padv, coord pint[2], int print 
 
         coord pit = {p0.x + t*d.x, p0.y + t*d.y, p0.z + t*d.z};
 
-        if (bounds_check(pit, padv.alpha) && point_is_unique(2, pint, pit)) {
+        if (bounds_check(pit, padv.alpha) && point_is_unique(count, pint_temp, pit)) {
             //assert(count < 2);
-            if (count > 2)
-                fprintf(stderr, "WARNING: count > 2 in plane_intersect!\n");
-            else {
-                pint[count] = pit;
-                count++;
-            }
+            pint_temp[count] = pit;
+            t_temp[count] = t;
+            count++;
         }
     }
 
+#if 0
+    if (count > 2) {
+        fprintf(stderr, "WARNING: count = %d > 2\n", count);
+        for (int j = 0; j < count; j++) {
+            fprintf(stderr, "pint[%d] = (%.15f, %.15f, %.15f) t=[%d]=%.15g\n",
+            j, pint_temp[j].x, pint_temp[j].y, pint_temp[j].z, j, t_temp[j]);
+        }
+    }
+#endif
+
+    if (count <= 2) {
+        pint[0] = pint_temp[0];
+        pint[1] = pint_temp[1];
+    }
+    else {
+        double tmin = HUGE, tmax = -HUGE;
+        for (int i = 0; i < count; ++i) {
+            if (t_temp[i] < tmin) {
+                pint[0] = pint_temp[i];
+                tmin = t_temp[i];
+            }
+            if (t_temp[i] > tmax) {
+                pint[1] = pint_temp[i];
+                tmax = t_temp[i];
+            }
+        }
+#if 0
+        fprintf(stderr, "|| pint[0] = (%.15g, %.15g, %.15g) tmin = %.15g"
+                        " pint[1] = (%.15g, %.15g, %.15g) tmax = %.15g\n",
+            pint[0].x, pint[0].y, pint[0].z, tmin,
+            pint[1].x, pint[1].y, pint[1].z, tmax);
+#endif            
+    }
     return count;
 }
 
@@ -558,7 +601,7 @@ coord face_normal(coord a, coord b, coord c)
 
     double norm = 0;
     foreach_dimension()
-        norm += n.x;
+        norm += fabs(n.x);
 
     foreach_dimension()
         n.x /= norm + SEPS;
@@ -586,6 +629,19 @@ void sort_clockwise3 (int nump, coord cf[nump], coord n = {0,0,0})
     assert (nump >= 3);
 
     coord a = cf[0], b = cf[1];
+
+    /**
+    We want b to be far way from a so that v isn't 0. */
+
+    double max_dist = -HUGE;
+    for (int i = 1; i < nump; i++) {
+        double d = distance_coord(a, cf[i]);
+        if (d > max_dist) {
+            b = cf[i];
+            max_dist = d;
+        }
+    }
+
     if (!n.x && !n.y && !n.z) {
         coord c = cf[2];
         n = face_normal(a, b, c); // if n isn't provided
