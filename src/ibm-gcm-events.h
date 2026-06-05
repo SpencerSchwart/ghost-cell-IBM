@@ -455,11 +455,52 @@ void update_gc_velocity()
     boundary((scalar *){u, bis});
 }
 
+
+/**
+AMR can messup velocity inside the solid boundary, which can sometimes cause crashes.
+Here, we force all solid cells that are ghost cells to have a trivial solution. 
+This can probably be avoid by having a more robust refinement/coarsening treatment.*/
+void cleanup_ibm()
+{
+     foreach() {
+        if ((!cs[] && !is_ghost_cell(point, cs))) {
+            gid[] = -1;
+            p[] = pf[] = 0;
+            foreach_dimension()
+                u.x[] = 0;
+        }
+    }
+}
+
+/**
+This event imposes the values in the ghost cells depending on the imposed 
+boundary conditions. This takes place at the end of the events sequence,
+specifically after the projection step. 
+
+If AMR/Trees are used, we need to make sure the ghost cells aren't refined or
+coarsened poorly. To avoid this, we simply wait until the grid is adapted, then
+calculate and set the ghost cell values.
+
+TODO: update_metric is called twice within a timeloop. Fix this!*/
+
+#if TREE
+event adapt(i++)
+{
+    cleanup_ibm();
+
+    event("update_metric");
+
+    fill_interface_data(); 
+    update_gc_velocity();
+}
+#else
 event end_timestep(i++)
 {
     fill_interface_data(); 
     update_gc_velocity();
 }
+#endif
+
 
 #if 0
 void ibm_force_distribution(vector Fmu)
