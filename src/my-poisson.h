@@ -169,11 +169,6 @@ mgstats mg_solve (scalar * a, scalar * b,
   double resb;
   resb = s.resb = s.resa = (* residual) (a, b, res, data);
 
-      foreach_level (minlevel)
-	    for (scalar s in da)
-	      foreach_blockf (s)
-    	    s[] = bilinear (point, s);
-
   /**
   We then iterate until convergence or until *NITERMAX* is reached. Note
   also that we force the solver to apply at least one cycle, even if the

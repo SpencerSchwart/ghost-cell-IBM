@@ -388,17 +388,11 @@ time $t+\Delta t$. */
 event viscous_term (i++,last)
 {
 
-  if (i == 0)
-      disable_fpe (FE_DIVBYZERO|FE_INVALID);
-
   if (constant(mu.x) != 0.) {
     correction (dt);
     mgu = viscosity (u, mu, rho, dt, mgu.nrelax);
     correction (-dt);
   }
-
-  if (i == 0)
-    enable_fpe (FE_DIVBYZERO|FE_INVALID);
 
   /**
   We reset the acceleration field (if it is not a constant). */
