@@ -107,7 +107,6 @@ double neumann_homogeneous (double expr, Point point = point,
 {
   return data ? ibm_area_center (point, s, &x, &y, &z),
     ((bool *)data)[0] = false, 0 : s[];
-  return data ? ((bool *)data)[0] = false, 0 : s[];
 }
 
 macro2
