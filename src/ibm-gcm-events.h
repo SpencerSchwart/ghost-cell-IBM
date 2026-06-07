@@ -459,7 +459,10 @@ void update_gc_velocity()
 /**
 AMR can messup velocity inside the solid boundary, which can sometimes cause crashes.
 Here, we force all solid cells that are ghost cells to have a trivial solution. 
-This can probably be avoid by having a more robust refinement/coarsening treatment.*/
+This can probably be avoid by having a more robust refinement/coarsening treatment.
+
+TODO: this can be more efficient by incorporating it in the ghost cell
+      identification loop, since is_ghost_cell is relatively expensive. */
 void cleanup_ibm()
 {
      foreach() {
@@ -469,6 +472,8 @@ void cleanup_ibm()
             foreach_dimension()
                 u.x[] = 0;
         }
+        if (gid[] > -1 && !cs[])
+            p[] = pf[] = 0;
     }
 }
 
