@@ -310,7 +310,9 @@ static void relax (scalar * al, scalar * bl, int l, void * data)
       c[] = 0., b[] = 0.;
     else
 #elif IBM
-    if (!d)
+    bool dirichlet = false;
+    a.boundary[immersed](point, point, a, &dirichlet);
+    if (!d || (cs[] <= GCV && dirichlet))
       c[] = 0., b[] = 0.;
     else
 #endif // EMBED
@@ -363,6 +365,14 @@ static double residual (scalar * al, scalar * bl, scalar * resl, void * data)
       res[] += c - e*a[];
     }
 #endif // EMBED
+#if IBM
+    if (cs[] <= GCV) {
+        bool dirichlet = false;
+        a.boundary[immersed] (point, point, a, &dirichlet);
+        if (dirichlet)
+            res[] = 0;
+    }
+#endif
     if (fabs (res[]) > maxres)
       maxres = fabs (res[]);
   }

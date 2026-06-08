@@ -898,6 +898,10 @@ int image_offsets (Point point, coord imagePoint, int *xOffset, int *yOffset, in
     return 1;
 }
 
+
+/**
+This function fills pints with the coordinates of the bounding nodes used for
+interpolation and pnodes with their respective indices within the stencil. */
 void get_interpolation_points (Point point, const int m, coord pints[m], 
                                PointIBM pnodes[m], PointIBM poff, PointIBM pnode)
 {
@@ -1083,7 +1087,7 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
     int xOffset = 0, yOffset = 0, zOffset = 0;
     image_offsets (point, imagePoint, &xOffset, &yOffset, &zOffset);
     
-    //assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
+    assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
 
     coord imageCell = {x + Delta*xOffset, y + Delta*yOffset, z + Delta*zOffset};
     
@@ -1217,6 +1221,215 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
 
     return imageVelo;
 }
+
+
+void fluid_only2 (Point point, scalar s, const int n, double rmatrix[n],
+                  PointIBM poff, PointIBM pnode, PointIBM pbound, 
+                  char dir, coord * pcell, double sval, coord ipoint,
+                  vector mps, vector ns, scalar alphas)
+{
+    double val = sval;
+
+    int xx = poff.i + pnode.i, yy = poff.j + pnode.j, zz = poff.k + pnode.k;
+    int type = 0;
+
+    if (cs[xx,yy,zz] <= GCV && cs[xx,yy,zz] > 0.) {
+        *pcell = (coord){mps.x[xx,yy,zz], mps.y[xx,yy,zz], mps.z[xx,yy,zz]};
+
+        // move point more if cell is inside domain boundary
+        if (xx == pbound.i) pcell->x += pbound.i*Delta;
+        if (yy == pbound.j) pcell->y += pbound.j*Delta;
+        if (zz == pbound.k) pcell->z += pbound.k*Delta;
+
+        // b. check the bc type and get its value
+        bool bctype[2] = {false, false};
+        double bc = s.boundary[immersed] (point, point, s, bctype);
+
+        bool dirichlet = bctype[0], navierslip = bctype[1];
+
+        if (dirichlet && !navierslip) {
+            val = bc;
+            type = 0;
+        }
+        else if (dirichlet && navierslip) {
+            val = bc; // assumes stationary wall
+            type = 2;
+        }
+        else { // neumann
+            val = bc;
+            type = 1;
+        }
+    }
+
+    if (type == 0) { // normal or dirichlet
+#if dimension == 2
+        
+        memcpy(rmatrix, (double[]){pcell->x*pcell->y, pcell->x, pcell->y, 1, val}, cols*sizeof(double));
+#else // dimension == 3
+        memcpy(rmatrix, (double[]){pcell->x*pcell->y*pcell->z,
+                                   pcell->x*pcell->y, pcell->x*pcell->z, pcell->y*pcell->z,
+                                   pcell->x, pcell->y, pcell->z, 1, val}, cols*sizeof(double));
+#endif // dimension == 2
+    }
+    else if (type == 1) { // neumann
+        coord n = {ns.x[xx,yy,zz], ns.y[xx,yy,zz], ns.z[xx,yy,zz]};
+        normalize(&n);
+#if dimension == 2
+        memcpy(rmatrix, (double[]){n.x*pcell->y + n.y*pcell->x, n.x, n.y, 0, val}, cols*sizeof(double));
+#else // dimension == 3
+        memcpy(rmatrix, (double[]){n.x*pcell->y*pcell->z + n.y*pcell->x*pcell->z + n.z*pcell->x*pcell->z,
+                                   n.x*pcell->y + n.y*pcell->x,
+                                   n.x*pcell->z + n.z*pcell->x,
+                                   n.y*pcell->z + n.z*pcell->y,
+                                   n.x, n.y, n.z, 0, val}, cols*sizeof(double));
+#endif // dimension == 2
+    }
+    else if (type == 2) { // navier-slip
+        coord n = {ns.x[xx,yy,zz], ns.y[xx,yy,zz], ns.z[xx,yy,zz]};
+        double mag = magnitude_coord(n) + SEPS;
+        normalize(&n);
+        double alpha = alphas[xx,yy,zz];
+
+        coord gc = {x + xx*Delta, y + yy*Delta, z + zz*Delta}, bi; // ghost cell, boundary intercept
+        foreach_dimension()
+            bi.x = alpha/mag * n.x;
+
+        foreach_dimension()
+            pcell->x = gc.x + bi.x*Delta;
+
+        coord d = direction_vector(gc, *pcell);
+        double dmag = magnitude_coord(d);        // distance from ghost cell to boundary intercept
+        double term = (1 - dmag/(val + SEPS));
+        double usolid = 0.0*dmag/(val + SEPS);  // navier b.c only works for stationary solids right now
+
+#if dimension == 2
+        memcpy(rmatrix, (double[]){gc.x*gc.y - (pcell->x*pcell->y)*term,
+                                   gc.x - pcell->x*term,
+                                   gc.y - pcell->y*term,
+                                   1 - term, usolid}, cols*sizeof(double));
+#else // dimension == 3
+        memcpy(rmatrix, (double[]){gc.x*gc.y*gc.z - pcell->x*pcell->y*pcell->z*term,
+                                   gc.x*gc.y - pcell->x*pcell->y*term,
+                                   gc.x*gc.z - pcell->x*pcell->z*term,
+                                   gc.y*gc.z - pcell->y*pcell->z*term,
+                                   gc.x - pcell->x*term,
+                                   gc.y - pcell->y*term,
+                                   gc.z - pcell->z*term,
+                                   1 - term, usolid}, cols*sizeof(double));
+#endif // dimension == 2
+    }
+
+    NOT_UNUSED(zz); // to prevent unused variable warning
+}
+
+
+void get_interpolation_matrix2 (Point point, int m, int n, double matrix[m][n], char dir,
+                                double snodes[m], scalar s, PointIBM poff, PointIBM pnode, PointIBM pbound,
+                                coord ipoint, vector midPoints, vector normals, scalar alphas)
+{
+    // 4.a Calculate (global) coordinates and relative indices of interpolation cells
+    coord pints[rows];
+    PointIBM pnodes[rows];
+    get_interpolation_points(point, m, pints, pnodes, poff, pnode);
+
+    // 4.b Assemble matrix row by row
+    for (int row = 0; row < m; ++row) {
+
+        // If a cell for interpolating is a ghost cell, move the point to the
+        // interface and change the velocity to the correct boundary condition
+        fluid_only2(point, s, n, matrix[row], poff, pnodes[row], pbound, dir, 
+                    &pints[row], snodes[row], ipoint, midPoints, normals, alphas);
+    }
+}
+
+
+
+/**
+This function interpolates a scalar filed s to a point ip using bilinear or 
+trilinear interpolation. */
+double interpolate_image_point_scalar (Point point, scalar s, coord ip, coord n, 
+                                       vector mps, vector ns, scalar alphas)
+{
+    /**
+    If the ghost cell is near a boundary, we slightly adjust the interpolation
+    scheme. 
+    TODO: is this still necessary? */
+
+    int boffx = 0, boffy = 0, boffz = 0; // boundary offsets
+    borders_boundary (point, &boffx, &boffy, &boffz);
+
+    /**
+    We calculate the coordinates of the cell of which image point lies in and 
+    the location of it within the stencil of the current point, the later
+    stored in the three offset variables below. */
+
+    int xx = 0, yy = 0, zz = 0; 
+    image_offsets (point, ip, &xx, &yy, &zz);
+    
+    assert (abs(xx) <= 2 && abs(zz) <= 2 && abs(zz) <= 2);
+
+    coord ic = {x + Delta*xx, y + Delta*yy, z + Delta*zz};
+    
+    /**
+    Calculate indices for interpoalting stencil. */
+
+    int i = sign(ip.x - ic.x);
+    int j = sign(ip.y - ic.y);
+    int k = sign(ip.z - ic.z);
+
+    /**
+    Grab the values of s at the nodes defining the interpolation stencil. There
+    are 4 and 8 in 2D and 3D, respectively. */
+
+    double snodes[rows];
+    snodes[0] = s[xx,yy,zz];
+    snodes[1] = s[xx+i,yy,zz];
+    snodes[2] = s[xx+i,yy+j,zz];
+    snodes[3] = s[xx,yy+j,zz];
+#if dimension == 3
+    snodes[4] = s[xx,yy,zz+k];
+    snodes[5] = s[xx+i,yy,zz+k];
+    snodes[6] = s[xx+i,yy+j,zz+k];
+    snodes[7] = s[xx,yy+j,zz+k];
+#endif
+
+    /**
+    Fill the interpolation matrix to be inverted. Here, the matrix is an
+    agumented matrix of the Vandermonde matrix and the vector containg the values
+    of s at the bounding nodes, which is snodes in this case. */
+
+    double matrix[rows][cols];
+    get_interpolation_matrix2(point, rows, cols, matrix, 'n', snodes, s, 
+                             (PointIBM){xx,yy,zz}, (PointIBM){i,j,k}, 
+                             (PointIBM){boffx,boffy,boffz}, ip, mps, ns, alphas);
+
+    /**
+    Solve the linear system to get the coefficients */
+    double coeff[rows];
+    gauss_elim (rows, cols, matrix, coeff);
+
+    /**
+    Use the coefficients and the coordinate of the image point to find the
+    interpolated value of s at it. */
+
+#if dimension == 2
+    double sip = coeff[0] * ip.x * ip.y +
+                 coeff[1] * ip.x +
+                 coeff[2] * ip.y +
+                 coeff[3];
+#else
+    double sip = coeff[0] * ip.x * ip.y * ip.z +
+                 coeff[1] * ip.x * ip.y +
+                 coeff[2] * ip.x * ip.z +
+                 coeff[3] * ip.y * ip.z +
+                 coeff[4] * ip.x +
+                 coeff[5] * ip.y +
+                 coeff[6] * ip.z +
+                 coeff[7];
+#endif
+    return sip;
+}
+
 
 #undef rows
 #undef cols

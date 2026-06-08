@@ -658,7 +658,7 @@ Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0
             *rank = cell.pid;
     	return point;
       }
-      else if (allocated(0) && !is_local(cell) && is_leaf(cell)) {
+      else if (allocated(0) && !is_local(cell) && (is_leaf(cell) || is_boundary(cell))) {
         if (rank)
             *rank = cell.pid;
         point.level = -1;
@@ -672,14 +672,6 @@ Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0
   point.level = -1;
   return point;
 }
-
-#if 0
-macro2 foreach_image_point_stencil (double xp, double yp, double zp, char flags, Reduce reductions)
-{
-  foreach_stencil (flags, reductions)
-    {...}
-}
-#endif
 
 macro2 foreach_image_point (double _x = 0., double _y = 0., double _z = 0., int * rank = NULL,
             		        char flags = 0, Reduce reductions = None)

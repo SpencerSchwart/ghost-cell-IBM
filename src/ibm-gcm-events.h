@@ -10,6 +10,13 @@ Its main purpose is to update the metric fields to account for a moving interfac
 
 // TODO: this event is very sensitive to MPI and can cause crashes w/AMR
 
+void fill_interface_data();
+
+event init(i = 0)
+{
+    boundary({cs});
+    fill_interface_data();
+}
 
 event update_metric (i++)
 {
