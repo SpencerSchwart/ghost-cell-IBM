@@ -355,7 +355,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
       foreach() {
         if (c[] < VTOL)
           c[] = 0;
-        if (cs[] > 0 && cs[] < 1 && c[] >= cs[]-INT_TOL)
+        if (cs[] > 0 && cs[] < 1 && c[] && c[] >= cs[]-INT_TOL)
             ch[] = 1;
         else if (cs[] > 0 && c[] < 1 && c[])
             ch[] = c[]/cs[];
