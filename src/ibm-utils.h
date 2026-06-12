@@ -110,19 +110,21 @@ double dot_product (coord a, coord b)
     return product;
 }
 
-double dot_product_angle (coord a, coord b)
-{
-    double product = clamp(dot_product(a, b), -1, 1);
-    assert(fabs(product) <= 1);
-    return acos(dot_product(a, b));
-}
-
 double magnitude_coord (coord a)
 {
     double mag = 0;
     foreach_dimension()
         mag += sq(a.x);
     return sqrt(mag);
+}
+
+double dot_product_angle (coord a, coord b)
+{
+    double product = clamp(dot_product(a, b), -1, 1);
+    double amag = magnitude_coord(a);
+    double bmag = magnitude_coord(b);
+
+    return acos(product/(amag * bmag));
 }
 
 coord subtract_coord (coord a, coord b)
@@ -632,7 +634,7 @@ macro foreach_diagonal_neighbor (int self = 0, Point point = point, break = (_k 
 Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0)
 {
   if (rank)
-    *rank = -2;
+    *rank = -1;
 
   for (int l = depth(); l >= 0; l--) {
     Point point = {0};
@@ -658,11 +660,16 @@ Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0
             *rank = cell.pid;
     	return point;
       }
-      else if (allocated(0) && !is_local(cell) && (is_leaf(cell) || is_boundary(cell))) {
+      else if (allocated(0) && !is_local(cell) && is_leaf(cell)) {
         if (rank)
             *rank = cell.pid;
         point.level = -1;
         return point;
+      }
+      else if (allocated(0) && is_boundary(cell)) {
+        if (rank)
+            *rank = -2;
+        //fprintf(stderr, "is boundary cell! (%g, %g, %g)\n", xp, yp, zp);
       }
     }
     else
