@@ -125,6 +125,16 @@ double navier_homogeneous (double expr, Point point = point,
     ((bool *)data)[0] = true, ((bool *)data)[1] = true, expr : 2.*expr - s[];
 }
 
+#if 0
+// Working in progress
+macro2
+double contact_angle (double expr, Point point = point,
+                      scalar s = _s, bool * data = data)
+{
+  return data ? ibm_area_center (point, s, &x, &y, &z),
+    ((bool *)data)[0] = true, expr : expr;
+}
+#endif
 
 /*
 This function takes returns true if the given point has a direct neighbor that
@@ -1946,8 +1956,7 @@ double skin_friction (vector u, face vector mu, scalar cf)
     foreach (reduction(+:cftotal)) {
         if (cs[] > 0 && cs[] < 1) {
             coord n, b;
-            double area = ibm_geometry (point, &b, &n);
-            area *= pow (Delta, dimension - 1);
+            ibm_geometry (point, &b, &n);
             
             // calculate shear force
             double mua = 0., fa = 0.;

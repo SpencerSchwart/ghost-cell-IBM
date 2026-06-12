@@ -872,6 +872,9 @@ The return value is in the cell's local coordinate system, i.e. [-0.5,-0.5]x[0.5
 
 double line_intersect (double alpha, coord n, double x = HUGE, double y = HUGE)
 {
+    if (x != HUGE && !n.y) 
+        return 0;
+
     double inter = 0;
     if (x == HUGE && y != HUGE)
         inter = alpha/n.x - (n.y/(n.x+SEPS))*y;
@@ -1090,7 +1093,7 @@ double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int 
     static const coord lhs = {-0.5,-0.5,-0.5}, rhs = {0.5,0.5,0.5};
 #if dimension == 2
     coord ip[2];
-    int dp = facets (tcell.ns, tcell.alphas, ip);
+    int dp = facets_ibm (tcell.ns, tcell.alphas, ip);
 #else
     coord ip[12];
     int dp = facets (tcell.ns, tcell.alphas, ip, 1);
@@ -1874,12 +1877,12 @@ the volume fraction field, which results in a piecewise continuous
 (i.e. geometric VOF) interface representation. */
 
 trace
-void output_facets_contact (scalar c, FILE * fp = stdout, face vector s = {{-1}})
+void output_facets_contact (scalar c, scalar ch, scalar cs, FILE * fp = stdout, face vector s = {{-1}})
 {
-  foreach (serial)
-    if (c[] > 1e-6 && c[] < 1. - 1e-6) {
-      coord n = facet_normal (point, c, s);
-      double alpha = plane_alpha (c[], n);
+  foreach (serial) {
+    if (c[] > 1e-6 && c[] < cs[] - 1e-6) {
+      coord n = facet_normal (point, ch, s);
+      double alpha = plane_alpha (ch[], n);
 #if dimension == 1
       fprintf (fp, "%g\n", x + Delta*alpha/n.x);
 #elif dimension == 2
@@ -1898,7 +1901,85 @@ void output_facets_contact (scalar c, FILE * fp = stdout, face vector s = {{-1}}
 	fputc ('\n', fp);
 #endif
     }
+  }
 
   fflush (fp);
 }
 
+extern scalar extra;
+
+/**
+This function outputs the coordinates of a contact line to a given file fp. */
+void output_contact_line (scalar ch, scalar cs, face vector fs, FILE * fp)
+{
+    foreach(serial) {
+        if (extra[] && cs[] > 0 && cs[] < 1) {
+
+            coord nf = interface_normal (point, ch);
+            double alphaf = plane_alpha (ch[], nf);
+
+            coord ns = facet_normal (point, cs, fs);
+            double alphas = plane_alpha(cs[], ns);
+            plane pbound = {{1,0,0}, 0.5};
+
+            plane liquid = {nf, alphaf};
+            plane solid  = {ns, alphas};
+
+            coord pint[2] = {{nodata, nodata, nodata}, {nodata, nodata, nodata}};
+            int cint = plane_intersect(liquid, solid, pbound, pint);
+            
+            if (cint == 2) {
+            	fprintf (fp, "%g %g %g\n%g %g %g\n\n", 
+            		 x + pint[0].x*Delta, y + pint[0].y*Delta, z + pint[0].z*Delta,
+            		 x + pint[1].x*Delta, y + pint[1].y*Delta, z + pint[1].z*Delta);
+            }
+        }
+    }
+    fflush(fp);
+}
+
+
+/**
+This function fills the field "cl" with the distance of contact line cells from 
+the origin. It also returns the average distance. */
+double measure_contact_line (vector cl, scalar ch, scalar cs, face vector fs)
+{
+    double avgcl = 0;
+    int count = 0;
+
+    foreach(serial, reduction(+:avgcl) reduction(+:count)) {
+        foreach_dimension()
+            cl.x[] = nodata;
+
+        if (extra[] && cs[] > 0 && cs[] < 1) {
+
+            coord nf = interface_normal (point, ch);
+            double alphaf = plane_alpha (ch[], nf);
+
+            coord ns = facet_normal (point, cs, fs);
+            double alphas = plane_alpha(cs[], ns);
+
+            plane pbound = {{1,0,0}, 0.5};
+
+            plane liquid = {nf, alphaf};
+            plane solid  = {ns, alphas};
+
+            coord pint[2] = {{nodata, nodata, nodata}, {nodata, nodata, nodata}};
+            int cint = plane_intersect(liquid, solid, pbound, pint);
+          
+            if (cint < 2)
+                continue;
+
+            coord pmid = {x + (pint[0].x + pint[0].x)*0.5*Delta,
+                          y + (pint[0].y + pint[1].y)*0.5*Delta,
+                          z + (pint[0].z + pint[1].z)*0.5*Delta};
+
+            foreach_dimension()
+                cl.x[] = pmid.x;
+
+            avgcl += magnitude_coord(pmid);
+            count++;
+        }
+    }
+    return count? avgcl/(double)count: 0;
+}
