@@ -341,6 +341,275 @@ void reconstruction_cs (const scalar c, const face vector cf, vector n, scalar a
 #endif
 }
 
+/** 
+ ### Bug fix for fraction function (2D case) 
+
+This is pulled from Tianyang's sandbox, so thank you to him.
+
+It fixes the issue with the standard fractions() function, where it can't
+reconstruct an interface if it perfectly coincides with a vertex. */
+
+trace
+void fractions_ibm (vertex scalar Phi, scalar c,
+		face vector s = {0}, double val = 0.)
+{
+#if dimension > 1
+  face vector as = automatic (s);
+  
+  /**
+  We store the positions of the intersections of the surface with the
+  edges of the cell in vector field `p`. In two dimensions, this field
+  is just the transpose of the *line fractions* `s`, in 3D we need to
+  allocate a new field. */
+  
+#if dimension == 3
+  vector p[];
+#else // dimension == 2
+  vector p;
+  p.x = as.y; p.y = as.x;
+#endif
+  
+  /**
+  ### Line fraction computation
+  
+  We start by computing the *line fractions* i.e. the (normalised)
+  lengths of the edges of the cell within the surface. */
+
+  foreach_edge() {
+
+    /**
+    If the values of $\Phi$ on the vertices of the edge have opposite
+    signs, we know that the edge is cut by the interface. */
+
+    if ((Phi[] - val)*(Phi[1] - val) < 0.) {
+
+      /**
+      In that case we can find an approximation of the interface position by
+      simple linear interpolation. We also check the sign of one of the
+      vertices to orient the interface properly. */
+
+      p.x[] = (Phi[] - val)/(Phi[] - Phi[1]);
+      if (Phi[] < val)
+	p.x[] = 1. - p.x[];
+    }
+
+    /**
+    If the values of $\Phi$ on the vertices of the edge have the same sign
+    (or are zero), then the edge is either entirely outside or entirely
+    inside the interface. We check the sign of both vertices to treat
+    limit cases properly (when the interface intersects the edge exactly
+    on one of the vertices). */
+
+    else
+      p.x[] = (Phi[] > val || Phi[1] > val);
+  }
+
+  /**
+  ### Surface fraction computation 
+
+  We can now compute the surface fractions. In 3D they will be
+  computed for each face (in the z, x and y directions) and stored in
+  the face field `s`. In 2D the surface fraction in the z-direction is
+  the *volume fraction* `c`. */
+
+#if dimension == 3
+
+  /**
+  In 3D we need to prevent boundary conditions, since this would
+  impose vertex field BCs which are not (apparently) consistent for
+  the edge intersection coordinates. This can probably be improved. */
+  
+  foreach_dimension()
+    p.x.dirty = false;
+  
+  scalar s_x = as.x, s_y = as.y, s_z = as.z;
+  foreach_face(z,x,y)
+#else // dimension == 2
+  scalar s_z = c;
+  foreach()
+#endif
+  {
+
+    /**
+    We first compute the normal to the interface. This can be done easily
+    using the line fractions. The idea is to compute the circulation of
+    the normal along the boundary $\partial\Omega$ of the fraction of the
+    cell $\Omega$ inside the interface. Since this is a closed curve, we
+    have
+    $$
+    \oint_{\partial\Omega}\mathbf{n}\;dl = 0
+    $$ 
+    We can further decompose the integral into its parts along the edges
+    of the square and the part along the interface. For the case pictured
+    above, we get for one component (and similarly for the other)
+    $$
+    - s_x[] + \oint_{\Phi=0}n_x\;dl = 0
+    $$
+    If we now define the *average normal* to the interface as
+    $$
+    \overline{\mathbf{n}} = \oint_{\Phi=0}\mathbf{n}\;dl
+    $$
+    We have in the general case
+    $$
+    \overline{\mathbf{n}}_x = s_x[] - s_x[1,0]
+    $$
+    and
+    $$
+    |\overline{\mathbf{n}}| = \oint_{\Phi=0}\;dl
+    $$ 
+    Note also that this average normal is exact in the case of a linear
+    interface. */
+
+    coord n;
+    double nn = 0.;
+    foreach_dimension(2) {
+      n.x = p.y[] - p.y[1];
+      nn += fabs(n.x);
+    }
+    
+    /**
+    If the norm is zero, the cell is full or empty and the surface fraction
+    is identical to one of the line fractions. */
+
+    if (nn == 0.)
+      s_z[] = p.x[];
+    else {
+    
+      /**
+      Otherwise we are in a cell containing the interface. We first
+      normalise the normal. */
+
+      foreach_dimension(2)
+	n.x /= nn;
+
+      /**
+      To find the intercept $\alpha$, we look for edges which are cut by the
+      interface, find the coordinate $a$ of the intersection and use it to
+      derive $\alpha$. We take the average of $\alpha$ for all intersections. */
+      
+      double alpha = 0., ni = 0.;
+      for (int i = 0; i <= 1; i++)
+	foreach_dimension(2)
+	  if (p.x[0,i] > 0. && p.x[0,i] < 1.) {
+	    double a = sign(Phi[0,i] - val)*(p.x[0,i] - 0.5);
+	    alpha += n.x*a + n.y*(i - 0.5);
+	    ni++;
+	  }
+    else if (p.x[0,i] == 0 && p.y[i,0] == 1) { //for interface crossing grid corner
+      alpha += n.x*(i - 0.5) + n.y*(i - 0.5);
+      ni++;
+    }
+    else if (p.x[0,i] == 0 && p.y[1-i,0] == 1) {
+      alpha += n.x*(0.5 - i) + n.y*(i - 0.5);
+      ni++;
+    }
+
+      /**
+      Once we have $\mathbf{n}$ and $\alpha$, the (linear) interface
+      is fully defined and we can compute the surface fraction using
+      our pre-defined function. For marginal cases, the cell is full
+      or empty (*ni == 0*) and we look at the line fractions to
+      decide. */
+
+      if (ni == 0)
+	s_z[] = max (p.x[], p.y[]);
+      else if (ni != 4)
+	s_z[] = line_area (n.x, n.y, alpha/ni);
+      else {
+#if dimension == 3
+	s_z[] = (p.x[] + p.x[0,1] + p.y[] + p.y[1] > 2.);
+#else
+	s_z[] = 0.;
+#endif
+      }
+    }
+  }
+  
+  /**
+  ### Volume fraction computation
+
+  To compute the volume fraction in 3D, we use the same approach. */
+  
+#if dimension == 3
+  foreach() {
+
+    /**
+    Estimation of the average normal from the surface fractions. */
+       
+    coord n;
+    double nn = 0.;
+    foreach_dimension(3) {
+      n.x = as.x[] - as.x[1];
+      nn += fabs(n.x);
+    }
+    if (nn == 0.)
+      c[] = as.x[];
+    else {
+      foreach_dimension(3)
+	n.x /= nn;
+
+      /**
+      We compute the average value of *alpha* by looking at the
+      intersections of the surface with the twelve edges of the
+      cube. */
+      
+      double alpha = 0., ni = 0.;
+      for (int i = 0; i <= 1; i++)
+	for (int j = 0; j <= 1; j++)
+	  foreach_dimension(3)
+	    if (p.x[0,i,j] > 0. && p.x[0,i,j] < 1.) {
+	      double a = sign(Phi[0,i,j] - val)*(p.x[0,i,j] - 0.5);
+	      alpha += n.x*a + n.y*(i - 0.5) + n.z*(j - 0.5);
+	      ni++;
+	    }
+
+      /**
+      Finally we compute the volume fraction. */
+
+      if (ni == 0)
+	c[] = as.x[];
+      else if (ni < 3 || ni > 6)
+	c[] = 0.; // this is important for robustness of embedded boundaries
+      else
+	c[] = plane_volume (n, alpha/ni);
+    }
+  }
+#endif // dimension == 3
+#else  // dimension == 1
+  if (s.x.i)
+    foreach_face()
+      s.x[] = Phi[] > 0.;
+  foreach()
+    if ((Phi[] - val)*(Phi[1] - val) < 0.) {
+      c[] = (Phi[] - val)/(Phi[] - Phi[1]);
+      if (Phi[] < val)
+	c[] = 1. - c[];
+    }
+    else
+      c[] = (Phi[] > val || Phi[1] > val);
+#endif
+}
+
+macro fraction_ibm (scalar f, double func)
+{
+  {
+    vertex scalar phi[];
+    foreach_vertex()
+      phi[] = func;
+    fractions_ibm (phi, f);
+  }
+}
+
+macro solid_ibm (scalar cs, face vector fs, double func)
+{
+  {
+    vertex scalar phi[];
+    foreach_vertex()
+      phi[] = func;
+    fractions_ibm (phi, cs, fs);
+  }
+}
+
 /**
 generic root solver using the bisection method */
 int rsolver_bisection (double* a, double amin, double amax, const void* data, double (*func)(const void*, double),
