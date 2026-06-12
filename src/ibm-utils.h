@@ -610,6 +610,65 @@ macro solid_ibm (scalar cs, face vector fs, double func)
   }
 }
 
+
+int facets_ibm (coord n, double alpha, coord p[2])
+{
+  int nx = 0;
+  int ny = 0;
+  coord px[2];
+  coord py[2];
+
+  for (double s = -0.5; s <= 0.5; s += 1.) {
+    if (fabs (n.y) > 0.) {
+      double a = (alpha - s*n.x)/n.y;
+      if (a >= -0.5 && a <= 0.5) {
+        px[nx].x = s;
+	      px[nx++].y = a;
+      }
+    }
+    if (fabs (n.x) > 0.) {
+      double a = (alpha - s*n.y)/n.x;
+      if (a >= -0.5 && a <= 0.5) {
+        py[ny].y = s;
+	      py[ny++].x = a;
+      }
+    }
+  }
+
+  if (nx == 2) {
+    foreach_dimension() {
+      p[0].x = px[0].x;
+      p[1].x = px[1].x;
+    }
+    return 2;
+  }
+  else if (ny == 2) {
+    foreach_dimension() {
+      p[0].x = py[0].x;
+      p[1].x = py[1].x;
+    }
+    return 2;
+  }
+  else {
+    int i = 0;
+    if (nx > 0) {
+      assert (nx == 1);
+      p[i].x = px[0].x;
+      p[i].y = px[0].y;
+      i++;
+    }
+    if (ny > 0) {
+      assert (ny == 1);
+      p[i].x = py[0].x;
+      p[i].y = py[0].y;
+      i++;
+    }
+    assert (i <= 2);
+    return i;
+  }
+}
+
+
 /**
 generic root solver using the bisection method */
 int rsolver_bisection (double* a, double amin, double amax, const void* data, double (*func)(const void*, double),
