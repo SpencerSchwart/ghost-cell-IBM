@@ -101,6 +101,7 @@ coord interpolate_image_point (coord ip, coord nsg, int * rank = NULL)
     foreach_image_point (ip.x, ip.y, ip.z, rank)
 #endif
         uip = image_velocity (point, u, ip, nsg, midPoints, normals, ibalphas);
+
     return uip;
 }
 
@@ -199,6 +200,9 @@ void update_gc_velocity()
 
         int rank = -1;
         uip[i] = interpolate_image_point(ips[i], nsg[i], &rank);
+
+        if (rank < 0)   // image point is in boundary
+            continue;
 #if _MPI
         if (uip[i].x == nodata) {
             assert (rank >= 0 && rank < npe());
@@ -401,6 +405,11 @@ void update_gc_velocity()
 
             coord imageVelocity = uip[(int)gid[]];
             coord n = nsg[(int)gid[]];
+
+            if (imageVelocity.x == nodata) {
+                coord ip = image_point (bi, gc, n);
+                imageVelocity = image_velocity (point, u, ip, n, midPoints, normals, ibalphas); 
+            }
 #endif
 
             if (local_bc_coordinates) {
@@ -482,6 +491,20 @@ void cleanup_ibm()
         if (gid[] > -1 && !cs[])
             p[] = pf[] = 0;
     }
+}
+
+
+/**
+centered.h initializes the face velocity field without consdering the solid 
+boundary. This can cause uf != 0 on faces completely occupied by the immersed
+boundary, specifically when restarting from a dump file. We call this event at
+the start to avoid this problem. */
+
+event properties (i = 0)
+{
+    foreach_face()
+        if (!fm.x[] || !fs.x[])
+            uf.x[] = 0;
 }
 
 /**
