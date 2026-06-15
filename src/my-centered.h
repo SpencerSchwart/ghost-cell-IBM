@@ -192,18 +192,13 @@ event defaults (i = 0)
   for (scalar s in {p, pf})
     s.embed_gradient = pressure_embed_gradient;
 #elif IBM
-  //uf.x.refine = refine_face;
-  //foreach_dimension() {
-    //uf.x.refine = refine_ibm_face_x;
-    //uf.x.prolongation = refine_ibm_face_x;
-  //}
+  /**
+  Its important to ensure that corasening cells near the immersed boundary do
+  not consider values in cells with a trivial solution (0). */
   for (scalar s in {p, pf, u, g}) {
     s.restriction = restriction_ibm_linear;
-    //s.refine = s.prolongation = refine_ibm_linear;
     s.depends = list_add (s.depends, cs);
   }
-  //for (scalar s in {p, pf})
-  //  s.ibm_gradient = pressure_ibm_gradient;
 #endif
 #endif // TREE
 
