@@ -194,11 +194,11 @@ event defaults (i = 0)
 #elif IBM
   //uf.x.refine = refine_face;
   //foreach_dimension() {
-  //  //uf.x.refine = refine_ibm_face_x;
-  //  uf.x.prolongation = refine_ibm_face_x;
+    //uf.x.refine = refine_ibm_face_x;
+    //uf.x.prolongation = refine_ibm_face_x;
   //}
   for (scalar s in {p, pf, u, g}) {
-    //s.restriction = restriction_ibm_linear;
+    s.restriction = restriction_ibm_linear;
     //s.refine = s.prolongation = refine_ibm_linear;
     s.depends = list_add (s.depends, cs);
   }
