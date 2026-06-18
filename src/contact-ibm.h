@@ -928,8 +928,8 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
                     // a new cell only gets a little bit of f (due to the low velocity/flux)
                     double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
 
-                    double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
-                    cellWeight /= pow(dc,2);
+                    //double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
+                    //cellWeight /= pow(dc,2);
 
                     totalWeight += cellWeight;
 
@@ -1014,7 +1014,7 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
                     //if (!approx_equal_double(gr0, fr) && !(contact_angle[] < pi/2. && fr0 <= VTOL)) {
                     //if (!approx_equal_double(gr0, fr) && fr < gr0) { //TODO: THIS IS BAD FOR GENERAL CASES IMPROVE
                     #if 1
-                    if (!approx_equal_double(gr0, fr)) { 
+                    if (!approx_equal_double(gr0, fr, INT_TOL)) { 
 
                         const tripoint tcell = fill_tripoint (fr0, nf1, alpha, ns0, alphas0, fa, cs0);
                         double alphatmp = ghost_alpha(tcell, -0.6, 0.6);
@@ -1026,8 +1026,8 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
 #endif
                     double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
 
-                    double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
-                    cellWeight /= pow(dc,2);
+                    //double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
+                    //cellWeight /= pow(dc,2);
 
                     totalWeight += cellWeight;
 
@@ -1050,57 +1050,6 @@ void set_contact_angle (scalar c, scalar cr0, const scalar cs,
         c1[] = c[];
     }
 
-    //heights(c, hfg2);
-
-    //curvature(c, kappag0, f.sigma, add = false);
-
-#if 0
-    scalar ctmp[];
-    foreach() 
-        ctmp[] = c[];
-    boundary({ctmp,cr0,c});
-#endif
-
-#if 0
-    /**
-    TODO: is this necessary for ALL contact angles? or just super hydrophobic?*/
-    foreach() {
-        gf1[] = c[];
-        // make full cells with fractional ch conserve cr
-        if (ghostInter[] && cr0[] >= cs[] - 1e-6 && c[] != c0[] && c[] != 1.) {
-            coord mf = interface_normal(point, c1);
-            if (!mf.x && !mf.y && !mf.z) {
-                double ctemp = c1[];
-                c1[] = 0.5;
-                mf = interface_normal(point, c1);
-                c1[] = ctemp;
-            }
-            coord ns1 = {ns.x[], ns.y[], ns.z[]};
-            double alpha = plane_alpha(c1[], mf);           
-            double fr = immersed_fraction(c1[], mf, alpha, ns1, alphas[], 
-                                         (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5})*cs[];
-            
-            if (!approx_equal_double(fr, cr0[])) {
-                const tripoint tcell = fill_tripoint (cr0[], mf, alpha, ns1, alphas[], c[], cs[]);
-                double alphatmp = ghost_alpha(tcell, -0.6, 0.6);
-                c[] = plane_volume(mf, alphatmp);
-            }
-        }
-        #if 1
-        if (extra[]) {
-            coord nf1 = interface_normal(point, c1);
-            if (!nf1.x && !nf1.y && !nf1.z) {
-              c[] = 0;
-              continue;
-            }
-            coord ns1 = {ns.x[], ns.y[], ns.z[]};
-            double alpha = immersed_alpha(c[], cs[], nf1, alphaf[], ns1, alphas[], cr0[]);
-            c[] = plane_volume(nf1, alpha);
-        }
-        #endif
-    }
-#endif
-    //clean_fluid (c, cs);
     boundary ({c, cr0});
 }
 

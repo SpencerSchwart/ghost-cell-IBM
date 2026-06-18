@@ -1,6 +1,6 @@
 #if !AXI
 #undef dv
-#define dv()  (pow(Delta,dimension))
+#define dv()  (pow(Delta,dimension)*cm[])
 #endif // !AXI
 #define dv2() (pow(Delta,dimension)*cs[]*cm[])
 #define dv3() (pow(Delta,dimension)*fs[])
@@ -1097,7 +1097,8 @@ coord image_velocity (Point point, vector u, coord imagePoint, coord n,
     int xOffset = 0, yOffset = 0, zOffset = 0;
     image_offsets (point, imagePoint, &xOffset, &yOffset, &zOffset);
     
-    assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
+    //assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
+    xOffset = clamp(xOffset, -2, 2), yOffset = clamp(yOffset, -2, 2), zOffset = clamp(zOffset, -2, 2);
 
     coord imageCell = {x + Delta*xOffset, y + Delta*yOffset, z + Delta*zOffset};
     

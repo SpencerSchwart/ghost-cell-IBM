@@ -159,8 +159,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
         if (approx_equal_double(cf, 0) && approx_equal_double(c[i], 1))
             fprintf(stderr, "WARNING: cf = %g for a cell with c = %g\n", cf, c[i]);
         #if 0
-            fprintf(stderr, "1: %g (%g, %g) c[%d]=%g cf=%g nf={%g, %g} af=%g rhs.x=%g un=%g f=%g\n",
-                indicator.x, x, y, i, c[i], cf, tempnf.x, tempnf.y, alphafh[i], rhs.x, un, 
+            fprintf(stderr, "1: %g (%g, %g, %g) c[%d]=%g cf=%g nf={%g, %g} af=%g rhs.x=%g un=%g f=%g\n",
+                indicator.x, x, y, z, i, c[i], cf, tempnf.x, tempnf.y, alphafh[i], rhs.x, un, 
                 rectangle_fraction (tempnf, alphafh[i], lhs, rhs));
         #endif
     }
@@ -170,6 +170,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
         double fvf = rectangle_fraction (tempns, alphas[i], lhs, rhs);
 
         double advVolume = fabs(un)*fvf;
+
+        if (!advVolume)
+            assert (c[i] <= 0);
 
         if (c[i] <= 0.)
             cf = 0.;
@@ -200,8 +203,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
             cf = immersed_fraction (newc, tempnf, alphacr, tempns, alphas[i], lhs, rhs, advVolume, print = 1);
 
 
-            //fprintf(stderr, "1: %g (%g, %g) cf=%g nc={%g, %g} ar=%g ns={%g, %g} as=%g rhs.x=%g un=%g\n",
-            //    indicator.x, x, y, cf, tempnf.x, tempnf.y, alphacr, tempns.x, tempns.y, alphas[i], rhs.x, un);
+            //fprintf(stderr, "1: %g (%g, %g, %g) cf=%g nc={%g, %g} ar=%g ns={%g, %g} as=%g rhs.x=%g un=%g\n",
+            //    indicator.x, x, y, z, cf, tempnf.x, tempnf.y, alphacr, tempns.x, tempns.y, alphas[i], rhs.x, un);
        }
        else
            cf = 0;
@@ -295,10 +298,11 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
       //double c0 = c[];
       c[]  += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
       ch[] += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
+
 #if 0
       if (on_interface(cs) && c[])
-        fprintf(stderr, "2: %g (%g, %g) c0=%g c1=%g flux[]=%g flux[1]=%g\n",
-            indicator.x, x, y, c0, c[], flux[], flux[1]);
+        fprintf(stderr, "2: %g (%g, %g, %g) c0=%.15g c1=%.15g cs=%.15g flux[]=%g flux[1]=%g %d %d %d\n",
+            indicator.x, x, y, z, c0, c[], cs[], flux[], flux[1], c[] < cs[] - 1e-6, c[] > cs[] - 1e-5, magnitude_coord((coord){x,y,z}) > 0.48);
 #endif
       scalar t, tc, tflux;
       for (t, tc, tflux in tracers, tcl, tfluxl)
@@ -353,30 +357,37 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
           update_contact_angle (c, c0, cs0, ns, alphas, u, contact_angle);
 
       foreach() {
-        if (c[] < VTOL)
-          c[] = 0;
-        if (cs[] > 0 && cs[] < 1 && c[] && c[] >= cs[]-INT_TOL)
-            ch[] = 1;
-        else if (cs[] > 0 && c[] < 1 && c[])
-            ch[] = c[]/cs[];
-        else if (cs[] > 0)
-            ch[] = c[];
-        else if (cs[] <= 0 && f.wetting.theta_s <= 90) {
-        //else if (cs[] <= 0) {
-            bool fill = false;
-            foreach_neighbor(1) {
-              if (cs[] && c[] && !extra[]) 
-                fill = true;
-              if (cs[] && !c[]) {
-                fill = false;
-                break;
+        if (contact_angle[] < pi - 1e-6) {
+          if (c[] < VTOL)
+            c[] = 0;
+          else if (c[] && c[] > cs[] - 1e-14)
+            c[] = cs[];
+          if (cs[] > 0 && cs[] < 1 && c[] && c[] >= cs[]-INT_TOL)
+              ch[] = 1;
+          else if (cs[] > 0 && c[] < 1 && c[])
+              ch[] = c[]/cs[];
+          else if (cs[] > 0)
+              ch[] = c[];
+          else if (cs[] <= 0 && f.wetting.theta_s < 150) {
+          //else if (cs[] <= 0) {
+              bool fill = false;
+              foreach_neighbor(1) {
+                if (cs[] && c[] && !extra[]) 
+                  fill = true;
+                if (cs[] && !c[]) {
+                  fill = false;
+                  break;
+                }
               }
-            }
 
-            ch[] = fill? 1: 0;
+              ch[] = fill? 1: 0;
+          }
+          else
+              ch[] = 0;
         }
-        else
-            ch[] = 0;
+        else {
+            ch[] = c[];
+        }
       }
 
       scalar alphaf[];

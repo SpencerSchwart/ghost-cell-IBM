@@ -194,7 +194,8 @@ event defaults (i = 0)
 #elif IBM
   /**
   Its important to ensure that corasening cells near the immersed boundary do
-  not consider values in cells with a trivial solution (0). */
+  not consider values in cells with a trivial solution (0). This is especially
+  true for the pressure fields. */
   for (scalar s in {p, pf, u, g}) {
     s.restriction = restriction_ibm_linear;
     s.depends = list_add (s.depends, cs);
