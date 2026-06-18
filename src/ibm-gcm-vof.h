@@ -1877,11 +1877,11 @@ the volume fraction field, which results in a piecewise continuous
 (i.e. geometric VOF) interface representation. */
 
 trace
-void output_facets_contact (scalar c, scalar ch, scalar cs, FILE * fp = stdout, face vector s = {{-1}})
+void output_facets_contact (scalar c, scalar ch, scalar cs, FILE * fp = stdout)
 {
   foreach (serial) {
     if (c[] > 1e-6 && c[] < cs[] - 1e-6) {
-      coord n = facet_normal (point, ch, s);
+      coord n = interface_normal (point, ch);
       double alpha = plane_alpha (ch[], n);
 #if dimension == 1
       fprintf (fp, "%g\n", x + Delta*alpha/n.x);
