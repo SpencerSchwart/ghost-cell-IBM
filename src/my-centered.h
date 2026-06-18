@@ -198,6 +198,7 @@ event defaults (i = 0)
   true for the pressure fields. */
   for (scalar s in {p, pf, u, g}) {
     s.restriction = restriction_ibm_linear;
+    s.refine = s.prolongation = refine_ibm_linear;
     s.depends = list_add (s.depends, cs);
   }
 #endif

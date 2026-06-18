@@ -207,8 +207,7 @@ to two layers of ghost cells and constant refining/coarsening.
 bool match_level (Point point, scalar cs)
 {
     foreach_neighbor(1) {
-        //if (cs[] > GCV && is_leaf(cell) && is_active(cell))
-        if (cs[] > GCV && is_leaf(cell))
+        if (cs[] > GCV && (is_leaf(cell) || is_prolongation(cell)))
             return true;
     }
     return false;
