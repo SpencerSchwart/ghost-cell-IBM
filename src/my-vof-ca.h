@@ -357,11 +357,12 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
           update_contact_angle (c, c0, cs0, ns, alphas, u, contact_angle);
 
       foreach() {
+        if (c[] < VTOL)
+          c[] = 0;
+        else if (c[] && c[] > cs[] - 1e-14)
+          c[] = cs[];
+
         if (contact_angle[] < pi - 1e-6) {
-          if (c[] < VTOL)
-            c[] = 0;
-          else if (c[] && c[] > cs[] - 1e-14)
-            c[] = cs[];
           if (cs[] > 0 && cs[] < 1 && c[] && c[] >= cs[]-INT_TOL)
               ch[] = 1;
           else if (cs[] > 0 && c[] < 1 && c[])
@@ -385,9 +386,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
           else
               ch[] = 0;
         }
-        else {
+        else 
             ch[] = c[];
-        }
       }
 
       scalar alphaf[];
