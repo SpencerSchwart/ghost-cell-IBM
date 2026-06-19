@@ -420,7 +420,7 @@ void fractions_ibm (vertex scalar Phi, scalar c,
   the edge intersection coordinates. This can probably be improved. */
   
   foreach_dimension()
-    p.x.dirty = false;
+    p.x.stencil.bc |= s_centered|s_face;
   
   scalar s_x = as.x, s_y = as.y, s_z = as.z;
   foreach_face(z,x,y)

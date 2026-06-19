@@ -21,7 +21,6 @@ event init(i = 0)
 event update_metric (i++)
 {
     // update metrics considering immersed boundary
-    cs.dirty = true;
     foreach() {
         if (cs[] > GCV) // fluid cell
             gc[] = 1;
