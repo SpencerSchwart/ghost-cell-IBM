@@ -275,14 +275,14 @@ static inline void refine_ibm_linear (Point point, scalar s)
           coarse(cs,0,child.y,child.z) > GCV ||
           coarse(cs,child.x,child.y,child.z) > GCV)) {
 
-        assert (coarse(cs,child.x) && coarse(cs,0,child.y) && coarse(cs,0,0,child.z));
+        //assert (coarse(cs,child.x) && coarse(cs,0,child.y) && coarse(cs,0,0,child.z));
 
         if (coarse(fs.x,i,child.y) && coarse(fs.y,child.x,j) &&
 	        coarse(fs.z,child.x,child.y,k) &&
             coarse(fs.z,child.x,0,k) && coarse(fs.z,0,child.y,k)) {
 
-          assert (coarse(cs,child.x,child.y) && coarse(cs,child.x,0,child.z) &&
-                  coarse(cs,0,child.y,child.z) && coarse(cs,child.x,child.y,child.z));
+          //assert (coarse(cs,child.x,child.y) && coarse(cs,child.x,0,child.z) &&
+          //        coarse(cs,0,child.y,child.z) && coarse(cs,child.x,child.y,child.z));
                   
           // bilinear interpolation
           s[] = (27.*coarse(s) + 

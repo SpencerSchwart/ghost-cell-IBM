@@ -28,6 +28,7 @@ event update_metric (i++)
             gc[] = 0;
     }
 
+    set_dirty_stencil (cs);
     foreach_face() {
        if (cs[] > 0 || cs[-1] > 0 || is_ghost_cell (point, cs))
             gcf.x[] = 1;
