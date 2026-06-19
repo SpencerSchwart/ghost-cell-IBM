@@ -225,57 +225,6 @@ static inline void restriction_ibm_gc (Point point, scalar s)
     s[] = cs[] > GCV? 1: 0;
 }
 
-static inline void restriction_ibm_linear2 (Point point, scalar s)
-{  
-  // 0 children
-  if (!cs[]) {
-    s[] = 0.;
-    return;
-  }
-
-  /**
-  We first try to interpolate "diagonally". If enough child cells are
-  defined (i.e. have non-zero ibmded fractions), we return the
-  corresponding value. */
-
-  double val = 0., nv = 0.;
-  for (int i = 0; i <= 1; i++)
-#if dimension > 2
-    for (int j = 0; j <= 1; j++)
-#endif
-      if (fine(cs,0,i,j) && fine(cs,1,!i,!j))
-	    val += (fine(s,0,i,j) + fine(s,1,!i,!j))/2., nv++;
-  if (nv > 0.) {
-    s[] = val/nv;
-    return;
-  }
-
-  /**
-  Otherwise, we use the average of the child cells which are defined
-  (there is at least one). */
-  
-  coord p = {0.,0.,0.};
-
-  foreach_child() {
-    if (cs[])
-      p.x += x, p.y += y, p.z += z, val += s[], nv++;
-   }
-  assert (nv > 0.);
-  s[] = val/nv;
-
-  /**
-  If the gradient is defined and if the variable is not using
-  homogeneous boundary conditions, we improve the interpolation using
-  this information. */
-  
-  if (s.ibm_gradient && s.boundary[0] != s.boundary_homogeneous[0]) {
-    coord o = {x,y,z}, g;
-    s.ibm_gradient (point, s, &g);
-    foreach_dimension()
-      s[] += (o.x - p.x/nv)*g.x;
-  }
-}
-
 /**
 ## Refinement/prolongation of cell-centered fields
 
@@ -283,7 +232,10 @@ For refinement, we use either bilinear interpolation, if the required
 four coarse cell values are defined or trilinear interpolation if only
 three coarse cell values are defined. If less than three coarse cell
 values are defined ("pathological cases" below), we try to estimate
-gradients in each direction and add the corresponding correction. */
+gradients in each direction and add the corresponding correction. 
+
+TODO: better adapt this for IBM. For example, we can use a value in a cell with
+      cs == 0 for interpolation, as long as it is a ghost cell.*/
 
 static inline void refine_ibm_linear (Point point, scalar s)
 {
@@ -294,89 +246,86 @@ static inline void refine_ibm_linear (Point point, scalar s)
       assert (coarse(cs));
       int i = (child.x + 1)/2, j = (child.y + 1)/2;
 #if dimension == 2
-      if (coarse(fs.x,i) && coarse(fs.y,0,j) &&
-	  (coarse(cs) == 1. || coarse(cs,child.x) == 1. ||
-	   coarse(cs,0,child.y) == 1. || coarse(cs,child.x,child.y) == 1.)) {
-	assert (coarse(cs,child.x) && coarse(cs,0,child.y));
-	if (coarse(fs.x,i,child.y) && coarse(fs.y,child.x,j)) {
-	  // bilinear interpolation
-	  assert (coarse(cs,child.x,child.y));
-	  s[] = (9.*coarse(s) + 
-		 3.*(coarse(s,child.x) + coarse(s,0,child.y)) + 
-		 coarse(s,child.x,child.y))/16.;
-	}
-	else
-	  // triangular interpolation	  
-	  s[] = (2.*coarse(s) + coarse(s,child.x) + coarse(s,0,child.y))/4.;
+      if (coarse(fs.x,i) && coarse(fs.y,0,j) && (coarse(cs) > GCV || coarse(cs,child.x) > GCV ||
+          coarse(cs,0,child.y) > GCV || coarse(cs,child.x,child.y) > GCV)) {
+
+        assert (coarse(cs,child.x) && coarse(cs,0,child.y));
+
+        if (coarse(fs.x,i,child.y) && coarse(fs.y,child.x,j)) {
+          // bilinear interpolation
+          assert (coarse(cs,child.x,child.y));
+          s[] = (9.*coarse(s) + 3.*(coarse(s,child.x) + coarse(s,0,child.y)) + coarse(s,child.x,child.y))/16.;
+        }
+        else
+	    // triangular interpolation	  
+        s[] = (2.*coarse(s) + coarse(s,child.x) + coarse(s,0,child.y))/4.;
       }
-      else if (coarse(cs,child.x,child.y) &&
-	       ((coarse(fs.x,i) && coarse(fs.y,child.x,j)) ||
-		(coarse(fs.y,0,j) && coarse(fs.x,i,child.y)))) {
-	// diagonal interpolation
-	s[] = (3.*coarse(s) + coarse(s,child.x,child.y))/4.;
+      else if (coarse(cs,child.x,child.y) && ((coarse(fs.x,i) && coarse(fs.y,child.x,j)) ||
+              (coarse(fs.y,0,j) && coarse(fs.x,i,child.y)))) {
+        // diagonal interpolation
+        s[] = (3.*coarse(s) + coarse(s,child.x,child.y))/4.;
       }
 #else // dimension == 3
       int k = (child.z + 1)/2;
       if (coarse(fs.x,i) > 0.25 && coarse(fs.y,0,j) > 0.25 &&
-	  coarse(fs.z,0,0,k) > 0.25 &&
-	  (coarse(cs) == 1. || coarse(cs,child.x) == 1. ||
-	   coarse(cs,0,child.y) == 1. || coarse(cs,child.x,child.y) == 1. ||
-	   coarse(cs,0,0,child.z) == 1. || coarse(cs,child.x,0,child.z) == 1. ||
-	   coarse(cs,0,child.y,child.z) == 1. ||
-	   coarse(cs,child.x,child.y,child.z) == 1.)) {
-	assert (coarse(cs,child.x) && coarse(cs,0,child.y) &&
-		coarse(cs,0,0,child.z));
-	if (coarse(fs.x,i,child.y) && coarse(fs.y,child.x,j) &&
-	    coarse(fs.z,child.x,child.y,k) &&
-	    coarse(fs.z,child.x,0,k) && coarse(fs.z,0,child.y,k)) {
-	  assert (coarse(cs,child.x,child.y) && coarse(cs,child.x,0,child.z) &&
-		  coarse(cs,0,child.y,child.z) &&
-		  coarse(cs,child.x,child.y,child.z));
-	  // bilinear interpolation
-	  s[] = (27.*coarse(s) + 
-		 9.*(coarse(s,child.x) + coarse(s,0,child.y) +
-		     coarse(s,0,0,child.z)) + 
-		 3.*(coarse(s,child.x,child.y) + coarse(s,child.x,0,child.z) +
-		     coarse(s,0,child.y,child.z)) + 
-		 coarse(s,child.x,child.y,child.z))/64.;
-	}
-	else
-	  // tetrahedral interpolation
-	  s[] = (coarse(s) + coarse(s,child.x) + coarse(s,0,child.y) +
-		 coarse(s,0,0,child.z))/4.;
+          coarse(fs.z,0,0,k) > 0.25 &&
+         (coarse(cs) > GCV || coarse(cs,child.x) > GCV ||
+          coarse(cs,0,child.y) > GCV || coarse(cs,child.x,child.y) > GCV ||
+          coarse(cs,0,0,child.z) > GCV || coarse(cs,child.x,0,child.z) > GCV ||
+          coarse(cs,0,child.y,child.z) > GCV ||
+          coarse(cs,child.x,child.y,child.z) > GCV)) {
+
+        assert (coarse(cs,child.x) && coarse(cs,0,child.y) && coarse(cs,0,0,child.z));
+
+        if (coarse(fs.x,i,child.y) && coarse(fs.y,child.x,j) &&
+	        coarse(fs.z,child.x,child.y,k) &&
+            coarse(fs.z,child.x,0,k) && coarse(fs.z,0,child.y,k)) {
+
+          assert (coarse(cs,child.x,child.y) && coarse(cs,child.x,0,child.z) &&
+                  coarse(cs,0,child.y,child.z) && coarse(cs,child.x,child.y,child.z));
+                  
+          // bilinear interpolation
+          s[] = (27.*coarse(s) + 
+                 9.*(coarse(s,child.x) + coarse(s,0,child.y) +
+                     coarse(s,0,0,child.z)) + 
+                 3.*(coarse(s,child.x,child.y) + coarse(s,child.x,0,child.z) +
+                     coarse(s,0,child.y,child.z)) + 
+                 coarse(s,child.x,child.y,child.z))/64.;
+        }
+        else
+          // tetrahedral interpolation
+          s[] = (coarse(s) + coarse(s,child.x) + coarse(s,0,child.y) +
+        	 coarse(s,0,0,child.z))/4.;
       }
       else if (coarse(cs,child.x,child.y,child.z) &&
-	       ((coarse(fs.z,child.x,child.y,k) &&
-		 ((coarse(fs.x,i) && coarse(fs.y,child.x,j)) ||
-		  (coarse(fs.y,0,j) && coarse(fs.x,i,child.y))))
-		||
-		(coarse(fs.z,0,0,k) &&
-		 ((coarse(fs.x,i,0,child.z) && coarse(fs.y,child.x,j,child.z)) ||
-		  (coarse(fs.y,0,j,child.z) && coarse(fs.x,i,child.y,child.z))))
-		||
-		(coarse(fs.z,child.x,0,k) &&
-		 coarse(fs.x,i) && coarse(fs.y,child.x,j,child.z))
-		||
-		(coarse(fs.z,0,child.y,k) &&
-		 coarse(fs.y,0,j) && coarse(fs.x,i,child.y,child.z))
-		))
-	// diagonal interpolation
-	s[] = (3.*coarse(s) + coarse(s,child.x,child.y,child.z))/4.;
+              ((coarse(fs.z,child.x,child.y,k) &&
+              ((coarse(fs.x,i) && coarse(fs.y,child.x,j)) ||
+              (coarse(fs.y,0,j) && coarse(fs.x,i,child.y)))) ||
+    	      (coarse(fs.z,0,0,k) &&
+              ((coarse(fs.x,i,0,child.z) && coarse(fs.y,child.x,j,child.z)) ||
+              (coarse(fs.y,0,j,child.z) && coarse(fs.x,i,child.y,child.z)))) ||
+              (coarse(fs.z,child.x,0,k) && coarse(fs.x,i) && coarse(fs.y,child.x,j,child.z)) |\
+              (coarse(fs.z,0,child.y,k) && coarse(fs.y,0,j) && coarse(fs.x,i,child.y,child.z))))
+
+        // diagonal interpolation
+        s[] = (3.*coarse(s) + coarse(s,child.x,child.y,child.z))/4.;
+
 #endif // dimension == 3
       else {
-	// Pathological cases, use 1D gradients.
-	s[] = coarse(s);
-	foreach_dimension() {
-	  if (coarse(fs.x,(child.x + 1)/2) && coarse(cs,child.x))
-	    s[] += (coarse(s,child.x) - coarse(s))/4.;
-	  else if (coarse(fs.x,(- child.x + 1)/2) && coarse(cs,- child.x))
-	    s[] -= (coarse(s,- child.x) - coarse(s))/4.;
-	}
+        // Pathological cases, use 1D gradients.
+        s[] = coarse(s);
+        foreach_dimension() {
+          if (coarse(fs.x,(child.x + 1)/2) && coarse(cs,child.x))
+            s[] += (coarse(s,child.x) - coarse(s))/4.;
+          else if (coarse(fs.x,(- child.x + 1)/2) && coarse(cs,- child.x))
+            s[] -= (coarse(s,- child.x) - coarse(s))/4.;
+        }
       }
     }
   }
 }
 
+#if 0
 /**
 ## Refinement/prolongation of face-centered velocity
 
@@ -417,6 +366,7 @@ void refine_ibm_face_x (Point point, scalar s)
 			    (2*j - 1)*g1 + (2*k - 1)*g2) : 0.;
   }
 }
+#endif
 
 foreach_dimension()
 static void refine_metric_injection_x (Point point, scalar s)
