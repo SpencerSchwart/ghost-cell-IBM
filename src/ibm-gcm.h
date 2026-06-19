@@ -180,13 +180,9 @@ bool empty_neighbor (Point point, coord * pc, coord * n, scalar cs)
 }
 
 
-/*
+/**
 Checks to see if the given point has at least 1 fluid neighbor touching one of
-it's faces. If so, returns true.
-
-TODO: change algorithm to only check neighbors, not the cell itself (cs[0,0])
-      - should only require using i += 2 instead of i++
-*/
+it's faces. If so, returns true. */
 
 bool fluid_neighbor (Point point, scalar cs)
 {
@@ -198,19 +194,60 @@ bool fluid_neighbor (Point point, scalar cs)
 }
 
 
-/*
-match_level is used to make sure that the neighboring fluid cell (assuming there 
-is one) does not contain children that are ghost cells which can undesireably lead 
-to two layers of ghost cells and constant refining/coarsening.
-*/
+/**
+Using AMR slightly complicates the definition of ghost cells. A naive treatment
+will cause coarse cells, behind a layer of finer ghost cells, to be marked as
+ghost cells, which are useless and cause problems with mesh constant adaptation.
+This is because the foreach_neighbor macro(s) iterate over the cells in the 
+stencil with the same level as the original one, using prolongation/restriction 
+functions to obtain the values if they are not leaf cells.
+
+Considering the above, we add additional checks in the ghost cell definition,
+taken care of by this function.
+
+TODO: probably only need one function, not both fluid_neighbor() and match_level(). */
 
 bool match_level (Point point, scalar cs)
 {
-    foreach_neighbor(1) {
+#if TREE
+    foreach_direct_neighbor() {
+        
+        /**
+        If a neighboring fluid cell is a leaf or coarser than itself, then
+        that point is valid and the cell is a ghost cell. */
         if (cs[] > GCV && (is_leaf(cell) || is_prolongation(cell)))
             return true;
+
+        /**
+        Otherwise, if the neighboring fluid cell is more refined than itself,
+        i.e., has children that are leaves, then we check to see if any of the
+        cells are already ghost cells. If less than two are, then we return
+        true. */
+        else if (cs[] > GCV && is_refined(cell)) {
+            
+            int numgc = 0;
+            for (int i = 0; i <= 1; i++)
+                for (int j = 0; j <= 1; j++)
+#if dimension == 2
+                    if (fine(cs,i,j,0) < GCV)
+                        numgc++;
+#else
+                    for (int k = 0; k <= 1; k++)
+                        if (fine(cs,i,j,k) < GCV)
+                            numgc++;
+#endif                   
+
+            if (numgc < 2)
+                return true;
+        }
     }
     return false;
+#else
+    
+    /**
+    If not using AMR/Trees, then there is no need for this additional check. */
+    return true;
+#endif
 }
 
 
