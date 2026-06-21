@@ -2340,15 +2340,8 @@ event metric (i = 0)
 
 #if TREE
     // set prolongation and refining functions
-    //gc.refine = ibm_fraction_refine;
-    //gc.prolongation = fraction_refine;
-
     gc.refine = fraction_refine_metric;
     gc.prolongation = fraction_refine_metric;
-
-    // THIS DOSEN'T WORK WITH AMR, EVEN IN SERIAL
-    //gc.restriction = restriction_cell_metric;
-    //gc.restriction = restriction_ibm_gc;
 
     cs0.refine = cs.refine = ibm_fraction_refine;
     cs0.prolongation = cs.prolongation = fraction_refine;

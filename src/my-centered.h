@@ -201,6 +201,15 @@ event defaults (i = 0)
     s.refine = s.prolongation = refine_ibm_linear;
     s.depends = list_add (s.depends, cs);
   }
+
+  /**
+  For some reason, refine_ibm_linear can cause large MPI simulations to blow-up
+  if it is used for the u's prolongation function. Therefore, we just use the
+  default one, which seems to work well. */
+
+  foreach_dimension()
+    u.x.prolongation = refine_bilinear;
+
 #endif
 #endif // TREE
 
