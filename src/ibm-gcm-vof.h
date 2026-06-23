@@ -1185,7 +1185,8 @@ double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int 
     int dp = facets_ibm (tcell.ns, tcell.alphas, ip);
 #else
     coord ip[12];
-    int dp = facets (tcell.ns, tcell.alphas, ip, 1);
+    plane pls = {tcell.ns, tcell.alphas};
+    int dp = plane_cube_points(pls, ip);
 #endif
     double alphaArray[4];
     double frArray[4];
