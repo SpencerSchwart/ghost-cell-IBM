@@ -409,9 +409,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
       reconstruction(ch, nf, alphaf);
 
-      fprintf(stderr, "STARTING CA\n");
       set_contact_angle(ch, c, cs0, nfh, alphafh, ns, alphas); // find ch
-      fprintf(stderr, "ENDING CA\n");
     }
   }
 
