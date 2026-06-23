@@ -609,6 +609,83 @@ coord face_normal(coord a, coord b, coord c)
     return n;  
 }
 
+static const int cube_edge_vertices[12][2] = {
+    // x-directed edges
+    {0,4}, {1,6}, {2,5}, {3,7},
+
+    // y-directed edges
+    {0,1}, {2,3}, {4,6}, {5,7},
+
+    // z-directed edges
+    {0,2}, {1,3}, {4,5}, {6,7}
+};
+
+static inline void snap_to_cube (coord * p)
+{
+    foreach_dimension() {
+        if (fabs(p->x - 0.5) <= GEO_TOL)
+            p->x = 0.5;
+        else if (fabs(p->x + 0.5) <= GEO_TOL)
+            p->x = -0.5;
+    }
+}
+
+/**
+Returns all unique intersections of a plane with the unit cube.
+
+Unlike Basilisk's facets(), this includes intersections lying exactly
+on cube vertices and handles a plane coinciding with a cube edge. */
+int plane_cube_points (plane pl, coord out[12])
+{
+    int count = 0;
+
+    // region_check() has units proportional to the normal magnitude.
+    double scale = fabs(pl.n.x) + fabs(pl.n.y) + fabs(pl.n.z);
+    double tol = GEO_TOL*max(1., scale);
+
+    for (int ie = 0; ie < 12; ie++) {
+        coord a = cube_vertices[cube_edge_vertices[ie][0]];
+        coord b = cube_vertices[cube_edge_vertices[ie][1]];
+
+        double fa = region_check(pl, a);
+        double fb = region_check(pl, b);
+
+        bool a_on = fabs(fa) <= tol;
+        bool b_on = fabs(fb) <= tol;
+
+        // Include exact or near-exact endpoint intersections.
+        if (a_on && point_is_unique(count, out, a))
+            out[count++] = a;
+
+        if (b_on && point_is_unique(count, out, b))
+            out[count++] = b;
+
+        // Strict crossing through the interior of the edge.
+        bool crossing =
+            (fa < -tol && fb > tol) ||
+            (fa >  tol && fb < -tol);
+
+        if (crossing) {
+            // fa + t*(fb - fa) = 0
+            double t = fa/(fa - fb);
+            t = clamp(t, 0., 1.);
+
+            coord p = {
+                a.x + t*(b.x - a.x),
+                a.y + t*(b.y - a.y),
+                a.z + t*(b.z - a.z)
+            };
+
+            snap_to_cube(&p);
+
+            if (point_is_unique(count, out, p))
+                out[count++] = p;
+        }
+    }
+
+    return count;
+}
+
 /**
 sort_clockwise sorts a list of coordinates, provided in cf w/nump points, in
 clockwise order (or counter-clockwise if y-advection). */
@@ -723,39 +800,50 @@ double rectangular_prism_volume (coord bc, coord tc)
     return l*w*h;
 }
 
-int make_list_unique(coord** tp, int tsize, int sizes[tsize], coord* set[tsize], 
-                     plane plf, plane pls)
+
+static inline bool invalid_geometry_point (coord p)
 {
-    coord unique[34];
-    int ucount = 0;
+    return fabs(p.x) >= HUGE/2. ||
+           fabs(p.y) >= HUGE/2. ||
+           fabs(p.z) >= HUGE/2.;
+}
 
-    for (int i = 0; i < tsize; ++i) {
-        for (int j = 0; j < sizes[i]; ++j) {
-            double placement = region_check2(plf, pls, set[i][j]);
-            if ((placement > 0 || fabs(placement) <= 1e-12) && set[i][j].x != HUGE && 
-                point_is_unique(ucount, unique, set[i][j])) {
-                unique[ucount] = set[i][j];
-                ucount++;
+int make_list_unique (coord ** tp, int tsize, int sizes[tsize],
+                      coord * set[tsize], plane plf, plane pls)
+{
+    int capacity = 0;
+    for (int i = 0; i < tsize; i++)
+        capacity += sizes[i];
+
+    if (!capacity) {
+        *tp = NULL;
+        return 0;
+    }
+
+    coord * result = malloc(capacity*sizeof(coord));
+    assert(result);
+
+    int count = 0;
+
+    for (int i = 0; i < tsize; i++) {
+        for (int j = 0; j < sizes[i]; j++) {
+            coord p = set[i][j];
+
+            if (invalid_geometry_point(p))
+                continue;
+
+            double placement = region_check2(plf, pls, p);
+
+            if (placement >= -GEO_TOL &&
+                point_is_unique(count, result, p)) {
+                result[count++] = p;
             }
         }
     }
 
-    *tp = malloc (ucount * sizeof(coord));
-
-    int ucount1 = 0;
-    for (int i = 0; i < tsize; ++i) {
-        for (int j = 0; j < sizes[i]; ++j) {
-            double placement = region_check2(plf, pls, set[i][j]);
-            if ((placement > 0 || fabs(placement) <= 1e-12) && set[i][j].x != HUGE && 
-                point_is_unique(ucount1, *tp, set[i][j])) {
-                (*tp)[ucount1] = set[i][j];
-                ucount1++;
-            }
-        }
-    }
-
-    return ucount;
-}                         
+    *tp = result;
+    return count;
+}
 
 int remove_invalid_points(int size, coord ps[size], plane fluid, plane solid, plane padv)
 {
@@ -774,7 +862,7 @@ double fit_volume (double advVolume, coord ns, double alphas, double ufdt);
 
 #if dimension == 3
 double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs, 
-                        double advVolume = 0, int print = 0)
+                        double advVolume = 0, int print = 0, int breakp = 0)
 {
     if (lhs.x == rhs.x || c <= 0)
         return 0;
@@ -792,12 +880,11 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     plane_intersect(plf, pls, padv, pint, print);
 
     coord fp[12];
-    int fcount0 = facets(plf.n, plf.alpha, fp, 1);
+    int fcount0 = plane_cube_points(plf, fp);
     remove_invalid_points(fcount0, fp, plf, pls, padv);
 
     coord sp[12];
-    int scount0 = facets(pls.n, pls.alpha, sp, 1);
-
+    int scount0 = plane_cube_points(pls, sp);
     remove_invalid_points(scount0, sp, plf, pls, padv);
 
     coord vp[8];
@@ -839,6 +926,9 @@ double immersed_volume (double c, plane plf, plane pls, coord lhs, coord rhs,
     }
     free (planes);
     free (tp);
+
+    if (breakp)
+        fprintf(stderr, "waiting...");
 
     return vf;
 }
@@ -984,7 +1074,7 @@ region being advected by the split VOF advection scheme (see sweep_x in vof.h) *
 
 trace
 double immersed_fraction (double c, coord nf, double alphaf, coord ns, double alphas, 
-                          coord lhs, coord rhs, double advVolume = 0, int print = 0)
+                          coord lhs, coord rhs, double advVolume = 0, int print = 0, int breakp = 0)
 {
     if (c <= 0)
         return 0;
@@ -994,10 +1084,11 @@ double immersed_fraction (double c, coord nf, double alphaf, coord ns, double al
 #else
     plane liquid = {nf, alphaf};
     plane solid = {ns, alphas};
-    return immersed_volume(c, liquid, solid, lhs, rhs, advVolume, print);
+    return immersed_volume(c, liquid, solid, lhs, rhs, advVolume, print, breakp);
 #endif
 }
 
+#if 0
 typedef struct tripoint
 {
     coord nf, ns;
@@ -1005,7 +1096,7 @@ typedef struct tripoint
     double f, fr, s;
 
 } tripoint;
-
+#endif
 
 tripoint fill_tripoint (double fr, coord nf, double alphaf, coord ns, double alphas,
                         double f = 0, double s = 0)
@@ -1203,7 +1294,7 @@ trace
 double immersed_alpha (double f, double cs, coord nf, double alphaf, coord ns, double alphas,
                             double freal, double tolerance = BI_TOL, int * numitr = NULL)
 {
-    if ((freal <= INT_TOL || freal >= 1-INT_TOL) && !nf.x && !nf.y && !nf.z)
+    if (!nf.x && !nf.y && !nf.z)
         return alphaf;
 
     //coord lhs = {-0.5,-0.5,-0.5}, rhs = {0.5,0.5,0.5}; // bottom-left & top-right points, resp.
@@ -1216,9 +1307,6 @@ double immersed_alpha (double f, double cs, coord nf, double alphaf, coord ns, d
     const tripoint tcell = fill_tripoint (freal, nf, alphaf, ns, alphas, f0, cs0);
 
     int maxitr = 100;
-
-    if (!nf.x && !nf.y && !nf.z)
-        fprintf(stderr, "WARNING: all components of nf are 0 in alpha solver!\n");
 
     // the cell is full or empty, but we want to change f to set C.A while conserving freal
     // TODO: this isn't necessary for the VOF advection step
@@ -1321,6 +1409,7 @@ each cell will get the same amount of volume.
 TODO: improve weighting function by maybe including distance from interface? 
 TODO: clean up function */
 
+#if 0
 trace
 double redistribute_volume (scalar cr, const scalar cs)
 {
@@ -1423,6 +1512,7 @@ double redistribute_volume (scalar cr, const scalar cs)
 
     return verror;
 }
+#endif
 
 /**
 redistribute_volumev2, like the function above, calculates the volume loss caused by advecting
@@ -1560,6 +1650,111 @@ double redistribute_volumev2 (scalar cr, const scalar cs)
     boundary ({cr});
 
     return verror;
+}
+
+
+scalar cw[];
+double redistribute_volume (face vector uf, scalar c, scalar cs)
+{
+    face vector cerr[];
+
+    /**
+    Calculate the volume error associated with each face in a given cell. */
+    foreach_face(x) {
+        cerr.x[] = 0;
+
+        int i = -(sign(uf.x[]) + 1.)/2.; // upwind cell index
+
+        if (!uf.x[] || !fs.x[])
+            continue;
+
+        if (c[i] < 0) { // over-emptied cell
+            cerr.x[] = c[i];
+        }
+        else if (c[i] > cs[i]) { // over-filled cell
+            cerr.x[] = c[i] - cs[i];
+        }
+    }
+
+    foreach_face(y) {
+        cerr.y[] = 0;
+
+        int i = -(sign(uf.y[]) + 1.)/2.; // upwind cell index
+
+        if (!uf.y[] || !fs.y[])
+            continue;
+
+        if (c[0,i] < 0) { // over-emptied cell
+            cerr.y[] = c[0,i];
+        }
+        else if (c[0,i] > cs[0,i]) { // over-filled cell
+            cerr.y[] = c[0,i] - cs[0,i];
+        }
+    }
+
+#if dimension == 3
+    foreach_face(z) {
+        cerr.z[] = 0;
+
+        int i = -(sign(uf.z[]) + 1.)/2.; // upwind cell index
+
+        if (!uf.z[] || !fs.z[])
+            continue;
+
+        if (c[0,0,i] < 0) { // over-emptied cell
+            cerr.z[] = c[0,0,i];
+        }
+        else if (c[0,0,i] > cs[0,0,i]) { // over-filled cell
+            cerr.z[] = c[0,0,i] - cs[0,0,i];
+        }
+    }
+#endif
+
+    /**
+    If there are multiple faces redistributing the error, determine their weights.
+    We assume each gets an equal portion. */
+    scalar w[];
+    foreach() {
+        w[] = 0;
+        cw[] = 0;
+        if (c[] < 0 || c[] > cs[]) {
+            double count = 0;
+            foreach_dimension() {
+                if (cerr.x[])  count += 1;
+                if (cerr.x[1]) count += 1;
+            }
+            cw[] = c[];
+            w[] = count? 1./count: 0;
+            c[] = clamp(c[], 0, cs[]);
+        }
+    }
+
+    set_dirty_stencil(w);
+
+    /**
+    Finally, go to cells near the over-filled/emptied ones and redistribute
+    the volume error. Partially full, full, or empty cells (not old over-filled/
+    emptied ones) are considered able to accept the redistributed flux. */
+    double v1 = 0;
+    foreach(reduction(+:v1)) {
+        if (cs[] && !w[]) {
+            double vsum = 0;
+            foreach_dimension() {
+                if (cerr.x[])  vsum += w[-1]*cerr.x[];
+                if (cerr.x[1]) vsum += w[1]*cerr.x[1];
+            }
+            //vsum /= dv();
+
+            /**
+            There is a chance that the receiving cell becomes over-full/empty
+            themselves. For now, we just clamp it, though this can be improved. */
+            c[] = clamp(c[] + vsum, 0, cs[]);
+        }
+        v1 += c[]*dv();
+    }
+
+    boundary({c});
+    return v1;
 }
 
 /**
