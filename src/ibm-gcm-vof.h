@@ -1177,7 +1177,8 @@ double get_real_error (const void* data, double alpha)
 }
 
 trace
-double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int maxitr = 50, double tolerance = BI_TOL, int * numitr = NULL)
+double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, 
+                    int maxitr = 50, double tolerance = BI_TOL, int * numitr = NULL)
 {
     static const coord lhs = {-0.5,-0.5,-0.5}, rhs = {0.5,0.5,0.5};
 #if dimension == 2
@@ -1188,27 +1189,28 @@ double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax, int 
     plane pls = {tcell.ns, tcell.alphas};
     int dp = plane_cube_points(pls, ip);
 #endif
-    double alphaArray[4];
-    double frArray[4];
+
+    double alphaArray[12] = {0.};
+    double frArray[12] = {0.};
 
     for (int i = 0; i < dp; ++i) {
-        alphaArray[i] = 0;
         foreach_dimension()
             alphaArray[i] += tcell.nf.x*ip[i].x;
+
         double fi = plane_volume (tcell.nf, alphaArray[i]);
+
         frArray[i] = tcell.s*immersed_fraction (fi, tcell.nf, alphaArray[i], 
                                                 tcell.ns, tcell.alphas, lhs, rhs);
     }
 
-    for (int i = 0; i < dp; ++i) {
-        if (frArray[i] >= tcell.fr - INT_TOL && frArray[i] <= tcell.fr + INT_TOL) {
+    for (int i = 0; i < dp; ++i) 
+        if (fabs(frArray[i] - tcell.fr) <= INT_TOL)
             return alphaArray[i];
-        }
-    }
 
     // Fall back to basic root solver
     double alpha = 0;
-    int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, maxitr = maxitr, tolerance = tolerance);
+    int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, 
+                             maxitr = maxitr, tolerance = tolerance);
 
     if (numitr)
         *numitr = itr;

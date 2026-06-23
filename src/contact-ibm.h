@@ -735,7 +735,7 @@ void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha,
     }
 
     set_dirty_stencil(extra);
-    boundary ({c, cr, n, alpha, inter, ghostInter, extra});
+    boundary ({c, cr, n, alpha, ghostInter, extra});
 }
 
 /**
