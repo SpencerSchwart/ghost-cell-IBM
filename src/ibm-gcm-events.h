@@ -341,6 +341,13 @@ void update_gc_velocity()
 
         assert(rank >= 0);
 
+        /**
+        In rare cases, the initial rank determination of the image point may be
+        from a parent cell who's children belong to another process, partly caused
+        from each tree having a different maximum level (depth()). This requires
+        another round of communication, potentially more(?), but it is not 
+        implemented yet. Instead, we rely on the image point velocity being 
+        calculated later on within the ghost cell. */
         //if (rank != pid())
 
         //assert(rank == pid());
@@ -391,6 +398,14 @@ void update_gc_velocity()
 
             coord imageVelocity = uip[(int)gid[]];
             coord n = nsg[(int)gid[]];
+
+            /**
+            It is possible that the image point lies in a domain boundary or it
+            requires another round of MPI communication. A contingency procedure
+            has not (yet) been implemented for either of these cases. Instead,
+            we calculate the image point velocity within the ghost cell stencil.
+            This *may* cause problems if the IP interpolation requires nodes
+            outside the local 5x5 stencil, though it seems ok in testing. */
 
             if (imageVelocity.x == nodata) {
                 coord ip = image_point (bi, gc, n);

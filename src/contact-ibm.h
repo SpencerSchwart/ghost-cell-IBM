@@ -618,7 +618,7 @@ bool contact_line_border (Point point, scalar cr, scalar cs, double angle, doubl
 bool not_interior_cell (Point point, scalar cr, scalar cs, double tolerance = 1e-2)
 {
     foreach_near_neighbor() {
-        if (cs[] > 0 && cs[] < 1 && cr[]/cs[] < 1 - tolerance)
+        if (cs[] > 0.1 && cr[]/cs[] < 1 - tolerance)
             return true;
     }
     return false;

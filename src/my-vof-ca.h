@@ -386,9 +386,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
               bool fill = false;
               bool deep = true;
               foreach_neighbor(1) {
-                  if (cs[]) {
+                  if (cs[] && c[]) {
                       deep = false;
-                      if (c[] && !extra[]) {
+                      if (!extra[]) {
                           fill = true;
                           break;
                       }
