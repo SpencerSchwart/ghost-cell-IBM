@@ -1029,7 +1029,7 @@ Point locate_ibm (double xp = 0., double yp = 0., double zp = 0., int * rank = 0
       }
       else if (allocated(0) && is_boundary(cell)) {
         if (rank)
-            *rank = -2;
+            *rank = cell.pid;
         //fprintf(stderr, "is boundary cell! (%g, %g, %g)\n", xp, yp, zp);
       }
     }

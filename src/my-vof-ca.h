@@ -295,6 +295,10 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
 #if IBM
       //double c0 = c[];
+      double cflux = dt*(flux[] - flux[1])/(val*Delta);
+      if (cs [] > 0 && cs[] < 1 && c[] + cflux > 0.5*cs[])
+        cc[] = 1;
+
       c[]  += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
       ch[] += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
 
@@ -316,7 +320,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 #endif
 
       crsum += c[]*pow(Delta, dimension)*val;
-      crsum_clamp += clamp(c[], 0., 1.)*pow(Delta, dimension)*val;
+      crsum_clamp += clamp(c[], 0., cs[])*pow(Delta, dimension)*val;
     }
   }
 
@@ -326,10 +330,15 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 #endif
 
   if (crsum != crsum_clamp) {
-    fprintf(stderr, "crsum != crsum_clamp: %0.14g != %0.14g\nRedistributing volume...\n",
-            crsum, crsum_clamp);
-    //redistribute_volume(c, cs);
-    #if 1
+    fprintf(stderr, "crsum != crsum_clamp: %.15g != %.15g (error = %g)\nRedistributing volume...\n",
+            crsum, crsum_clamp, crsum - crsum_clamp);
+    //redistribute_volume(uf, ch);
+    double crsum2 = redistribute_volume(uf, c, cs0);
+    if (crsum != crsum2)
+        fprintf(stderr, "crsum != crsum2: %.15g != %.15g (error = %g)\n",
+            crsum, crsum2, crsum - crsum2);
+
+    #if 0
     foreach() {
         if (c[] > cs[] || c[] < 0)
             c[] = clamp(c[], 0, cs[]);
@@ -362,25 +371,31 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
           c[] = cs[];
 
         if (contact_angle[] < pi - 1e-6) {
-          if (cs[] > 0 && cs[] < 1 && c[] && c[] >= cs[]-INT_TOL)
+          if (cs[] > 0 && cs[] < 1) { 
+            if (c[] && c[] >= cs[]-INT_TOL)
               ch[] = 1;
-          else if (cs[] > 0 && c[] < 1 && c[])
+            if (!extra[] && !gginter[])
               ch[] = c[]/cs[];
-          else if (cs[] > 0)
-              ch[] = c[];
+            if (extra[] || gginter[])
+              ch[] = ch[];
+          }
+          else if (cs[] == 1) 
+            ch[] = c[];
           else if (cs[] <= 0 && f.wetting.theta_s < 150) {
-          //else if (cs[] <= 0) {
+
               bool fill = false;
+              bool deep = true;
               foreach_neighbor(1) {
-                if (cs[] && c[] && !extra[]) 
-                  fill = true;
-                if (cs[] && !c[]) {
-                  fill = false;
-                  break;
-                }
+                  if (cs[]) {
+                      deep = false;
+                      if (c[] && !extra[]) {
+                          fill = true;
+                          break;
+                      }
+                  }
               }
 
-              ch[] = fill? 1: 0;
+              ch[] = deep? 0: fill? 1: ch[];
           }
           else
               ch[] = 0;
@@ -392,11 +407,11 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
       scalar alphaf[];
       vector nf[];
 
-      reconstruction(ch, nf, alphaf); // should be based on c or ch? TODO: is it even necessary?
-    
-      //fprintf(stderr, "STARTING CA\n");
-      set_contact_angle(ch, c, cs0, nf, alphaf, ns, alphas); // find ch
-      //fprintf(stderr, "ENDING CA\n");
+      reconstruction(ch, nf, alphaf);
+
+      fprintf(stderr, "STARTING CA\n");
+      set_contact_angle(ch, c, cs0, nfh, alphafh, ns, alphas); // find ch
+      fprintf(stderr, "ENDING CA\n");
     }
   }
 
