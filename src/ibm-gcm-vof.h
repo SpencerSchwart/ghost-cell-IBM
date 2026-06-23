@@ -1088,7 +1088,6 @@ double immersed_fraction (double c, coord nf, double alphaf, coord ns, double al
 #endif
 }
 
-#if 0
 typedef struct tripoint
 {
     coord nf, ns;
@@ -1096,7 +1095,6 @@ typedef struct tripoint
     double f, fr, s;
 
 } tripoint;
-#endif
 
 tripoint fill_tripoint (double fr, coord nf, double alphaf, coord ns, double alphas,
                         double f = 0, double s = 0)
