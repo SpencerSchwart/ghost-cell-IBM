@@ -166,24 +166,21 @@ coord plane_p0 (plane pl1, plane pl2, coord d)
     return p0;
 }
 
-double plane_t (coord p0, coord d, coord face)
+static inline double plane_t (coord p0, coord d, int axis, double q)
 {
-    int type = face.x? 0: face.y? 1: 2;
+    double di, pint;
 
-    double dnorm = magnitude_coord(d);
+    if (axis == 0)
+        di = d.x, pint = p0.x;
+    else if (axis == 1)
+        di = d.y, pint = p0.y;
+    else
+        di = d.z, pint = p0.z;
 
-    switch(type) {
-        case 0:
-            if (fabs(d.x) < GEO_TOL*dnorm) return HUGE;
-            return (face.x - p0.x) / d.x;
-        case 1:
-            if (fabs(d.y) < GEO_TOL*dnorm) return HUGE;
-                return (face.y - p0.y) / d.y;
-        case 2:
-            if (fabs(d.z) < GEO_TOL*dnorm) return HUGE;
-                return (face.z - p0.z) / d.z;                
-    }
-    return HUGE;
+    if (fabs(di) < GEO_TOL*magnitude_coord(d))
+        return HUGE;
+
+    return (q - pint)/di;
 }
 
 int bounds_check (coord p, double ufdx = 0.5)
@@ -209,32 +206,19 @@ int plane_is_unique (int size, plane pint[size], plane p)
     return 1;
 }
 
-const coord cubeface[6] = {
-        { 0.5, 0.0, 0.0},
-        {-0.5, 0.0, 0.0},
-        { 0.0, 0.5, 0.0},
-        { 0.0,-0.5, 0.0},
-        { 0.0, 0.0, 0.5},
-        { 0.0, 0.0,-0.5}
-};
 
 // fills pint with the intersection points of the provided two planes if
 // they exist and are located within the bounded region of the cell
 int plane_intersect (plane pl1, plane pl2, plane padv, coord pint[2], int print = 0)
 {
-    if (determinant(pl1.n, pl2.n) <= 1e-15) {
+    if (determinant(pl1.n, pl2.n) <= 1e-15) 
         return 0;   // planes are parallel
-    }
 
     coord d = cross_product(pl1.n, pl2.n);
     coord p0 = plane_p0 (pl1, pl2, d);
 
-    coord cubeface_copy[6];
-    memcpy(cubeface_copy, cubeface, sizeof(cubeface));
-    cubeface_copy[0].x = padv.alpha; // change +x plane to the advection plane
-
-    if (padv.alpha == 0)
-        fprintf(stderr, "WARNING: padv.alpha == 0!\n");
+    static const int axes[6] = {0, 0, 1, 1, 2, 2};
+    double q[6] = {padv.alpha, -0.5, 0.5, -0.5, 0.5, -0.5};
 
     coord pint_temp[6];
     double t_temp[6];
@@ -243,7 +227,7 @@ int plane_intersect (plane pl1, plane pl2, plane padv, coord pint[2], int print 
     for (int i = 0; i < 6; ++i) {
         pint_temp[i] = (coord){nodata,nodata,nodata};
 
-        double t = plane_t (p0, d, cubeface_copy[i]);
+        double t = plane_t (p0, d, axes[i], q[i]);
 
         if (t == HUGE)
             continue;
@@ -323,20 +307,20 @@ int boundary_points (coord nf, double alphaf, coord lhs, coord rhs, coord bp[2])
 
     for (double xint = rhs.x; xint >= lhs.x; xint -= dx) {
         double yint = (alphaf - nf.x*xint)/(nf.y+SEPS);
-        if (fabs(yint) <= 0.5) {
-            bp[i].x = xint;
-            bp[i].y = yint;
+        if (fabs(yint) <= 0.5 && point_is_unique (i, bp, (coord){xint, yint})) {
+            bp[i] = (coord){xint, yint};
             ++i;
         }
     }
 
-    // then check y faces
-    for (double yint = -0.5; yint <= 0.5; yint += 1.) {
-        double xint = (alphaf - nf.y*yint)/(nf.x+SEPS);
-        if (xint <= rhs.x && xint >= lhs.x) {
-            bp[i].x = xint;
-            bp[i].y = yint;
-            ++i;
+    if (i < 2) {
+        // then check y faces
+        for (double yint = -0.5; yint <= 0.5; yint += 1.) {
+            double xint = (alphaf - nf.y*yint)/(nf.x+SEPS);
+            if (xint <= rhs.x && xint >= lhs.x && i < 2 && point_is_unique (i, bp, (coord){xint, yint})) {
+                bp[i] = (coord){xint, yint};
+                ++i;
+            }
         }
     }
 
@@ -992,14 +976,8 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
 
     double cvy = line_intersect (alphas, ns, x = -0.5); // intercept of solid interface on left face
 
-    //double rhsx = 0;
     if (rhs.x < 0.5 && areaLiquid < 1 && advVolume) {
         cvy = clamp(cvy, -0.5, 0.5);
-#if 0
-        rhsx = fit_volume (advVolume, ns, alphas, rhs.x);
-        rhs.x = rhsx;
-        rhsb.x = rhsx;
-#endif
         coord rect0[4] = {lhs,rhsb,rhs,lhst};
         areaTotal = polygon_area (4, rect0);
         areaLiquid = rectangle_fraction (ns, alphas, lhs, rhs);
@@ -1035,10 +1013,10 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     int nump = 0; // # of real points
     for (int i = 0; i < 9; ++i) {
         double placement = region_check2((plane){nf, alphaf}, (plane){ns, alphas}, poly[i]);
-        if ((placement >= 0 || fabs(placement) < INT_TOL) && poly[i].x != nodata) // should be < nodata?
+        if ((placement >= 0 || fabs(placement) < INT_TOL) && poly[i].x != nodata) 
             nump++;
         else 
-            poly[i].x = nodata, poly[i].y = nodata;
+            poly[i] = (coord){nodata, nodata};
     }
 
     if (nump < 3) { // we don't do anything if the region has no interface fragments
@@ -1046,6 +1024,7 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
           fprintf(stderr, "WARNING: polygon has less than three points! %d < 3\n", nump);
         return 0;
     }
+
     coord cf[nump]; // holds real points
     int count = 0;
     for (int i = 0; i < 9; ++i)
@@ -1061,6 +1040,7 @@ double immersed_area (double c, coord nf, double alphaf, coord ns, double alphas
     double area = polygon_area (nump, cf);
 
     double vf = clamp(area/(areaAdv+SEPS), 0., 1.);
+
     return vf;
 }
 
@@ -1203,17 +1183,25 @@ double ghost_alpha (const tripoint tcell, double alphaMin, double alphaMax,
                                                 tcell.ns, tcell.alphas, lhs, rhs);
     }
 
-    for (int i = 0; i < dp; ++i) 
-        if (fabs(frArray[i] - tcell.fr) <= INT_TOL)
-            return alphaArray[i];
+    /**
+    Loop through each possible interface placement to see which one has the
+    lowest error, with a maximum allowable error of 1e-6 (INT_TOL). */
+    double alpha = HUGE, frmin = tcell.fr + INT_TOL;
+    for (int i = 0; i < dp; ++i) {
+        if (fabs(frArray[i] - tcell.fr) <= fabs(frmin - tcell.fr)) {
+            alpha = alphaArray[i];
+            frmin = frArray[i];
+        }
+    }
 
     // Fall back to basic root solver
-    double alpha = 0;
-    int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, 
-                             maxitr = maxitr, tolerance = tolerance);
+    if (alpha == HUGE) {
+        int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, 
+                                 maxitr = maxitr, tolerance = tolerance);
+        if (numitr)
+            *numitr = itr;
+    }
 
-    if (numitr)
-        *numitr = itr;
 
     return alpha;
 }
@@ -1262,27 +1250,81 @@ double real_volume (scalar f, scalar cs, face vector cf)
 }
 
 
-
 /**
-interior cells are cells along the solid interface that
-    1. are full before and after the advection step
-    2. do not contribute to the contact angle imposition
-    3. are exempt from the special three-phase advection treatment
+This function reconstructs the real volume fraction field c (or f) considering
+the immersed boundary and contact angle B.C. This is what is called after every
+uni-dimensional sweep in the VOF advection step, except for the last one. */
 
-TODO: make a formal definition of what an interior cell is (full cells along the solid interface?
-      any full cell that would not contain an extrapolated interface for CAs?) */
-
-bool is_interior_cell (Point point, scalar cs, scalar cr)
+#if 1
+void reconstruction_vof (scalar c, vector n, scalar alpha)
 {
-    if (cs[] <= 0 || cs[] >= 1 || cr[] == 0)
-        return false;
-    foreach_neighbor() {
-        if (cs[] && fabs(cr[] - cs[]) > INT_TOL) {
-            return false;
+
+    /**
+    First, we fill an auxillary scalar field that is based on c and will be
+    used to get n and alpha values near the reconstruction. We also ensure that
+    the boundary conditions and prolongation functions match that of the 
+    original c field. */
+    scalar ca[];
+    scalar_clone(ca, c);
+
+    foreach() 
+        ca[] = cs[]? c[]/cs[]: 0;
+
+    ca.refine = fraction_refine;
+    set_prolongation (ca, fraction_refine);
+
+    /**
+    We then do the basic VOF reconstruction based on ca. */
+    reconstruction (ca, n, alpha);
+
+#if 0
+    foreach() {
+
+        if (cs[] >= 1 || cs[] <= 0) { // standard VOF reconstruciton
+
+            /**
+            If the cell is empty or full, we set n and α only to avoid using 
+            uninitialised values in alpha_refine(). */
+            if ((ca[] <= 0. || ca[] >= 1) || cs[] <= 0) {
+                alpha[] = 0;
+                foreach_dimension()
+                    n.x[] = 0;
+            }
+            
+            /**
+            Otherwise, we compute the interface normal using the 
+            Mixed-Youngs-Centered scheme, copy the result into the normal field
+            and compute the intercept αα using our predefined function. .*/
+            else {
+                coord m = interface_normal(point, ca);
+                foreach_dimension()
+                    n.x[] = m.x;
+                alpha[] = plane_alpha (ca[], m);
+            }
+        }
+        else if (cs[] > 0 && cs[] < 1) { // special three-phase treatment
+
+            /**
+            If the cell is cut by the solid interface, but is full or empty,
+            then n and alpha is 0. A small tolerance of 1e-10 is used. */
+            if (ca[] <= 0 || ca[] >= cs[]) {
+                alpha[] = 0;
+                foreach_dimension()
+                    n.x[] = 0;
+            }
+
+            /**
+            Otherwise, its a three-phase cell and we use the MYC normal and the
+            solid interface to calculate the analytical.*/
+            else {
+                f
+            }
         }
     }
-    return true;
+    #endif
 }
+#endif
+
 
 /**
 immersed_line_alpha calculates the alpha value that conserves the volume of
@@ -1298,8 +1340,6 @@ double immersed_alpha (double f, double cs, coord nf, double alphaf, coord ns, d
     if (!nf.x && !nf.y && !nf.z)
         return alphaf;
 
-    //coord lhs = {-0.5,-0.5,-0.5}, rhs = {0.5,0.5,0.5}; // bottom-left & top-right points, resp.
-
     double alphaMin = -0.6, alphaMax = 0.6, alpha = 0; // are there better values?
  
     double f0 = clamp(f, 0., 1.);
@@ -1311,9 +1351,11 @@ double immersed_alpha (double f, double cs, coord nf, double alphaf, coord ns, d
 
     // the cell is full or empty, but we want to change f to set C.A while conserving freal
     // TODO: this isn't necessary for the VOF advection step
-      if ((nf.x || nf.y || nf.z) && (freal <= 0 + VTOL || freal >= cs0 - VTOL)) {
+    #if 0
+      if (freal <= 0 + VTOL || freal >= cs0 - VTOL) {
         return ghost_alpha (tcell, alphaMin, alphaMax, numitr, maxitr = maxitr, tolerance = tolerance);
     }
+    #endif
 
     //int itr = rsolver_bisection (&alpha, alphaMin, alphaMax, &tcell, get_real_error, maxitr = maxitr);
     int itr = rsolver_brent (&alpha, alphaMin, alphaMax, &tcell, get_real_error, 
@@ -1399,262 +1441,6 @@ coord youngs_normal_off (Point point, scalar c, coord o = {0,0,0})
 #endif // dimension == 3
 }
 
-/**
-redistribute_volume calculates the volume loss caused by imprecise movement of the
-solid boundary (cs), which itself is caused by us using different methods
-to advect the liquid and solid interface: VOF and level-set reinitialization -> VOF, resp.
-
-The weights used for redistribution is based on the number of interfacial cells. Meaning
-each cell will get the same amount of volume.
-
-TODO: improve weighting function by maybe including distance from interface? 
-TODO: clean up function */
-
-#if 0
-trace
-double redistribute_volume (scalar cr, const scalar cs)
-{
-    // 1. Calculate the volume error
-    //    and count the number of interfacial cells that contain no solid fragment
-    double verror = 0;
-    int icells = 0;
-    foreach(reduction (+:verror) reduction (+:icells)) {
-        if (cr[] > cs[]) { // cell is too full
-            verror += (cr[] - cs[])*dv();
-            cr[] = cs[];
-        }
-        else if (cr[] < 0) { // cell is too empty
-            verror += cr[]*dv();
-            cr[] = 0;
-        }
-        #if MOVING
-        else if (on_interface(cs) && cr[] < cs[] && // moving interface error
-            is_interior_cell (point, cs, cr)) {
-            verror += (cr[] - cs[])*dv();
-            cr[] = cs[];
-        }
-        #endif
-        if (cr[] > 0 && cr[] < cs[]-1e-10 && cs[] >= 1)
-            icells++;
-    }
-   
-    if (verror == 0) return verror;
-
-    boundary ({cr});
-
-    // 2. Redistribute volume error to interfacial cells
-    vector id[];
-
-    int count = 0, overfill = 0;
-
-    foreach(reduction(max:overfill) reduction(+:count)) {
-        if (cr[] > 0 && cr[] < cs[]-1e-10 && cs[] >= 1) {
-
-            // cell is too full to take the additional volume, so give it to neighbors
-            double vol = dv();
-            if (cr[] + (verror/(icells*vol)) > cs[]) {
-                overfill = 1;
-
-                count++;
-
-                // check for left/right neighbors
-                bool done = false;
-                for (int i = -1; i <= 1; i += 2)
-                    // 2* because cell may be a recipient for multiple cells (temp fix)
-                    if (cr[i] + 2*(verror/(icells*vol)) < cs[i] && cs[i]) 
-                        id.x[] = i, done = true;
-
-                // then check for top/bottom neighbors
-                if (!done)
-                   for (int j = -1; j <= 1; j += 2)
-#if AXI
-                       if (cr[0,j] + 2*(verror/(pow(Delta,dimension)*cm[0,j]*icells)) < cs[0,j] && cs[0,j])
-#else
-                       if (cr[0,j] + 2*(verror/(icells*vol)) < cs[0,j] && cs[0,j])
-#endif
-                           id.y[] = j, done = true;
-
-#if dimension == 3
-                if (!done)
-                   for (int k = -1; k <= 1; k += 2)
-                       if (cr[0,0,k] + 2*(verror/(icells*vol)) < cs[0,0,k] && cs[0,0,k])
-                           id.z[] = k, done = true;
-#endif
-                
-                if (!done)
-                    fprintf (stderr, "WARNING: could not fill cell with volume error!\n");
-            }
-            else {
-
-                cr[] += verror/(icells*dv());
-            }
-        }
-        else {
-            foreach_dimension()
-                id.x[] = 0;
-        }
-    }
-
-    boundary ({id});
-
-    int fixed = overfill? 0: 1;
-    if (overfill)
-        foreach(reduction(max:fixed)) {
-            for (int i = -1; i <= 1; i += 2)
-                foreach_dimension()
-                    if (id.x[i] == -i && cm[i]) {
-                        cr[] += verror/(icells*pow(Delta,dimension)*cm[i]);
-                        fixed = 1;
-                        cr[] = clamp (cr[], 0, cs[]);
-                    }
-        }
-    boundary ({cr});
-    (void) fixed; // to prevent unused variable warning
-
-    return verror;
-}
-#endif
-
-/**
-redistribute_volumev2, like the function above, calculates the volume loss caused by advecting
-too much liquid on solid interface cells
-
-The recipient cells are chosen to be liquid interfacial cells within a 5x5x5 stencil of the
-problematic ones. This is different from the function above, which spreads the volume error
-equally to *all* liquid interfacial cells.
-
-TODO: axisymmetric extension
-TODO: probably does not work with AMR right now
-TODO: make stats struct that the functions returns */
-
-trace
-double redistribute_volumev2 (scalar cr, const scalar cs)
-{
-    // 1. Calculate the volume error
-    //    and count the number of interfacial cells that contain no solid fragment
-    double verror = 0;
-    int icells = 0;
-
-    scalar verrors[];
-
-    // add injection prolongation?
-
-    foreach(reduction (+:verror) reduction (+:icells)) {
-        double local_verror = 0;
-        if (cr[] > cs[]) { // cell is too full
-            local_verror = (cr[] - cs[])*dv();
-            cr[] = cs[];
-        }
-        else if (cr[] < 0) { // cell is too empty
-            local_verror = cr[]*dv();
-            cr[] = 0;
-        }
-        else 
-            verrors[] = 0;
-
-        // calculate the fractions for each recipient neighbor
-        if (local_verror) {
-            verror += local_verror;
-
-            int count = 0;
-            foreach_neighbor() {
-                if (cr[] > 0 && cr[] < 1 && cs[] >= 1)
-                    count++;
-            }
-            if (count)
-                verrors[] = local_verror/count; // basic average, can be improved e.g., fuller 
-        }                                       // cells get less V compared to more empty interface cells
-
-        if (cr[] > 0 && cr[] < 1 && cs[] >= 1)
-            icells++;
-    }
-   
-    if (verror == 0) return verror;
-
-    boundary ({cr});
-
-    // 2. Redistribute volume to cells near the violating cells
-    vector id[];
-    scalar overflow[];
-
-    bool has_overfill = false;
-
-    foreach(serial) {
-	overflow[] = 0;
-        if (cr[] > 0 && cr[] < 1 && cs[] >= 1) {
-            foreach_dimension()
-                id.x[] = 0;
-
-            double cerror_sum = 0;
-            foreach_neighbor()
-                if (verrors[])
-                    cerror_sum += verrors[]/dv();
-
-            if (!cerror_sum)
-                continue;
-
-            if (cr[] + cerror_sum <= 1. && cr[] + cerror_sum >= 0.)
-                cr[] += cerror_sum;
-            else { 
-                // cell is too full to take the additional volume, so give it to (mostly) empty neighbors
-                has_overfill = true;
-
-                double cr0 = cr[];
-                cr[] = clamp(cr[] + cerror_sum, 0., 1.);
-                overflow[] = cr0 + cerror_sum - cr[];
-
-                bool done = false;
-
-                // check left/right neighbors first
-                for (int i = -1; i <= 1; i += 2)
-                    if (cr[i] < 0.5 && cs[i] == 1)
-                        id.x[] = i, done = true;
-
-                if (done)
-                    continue;
-                
-                // check top/bottomn neigbors
-                for (int j = -1; j <= 1; j += 2)
-                    if (cr[0,j] < 0.5 && cs[0,j] == 1)
-                        id.y[] = j, done = true;
-#if dimension == 3
-                if (done)
-                    continue;
-
-                // check front/back neighbors
-                for (int k = -1; k <= 1; k += 2)
-                    if (cr[0,0,k] < 0.5 && cs[0,0,k] == 1)
-                        id.z[] = k, done = true;
-#endif
-                if (!done)
-                    fprintf (stderr, "WARNING: could not fill cell with volume error!\n");
-            }
-        }
-    }
-
-    boundary ({overflow, id});
-
-    if (has_overfill) {
-        foreach() {
-            if (cs[] >= 1 && cr[] < 1) {
-                for (int i = -1; i <= 1; i += 2) {
-                    foreach_dimension() {
-                        if (id.x[i] == -i && cs[i]) {
-                            cr[] += overflow[i];
-                            cr[] = clamp (cr[], 0, cs[]); // just in case
-                        }
-                    }
-                }
-            }
-        }
-    }
-    boundary ({cr});
-
-    return verror;
-}
-
-
-scalar cw[];
 double redistribute_volume (face vector uf, scalar c, scalar cs)
 {
     face vector cerr[];
@@ -1717,14 +1503,12 @@ double redistribute_volume (face vector uf, scalar c, scalar cs)
     scalar w[];
     foreach() {
         w[] = 0;
-        cw[] = 0;
         if (c[] < 0 || c[] > cs[]) {
             double count = 0;
             foreach_dimension() {
                 if (cerr.x[])  count += 1;
                 if (cerr.x[1]) count += 1;
             }
-            cw[] = c[];
             w[] = count? 1./count: 0;
             c[] = clamp(c[], 0, cs[]);
         }
@@ -1821,15 +1605,9 @@ check to see if the given cell has a vertex that perfectly coincides with the so
 static inline bool vertex_interfacial (Point point, scalar c)
 {
   if (c[] >= 1.) {
-    for (int i = -1; i <= 1; i++)
-        for (int j = -1; j <= 1; j++) {
-            if (i == 0 && j == 0)
-                continue;
-            else {
-                if (!cs[i,j])
-                    return true;
-            }
-        }
+    foreach_near_neighbor()
+        if (!cs[])
+            return true;
   }
   else if (c[] > 0 && c[] < 1)
     return true;

@@ -4,10 +4,10 @@
 
 #include "mls.h"
 
-//#undef INT_TOL
-//#define INT_TOL 1e-10
-
 scalar contact_angle[];
+
+scalar extra0[];
+scalar extra[];
 
 extern scalar f;
 extern scalar ch;
@@ -37,6 +37,324 @@ attribute {
         double (*model)(double, double, int); // returns the dynamic CA based on chosen model
     } wetting;
 }
+
+
+/**
+normal_contact returns the properly-oriented normal of an interface touching the 
+immersed boundary. ns is the normal to the immersed solid boundary and nf is the
+normal to the VOF interface not taking into account the contact angle boundary
+condition. angle is the imposed static contact angle. */
+
+static inline coord normal_contact (coord ns, coord nf, double angle)
+{
+    coord n;
+#if dimension == 2
+    if (- ns.x * nf.y + ns.y * nf.x >= 0) { // 2D cross product
+        n.x = - ns.x * cos(angle) + ns.y * sin(angle);
+        n.y = - ns.x * sin(angle) - ns.y * cos(angle);
+    }
+    else {
+        n.x = - ns.x * cos(angle) - ns.y * sin(angle);
+        n.y =   ns.x * sin(angle) - ns.y * cos(angle);
+    }
+#else // dimension == 3
+#if 1
+    foreach_dimension()  //Axis angle
+      if (ns.x != 0) ns.x = -ns.x ; //We take the normal pointing toward the fluid
+
+    double gamma = atan2(ns.z,ns.x); 
+    double beta = asin(ns.y);  
+    coord tau2 ={-sin(gamma), 0, cos(gamma)}, tau1;
+    
+    foreach_dimension() //cross product
+        tau1.x = ns.y*tau2.z - ns.z*tau2.y; 
+
+    double phi1 =0, phi2 =0;
+    foreach_dimension(){
+        phi1 += nf.x*tau1.x;
+        phi2 += nf.x*tau2.x;
+    }
+    double phi = atan2(phi2,phi1); 
+    
+    //general configurations using Axis angle with spherical coordinates
+    n.x = sin(angle)*cos(phi)*sin(beta)*cos(gamma) + cos(angle)*cos(beta)*cos(gamma) - 
+          sin(angle)*sin(phi)*sin(gamma);
+    n.y = cos(angle)*sin(beta) - sin(angle)*cos(phi)*cos(beta);
+    n.z = sin(angle)*cos(phi)*sin(beta)*sin(gamma) + cos(angle)*cos(beta)*sin(gamma) + 
+          sin(angle)*sin(phi)*cos(gamma);
+#else
+    foreach_dimension()
+        if (ns.x != 0) ns.x = -ns.x;
+
+    coord t;
+    double cos_thetas = dot_product(nf, ns);
+    foreach_dimension()
+        t.x = nf.x - cos_thetas * ns.x;
+
+    normalize2(&t);
+
+    foreach_dimension()
+        n.x = cos(angle)*ns.x + sin(angle)*t.x;
+#endif
+#endif
+
+    return n;
+}
+
+
+
+/** 
+ */
+bool contact_line_border (Point point, scalar cr, scalar cs, double angle, double tolerance = 1e-2)
+{
+    foreach_near_neighbor() {
+        int vol = angle >= pi/2.? 1: 0;
+        if (cs[] > 0 && cs[] < 1 && approx_equal_double(cr[]/cs[], vol, tolerance))
+            return true;
+    }
+    return false;
+}
+
+/** 
+ */
+bool not_interior_cell (Point point, scalar cr, scalar cs, double tolerance = 1e-2)
+{
+    foreach_near_neighbor() {
+        if (cs[] > 0.1 && cr[]/cs[] < 1 - tolerance)
+            return true;
+    }
+    return false;
+}
+
+/**
+This function extends the normal reconstruction() function in fractions.h by
+taking into account the contact angle on immersed boundaries. Given a volume fraction
+field, f, it fills fields n and alpha with the each cells normal and intercept, resp. 
+
+TODO: clean up function! e.g., better variable names and remove unnecessary variables*/
+
+void reconstruction_contact (scalar c, const scalar cr, vector n, scalar alpha, 
+                                  vector ns, scalar alphas, scalar inter, 
+                                  scalar ghostInter, scalar extra)
+{
+    foreach() {
+        inter[] = cs[] > 0? cr[] > 1e-6 && cr[] < cs[] - 1e-6: 0;
+
+        if (inter[] && contact_angle[] && (full_interfacial(point, cs) || vertex_interfacial(point, cs))) {
+            if (cs[] > 0 && cs[] < 1) {
+                extra[] = (int)(contact_line_border(point, cr, cs, contact_angle[], 0.5) &&
+                                not_interior_cell(point, cr, cs, 0.01));
+            }
+            else { // full cell
+                bool caCell = false;
+                foreach_neighbor() {
+                    if (cs[] && cr[]/cs[] <= INT_TOL) {
+                        caCell = true;
+                        break;
+                    }
+                }
+                extra[] = caCell;
+            }
+        }
+        else
+            extra[] = 0;
+    }
+
+    foreach() {
+        if (extra[]) {
+            coord ns0;
+            double alphas0 = 0;
+            if (cs[] == 1) {
+                coord ns_avg = {0,0,0};
+                int count = 0;
+                foreach_direct_neighbor() {
+                  if (on_interface(cs)) {
+                    count++;
+                    foreach_dimension()
+                      ns_avg.x += ns.x[];
+                  }
+                }
+                if (count) {
+                  foreach_dimension()
+                    ns_avg.x /= (double)count;
+                  
+                }
+                ns0 = ns_avg;
+                foreach_dimension()
+                    ns.x[] = ns0.x;
+                alphas0 = 0.5;
+                alphas[] = alphas0;
+            }
+            else {
+                ns0 = (coord){ns.x[], ns.y[], ns.z[]};
+                alphas0 = alphas[];
+            }
+
+            coord nf = {n.x[], n.y[], n.z[]};
+            if (!nf.x && !nf.y && !nf.z) {
+                extra[] = 0;
+                continue;
+            }
+
+            normalize (&nf);
+            normalize2 (&ns0);
+            coord nc = normal_contact (ns0, nf, contact_angle[]);
+            normalize_sum(&nc);
+            normalize_sum(&ns0);
+
+            foreach_dimension()
+                n.x[] = nc.x;
+
+            alpha[] = immersed_alpha(c[], cs[], nc, alpha[], ns0, alphas0, cr[]);
+
+            normalize_sum(&nf);
+            double alphaf = immersed_alpha(cr[], cs[], nf, alpha[], ns0, alphas0, cr[]);
+
+            c[] = max(plane_volume(nf, alphaf), cr[]);
+
+            if (c[] >= 1) {
+                fprintf(stderr, "WARNING: extrapolation cell (%g, %g) got c = %g\n", x, y, c[]);
+                extra[] = 0;
+            }
+        }
+    }
+
+    foreach() {
+        ghostInter[] = 0;
+        if (on_interface(cs) && !extra[] && level == depth()) {
+            bool isghost = false;
+            foreach_neighbor() {
+                if (extra[]) {
+                    isghost = true;
+                    break;
+                }
+            }
+            if (isghost)
+                ghostInter[] = 1;
+        }
+    }
+
+    boundary ({c, cr, n, alpha, ghostInter, extra});
+}
+
+/**
+This is the event that modifies the ghost cell's volume fraction, ghostf, at each timestep
+necessary to impose the desired contact angle while conserving the real fluid, fr. */
+
+scalar gginter[];
+scalar gf00[], gf0[], gf1[];
+scalar inter[];
+
+trace
+void set_contact_angle (scalar c, const scalar cr0, const scalar cs,
+                        vector nf, scalar alphaf, vector ns, scalar alphas) // clean up names, more consistent (c -> ch)
+{
+    scalar ghostInter[];
+
+    foreach() { 
+      gf00[] = c[]; 
+      extra0[] = extra[];
+    }
+
+    reconstruction_contact(c, cr0, nf, alphaf, ns, alphas, inter, ghostInter, extra);
+    scalar c0[];
+    scalar_clone (c0, c);
+
+    // 3. look for ghost and pure solid cells near triple point to enforce B.C
+    foreach() {
+
+        gginter[] = ghostInter[];
+        gf0[] = c0[] = c[];
+
+        if (cs[] <= 0. && level == depth()) {  // pure solid cell
+            double ghostf = 0., totalWeight = 0.;
+            coord ghostCell = {x,y,z};
+
+            int count = 0;
+            // 3.a. Calculate weights
+            foreach_neighbor() {
+                if (extra[] == 1 && is_leaf(cell)) {
+                    // why cr0? to mitigate problems for a very slow moving contact line and
+                    // a new cell only gets a little bit of f (due to the low velocity/flux)
+                    double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
+
+                    //double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
+                    //cellWeight /= pow(dc,2);
+
+                    totalWeight += cellWeight;
+
+                    coord leftPoint = {x, y, z}, rightPoint;
+                    foreach_dimension() {
+                        leftPoint.x = (ghostCell.x - leftPoint.x) / Delta - 0.5;
+                        rightPoint.x = leftPoint.x + 1.;
+                    }
+
+                    coord nf1 = {nf.x[], nf.y[], nf.z[]};
+
+                    ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+                    count++;
+                }
+            }
+
+            // 3.b. Assign volume fraction in ghost/solid cell
+            if (totalWeight > 0.) 
+                c[] = ghostf / (totalWeight + SEPS);
+        }
+        if (ghostInter[])
+        {
+            double ghostf = 0., totalWeight = 0.;
+            coord ghostCell = {x,y,z};
+
+            double fr0 = cr0[];
+            double cs0 = cs[];
+
+            // 3.c. extrapolate f from direct neighbors to get initial guess
+            coord ns0 = {ns.x[], ns.y[], ns.z[]}, nf1;
+            double alphas0 = alphas[];
+
+            int count = 0;
+            foreach_neighbor() {
+                if (extra[] == 1 && is_leaf(cell)) {
+                    nf1 = (coord){nf.x[], nf.y[], nf.z[]};
+
+                    coord leftPoint = {x, y, z}, rightPoint;
+                    foreach_dimension() {
+                        leftPoint.x = (ghostCell.x - leftPoint.x) / Delta - 0.5;
+                        rightPoint.x = leftPoint.x + 1.;
+                    }
+                    double fa = rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
+                    double alpha = plane_alpha(fa, nf1);
+
+                    normalize_sum(&ns0);
+                    double fr = cs0*immersed_fraction(fa, nf1, alpha, ns0, alphas0, (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5});
+
+                    if (!approx_equal_double(fr0, fr, INT_TOL)) { 
+                        const tripoint tcell = fill_tripoint (fr0, nf1, alpha, ns0, alphas0, fa, cs0);
+                        double alphatmp = ghost_alpha(tcell, -0.6, 0.6);
+                        fa = plane_volume(nf1, alphatmp);
+                    }
+
+                    double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
+                    totalWeight += cellWeight;
+
+                    ghostf += cellWeight * fa;
+
+                    count++;
+                }
+            }
+
+            if (totalWeight > 0.) {
+                c[] = max(ghostf / totalWeight, cr0[]);
+                if (c[] > 1 - INT_TOL) c[] = 1; // is this good?
+            }
+        }
+    }
+
+    boundary ({c, cr0});
+}
+
+
+
 
 static inline double cox_ca_expression (double x)
 {
@@ -140,70 +458,6 @@ double delta_interpolation (coord cpoint, coord ipoint, double dv, double delta)
     foreach_dimension()
         dphi *= phi_func(cpoint.x - ipoint.x, delta);
     return dphi/dv;
-}
-
-/**
-normal_contact returns the properly-oriented normal of an interface touching the 
-immersed boundary. ns is the normal to the immersed solid boundary and nf is the
-normal to the VOF interface not taking into account the contact angle boundary
-condition. angle is the imposed static contact angle. */
-
-static inline coord normal_contact (coord ns, coord nf, double angle)
-{
-    coord n;
-#if dimension == 2
-    if (- ns.x * nf.y + ns.y * nf.x >= 0) { // 2D cross product
-        n.x = - ns.x * cos(angle) + ns.y * sin(angle);
-        n.y = - ns.x * sin(angle) - ns.y * cos(angle);
-    }
-    else {
-        n.x = - ns.x * cos(angle) - ns.y * sin(angle);
-        n.y =   ns.x * sin(angle) - ns.y * cos(angle);
-    }
-#else // dimension == 3
-#if 1
-    foreach_dimension()  //Axis angle
-      if (ns.x != 0) ns.x = -ns.x ; //We take the normal pointing toward the fluid
-
-    double gamma = atan2(ns.z,ns.x); 
-    double beta = asin(ns.y);  
-    coord tau2 ={-sin(gamma), 0, cos(gamma)}, tau1;
-    
-    foreach_dimension() //cross product
-        tau1.x = ns.y*tau2.z - ns.z*tau2.y; 
-
-    double phi1 =0, phi2 =0;
-    foreach_dimension(){
-        phi1 += nf.x*tau1.x;
-        phi2 += nf.x*tau2.x;
-    }
-    double phi = atan2(phi2,phi1); 
-    
-    //general configurations using Axis angle with spherical coordinates
-    n.x = sin(angle)*cos(phi)*sin(beta)*cos(gamma) + cos(angle)*cos(beta)*cos(gamma) - 
-          sin(angle)*sin(phi)*sin(gamma);
-    n.y = cos(angle)*sin(beta) - sin(angle)*cos(phi)*cos(beta);
-    n.z = sin(angle)*cos(phi)*sin(beta)*sin(gamma) + cos(angle)*cos(beta)*sin(gamma) + 
-          sin(angle)*sin(phi)*cos(gamma);
-#else
-    foreach_dimension()
-        if (ns.x != 0) ns.x = -ns.x;
-
-    coord t;
-    double cos_thetas = dot_product(nf, ns);
-    foreach_dimension()
-        t.x = nf.x - cos_thetas * ns.x;
-
-    fprintf(stderr, "t={%g, %g, %g} ||t|| = %g", t.x, t.y, t.y, distance3D(t.x,t.y,t.z));
-
-    normalize2(&t);
-
-    foreach_dimension()
-        n.x = cos(angle)*ns.x + sin(angle)*t.x;
-#endif
-#endif
-
-    return n;
 }
 
 
@@ -343,9 +597,6 @@ int contact_midpoint (coord nf, double alphaf, coord ns, double alphas, coord * 
 #endif
     return 1;
 }
-
-scalar extra0[];
-scalar extra[];
 
 void update_contact_angle (scalar c, scalar c0, scalar cs, vector ns, 
                            scalar alphas, vector u, scalar contact_angle)
@@ -599,264 +850,5 @@ void clean_fluid_real (scalar f, scalar fr, scalar cs)
                 f[] = 0;
         }
     }
-}
-
-/** 
- */
-bool contact_line_border (Point point, scalar cr, scalar cs, double angle, double tolerance = 1e-2)
-{
-    foreach_near_neighbor() {
-        int vol = angle >= pi/2.? 1: 0;
-        if (cs[] > 0 && cs[] < 1 && approx_equal_double(cr[]/cs[], vol, tolerance))
-            return true;
-    }
-    return false;
-}
-
-/** 
- */
-bool not_interior_cell (Point point, scalar cr, scalar cs, double tolerance = 1e-2)
-{
-    foreach_near_neighbor() {
-        if (cs[] > 0.1 && cr[]/cs[] < 1 - tolerance && !extra[])
-            return true;
-    }
-    return false;
-}
-
-#include "heights.h"
-
-/**
-This function extends the normal reconstruction() function in fractions.h by
-taking into account the contact angle on immersed boundaries. Given a volume fraction
-field, f, it fills fields n and alpha with the each cells normal and intercept, resp. 
-
-TODO: clean up function! e.g., better variable names and remove unnecessary variables*/
-
-void reconstruction_contact (scalar c, scalar cr, vector n, scalar alpha, 
-                                  vector ns, scalar alphas, scalar inter, 
-                                  scalar ghostInter, scalar extra)
-{
-    foreach() {
-        inter[] = cs[] > 0? cr[] > 1e-6*cs[] && cr[] < cs[]*(1 - 1e-6): 0;
-
-        if (inter[] && contact_angle[] && (full_interfacial(point, cs) || vertex_interfacial(point, cs))) {
-            if (cs[] > 0 && cs[] < 1) {
-                extra[] = (int)(contact_line_border(point, cr, cs, contact_angle[], 0.5) &&
-                                not_interior_cell(point, cr, cs, 0.01));
-            }
-            else { // full cell
-                bool caCell = false;
-                foreach_neighbor() {
-                    if (cs[] && cr[]/cs[] <= INT_TOL) {
-                        caCell = true;
-                        break;
-                    }
-                }
-                extra[] = caCell;
-            }
-        }
-        else
-            extra[] = 0;
-    }
-
-    foreach() {
-        if (extra[]) {
-            coord ns0;
-            double alphas0 = 0;
-            if (cs[] == 1) {
-                coord ns_avg = {0,0,0};
-                int count = 0;
-                foreach_direct_neighbor() {
-                  if (on_interface(cs)) {
-                    count++;
-                    foreach_dimension()
-                      ns_avg.x += ns.x[];
-                  }
-                }
-                if (count) {
-                  foreach_dimension()
-                    ns_avg.x /= (double)count;
-                  
-                }
-                ns0 = ns_avg;
-                foreach_dimension()
-                    ns.x[] = ns0.x;
-                alphas0 = 0.5;
-                alphas[] = alphas0;
-            }
-            else {
-                ns0 = (coord){ns.x[], ns.y[], ns.z[]};
-                alphas0 = alphas[];
-            }
-
-            coord nf = {n.x[], n.y[], n.z[]};
-            if (!nf.x && !nf.y && !nf.z) {
-                extra[] = 0;
-                continue;
-            }
-
-            normalize (&nf);
-            normalize2 (&ns0);
-            coord nc = normal_contact (ns0, nf, contact_angle[]);
-            normalize_sum(&nc);
-            normalize_sum(&ns0);
-
-            foreach_dimension()
-                n.x[] = nc.x;
-
-            alpha[] = immersed_alpha(c[], cs[], nc, alpha[], ns0, alphas0, cr[]);
-
-            normalize_sum(&nf);
-            double alphaf = immersed_alpha(cr[], cs[], nf, alpha[], ns0, alphas0, cr[]);
-
-            c[] = max(plane_volume(nf, alphaf), cr[]);
-
-            if (c[] >= 1) {
-                fprintf(stderr, "WARNING: extrapolation cell (%g, %g) got c = %g\n", x, y, c[]);
-                extra[] = 0;
-            }
-        }
-    }
-
-    foreach() {
-        ghostInter[] = 0;
-        if (on_interface(cs) && !extra[] && level == depth()) {
-            bool isghost = false;
-            foreach_neighbor() {
-                if (extra[]) {
-                    isghost = true;
-                    break;
-                }
-            }
-            if (isghost)
-                ghostInter[] = 1;
-        }
-    }
-
-    set_dirty_stencil(extra);
-    boundary ({c, cr, n, alpha, ghostInter, extra});
-}
-
-/**
-This is the event that modifies the ghost cell's volume fraction, ghostf, at each timestep
-necessary to impose the desired contact angle while conserving the real fluid, fr. */
-
-scalar gginter[];
-scalar gf00[], gf0[], gf1[];
-scalar inter[];
-
-trace
-void set_contact_angle (scalar c, scalar cr0, const scalar cs,
-                        vector nf, scalar alphaf, vector ns, scalar alphas) // clean up names, more consistent (c -> ch)
-{
-    scalar ghostInter[];
-
-    foreach() { 
-      gf00[] = c[]; 
-      extra0[] = extra[];
-    }
-
-    reconstruction_contact(c, cr0, nf, alphaf, ns, alphas, inter, ghostInter, extra);
-    scalar c0[], c1[];
-    scalar_clone (c0, c);
-    scalar_clone (c1, c);
-
-    foreach() {
-        gginter[] = ghostInter[];
-        c0[] = c[];
-        gf0[] = c0[];
-    }
-    boundary({c0});
-
-    // 3. look for ghost and pure solid cells near triple point to enforce B.C
-    foreach() {
-        c0[] = c[];
-        if (cs[] <= 0. && level == depth()) {  // pure solid cell
-            double ghostf = 0., totalWeight = 0.;
-            coord ghostCell = {x,y,z};
-
-            int count = 0;
-            // 3.a. Calculate weights
-            foreach_neighbor() {
-                if (extra[] == 1) {
-                    // why cr0? to mitigate problems for a very slow moving contact line and
-                    // a new cell only gets a little bit of f (due to the low velocity/flux)
-                    double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
-
-                    //double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
-                    //cellWeight /= pow(dc,2);
-
-                    totalWeight += cellWeight;
-
-                    coord leftPoint = {x, y, z}, rightPoint;
-                    foreach_dimension() {
-                        leftPoint.x = (ghostCell.x - leftPoint.x) / Delta - 0.5;
-                        rightPoint.x = leftPoint.x + 1.;
-                    }
-
-                    coord nf1 = {nf.x[], nf.y[], nf.z[]};
-
-                    ghostf += cellWeight * rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
-                    count++;
-                }
-            }
-
-            // 3.b. Assign volume fraction in ghost/solid cell
-            if (totalWeight > 0.) 
-                c[] = ghostf / (totalWeight + SEPS);
-        }
-        if (ghostInter[])
-        {
-            double ghostf = 0., totalWeight = 0.;
-            coord ghostCell = {x,y,z};
-
-            double fr0 = cr0[];
-            double cs0 = cs[];
-
-            // 3.c. extrapolate f from direct neighbors to get initial guess
-            coord ns0 = {ns.x[], ns.y[], ns.z[]}, nf1;
-            double alphas0 = alphas[];
-
-            int count = 0;
-            foreach_neighbor() {
-                if (extra[] == 1) {
-                    nf1 = (coord){nf.x[], nf.y[], nf.z[]};
-
-                    coord leftPoint = {x, y, z}, rightPoint;
-                    foreach_dimension() {
-                        leftPoint.x = (ghostCell.x - leftPoint.x) / Delta - 0.5;
-                        rightPoint.x = leftPoint.x + 1.;
-                    }
-                    double fa = rectangle_fraction (nf1, alphaf[], leftPoint, rightPoint);
-                    double alpha = plane_alpha(fa, nf1);
-
-                    normalize_sum(&ns0);
-                    double fr = immersed_fraction(fa, nf1, alpha, ns0, alphas0, (coord){-0.5,-0.5,-0.5}, (coord){0.5,0.5,0.5})*cs0;
-
-                    if (!approx_equal_double(fr0, fr, INT_TOL)) { 
-                        const tripoint tcell = fill_tripoint (fr0, nf1, alpha, ns0, alphas0, fa, cs0);
-                        double alphatmp = ghost_alpha(tcell, -0.6, 0.6);
-                        fa = plane_volume(nf1, alphatmp);
-                    }
-                    double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
-
-                    totalWeight += cellWeight;
-
-                    ghostf += cellWeight * fa;
-
-                    count++;
-                }
-            }
-
-            if (totalWeight > 0.) {
-                c[] = max(ghostf / totalWeight, cr0[]);
-                if (c[] > 1 - INT_TOL) c[] = 1; // is this good?
-            }
-        }
-        c1[] = c[];
-    }
-
-    boundary ({c, cr0});
 }
 

@@ -17,13 +17,8 @@ static double vof_concentration_gradient_x (Point point, scalar c, scalar t)
 {
   static const double cmin = 0.5;
   double cl = c[-1], cc = c[], cr = c[1];
-  #if 0
-  if (cs[-1]) cl /= cs[-1];
-  if (cs[])   cc /= cs[];
-  if (cs[1])  cr /= cs[1];
-  #endif
   if (t.inverse)
-    cl = 1. - cl, cc = 1. - cc, cr = 1. - cr;
+    cl = cs[-1] - cl, cc = cs[] - cc, cr = cs[1] - cr;
   if (cc >= cmin && t.gradient != zero) {
     if (cr >= cmin) {
       if (cl >= cmin) {
@@ -53,12 +48,66 @@ static void vof_concentration_refine (Point point, scalar s)
     coord g;
     foreach_dimension()
       g.x = Delta*vof_concentration_gradient_x (point, f, s);
-    double sc = s.inverse ? s[]/(1. - f[]) : s[]/f[], cmc = 4.*cm[];
+    double sc = s.inverse ? s[]/(cs[] - f[]) : s[]/f[], cmc = 4.*cm[];
     foreach_child() {
       s[] = sc;
       foreach_dimension()
-	s[] += child.x*g.x*cm[-child.x]/cmc;
-      s[] *= s.inverse ? 1. - f[] : f[];
+        s[] += child.x*g.x*cm[-child.x]/cmc;
+      s[] *= s.inverse ? cs[] - f[] : f[];
+    }
+  }
+}
+
+
+#if 0
+static void vof_resitrction_ibm (Point point, scalar s)
+{
+    foreach_blockf(s) {
+        double sum = 0.;
+        double count = 0;
+        foreach_child() {
+            sum += cs[]? s[]/cs[];
+            count +
+        }
+        s[] = sum/count;
+    }
+}
+#endif
+
+void fraction_refine_vof_ibm (Point point, scalar c)
+{
+  
+  /**
+  If the parent cell is empty or full, we just use the same value for
+  the fine cell. */
+
+  double cc = c[];
+  if (cs[] >= 1 && (cc <= 0. || cc >= 1.))
+    foreach_child()
+      c[] = cc;
+  else if (cs[] > 0 && cs[] < 1 && c[]/cs[] > 1 - VTOL) {
+    foreach_child()
+      c[] = cs[];
+  }
+  else {
+
+    /**
+    Otherwise, we reconstruct the interface in the parent cell. */
+
+    coord n = mycs (point, c);
+    double alpha = plane_alpha (cc, n);
+
+    /**
+    And compute the volume fraction in the quadrant of the coarse cell
+    matching the fine cells. We use symmetries to simplify the
+    combinations. */
+
+    foreach_child() {
+      static const coord a = {0.,0.,0.}, b = {.5,.5,.5};
+      coord nc;
+      foreach_dimension()
+        nc.x = child.x*n.x;
+      c[] = rectangle_fraction (nc, alpha, a, b);
     }
   }
 }
@@ -68,11 +117,14 @@ event defaults (i = 0)
   for (scalar c in interfaces) {
     c.refine = fraction_refine;
     set_prolongation (c, fraction_refine);
+    c.depends = list_add (c.depends, cs);
+
     scalar * tracers = c.tracers;
     for (scalar t in tracers) {
       set_restriction (t, restriction_volume_average);
       t.refine = vof_concentration_refine;
       set_prolongation (t, vof_concentration_refine);
+      t.depends = list_add (t.depends, cs);
       t.c = c;
     }
   }
@@ -100,10 +152,6 @@ event stability (i++) {
 vector divs[];
 
 const coord indicator = {0,1,2};
-
-#if MOVING
-face vector fs_temp[];
-#endif
 
 void move_solid_x(scalar cs, face vector fs);
 void move_solid_y(scalar cs, face vector fs);
@@ -153,16 +201,8 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
     if (un == 0)
         cf = 0;
-    else if (cs0[i] >= 1.) {
-        cf = (c[i] <= VTOL || c[i] >= 1 - VTOL)? c[i] : rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
-        if (approx_equal_double(cf, 0) && approx_equal_double(c[i], 1))
-            fprintf(stderr, "WARNING: cf = %g for a cell with c = %g\n", cf, c[i]);
-        #if 0
-            fprintf(stderr, "1: %g (%g, %g, %g) c[%d]=%g cf=%g nf={%g, %g} af=%g rhs.x=%g un=%g f=%g\n",
-                indicator.x, x, y, z, i, c[i], cf, tempnf.x, tempnf.y, alphafh[i], rhs.x, un, 
-                rectangle_fraction (tempnf, alphafh[i], lhs, rhs));
-        #endif
-    }
+    else if (cs0[i] >= 1.) 
+        cf = (c[i] <= 0 || c[i] >= 1)? c[i] : rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
     else if (cs0[i] > 0. && cs0[i] < 1.) {
         coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
 
@@ -172,12 +212,11 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
         if (!advVolume)
             assert (c[i] <= 0);
-
         if (c[i] <= 0.)
             cf = 0.;
         else if (c[i] >= cs0[i]-VTOL) // interfacial cell is full
             cf = 1;
-        else if (c[i] > 0. && c[i] < cs0[i]-VTOL) { // three-phase (TODO: try INT_TOL and see the effects)
+        else if (c[i] > 0 && c[i] < cs0[i]-VTOL) { // three-phase 
             double alpha = alphafh[i];
             if (!tempnf.x && !tempnf.y && !tempnf.z) {
                 coord off = {0,0,0};
@@ -195,7 +234,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
                 normalize_sum(&tempns);
                 normalize_sum(&nc);
                 tempnf = nc;
-                alphacr = immersed_alpha (ch[i], cs[i], tempnf, alpha, tempns, alphas[i], c[i]);
+                alphacr = immersed_alpha (c[i], cs[i], tempnf, alpha, tempns, alphas[i], c[i]);
             }
 
             double newc = plane_volume (tempnf, alphacr);
@@ -225,10 +264,9 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
     scalar t, gf, tflux;
     for (t,gf,tflux in tracers,gfl,tfluxl) {
-      //double cf1 = cf, ci = cs[i]? c[i]/cs[i]: 0;
       double cf1 = cf, ci = cs[i]? c[i]: 0;
       if (t.inverse)
-    	cf1 = 1. - cf1, ci = 1. - ci;
+    	cf1 = cs[i] - cf1, ci = cs[i] - ci;
       if (ci > 1e-10) {
 	    double ff = t[i]/ci + s*min(1., 1. - s*un)*gf[i]*Delta/2.;
 #if IBM
@@ -288,19 +326,20 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
             double frain = -c.rain.u.x * c.rain.rvf * rain_probability(point, pc, c);
 
             c[]  += dt*frain/(val*Delta);
-            ch[] += dt*frain/(val*Delta);
+            //ch[] += dt*frain/(val*Delta);
         }
       }
 #endif
 
 #if IBM
       //double c0 = c[];
+#if 0
       double cflux = dt*(flux[] - flux[1])/(val*Delta);
-      if (cs [] > 0 && cs[] < 1 && c[] + cflux > 0.5*cs[])
+      if (cs[] > 0 && cs[] < 1 && c[] + cflux > 0.5*cs[])
         cc[] = 1;
-
+#endif
       c[]  += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
-      ch[] += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
+      //ch[] += dt*(flux[] - flux[1] + cc[]*(fs.x[1]*uf.x[1] - fs.x[]*uf.x[] - divs.x[]))/(val*Delta);
 
 #if 0
       if (on_interface(cs) && c[])
@@ -324,38 +363,23 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
     }
   }
 
-#if MOVING
-  move_solid_x(cs0, fs0);
-  reconstruction_cs (cs0, fs0, ns, alphas);
-#endif
-
   if (crsum != crsum_clamp) {
     fprintf(stderr, "crsum != crsum_clamp: %.15g != %.15g (error = %g)\nRedistributing volume...\n",
             crsum, crsum_clamp, crsum - crsum_clamp);
-    //redistribute_volume(uf, ch);
     double crsum2 = redistribute_volume(uf, c, cs0);
     if (crsum != crsum2)
         fprintf(stderr, "crsum != crsum2: %.15g != %.15g (error = %g)\n",
             crsum, crsum2, crsum - crsum2);
-
-    #if 0
-    foreach() {
-        if (c[] > cs[] || c[] < 0)
-            c[] = clamp(c[], 0, cs[]);
-        if (c[] > 0 && cs[] > 0 && c[]/cs[] > 1 - VTOL)
-            c[] = cs[];
-    }
-    #endif
   }
 
   if (!last) {
-      reconstruction (ch, nfh, alphafh);
+      reconstruction_vof (c, nfh, alphafh);
   }
   else {
 
     if (c.wetting.theta_s >= 180) { // no wetting condition
       foreach() {
-        if (c[] < VTOL)
+        if (c[] < 1e-14)
           c[] = 0;
         ch[] = c[];
       }
@@ -365,37 +389,39 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
           update_contact_angle (c, c0, cs0, ns, alphas, u, contact_angle);
 
       foreach() {
-        if (c[] < VTOL)
+        if (c[] < 1e-11)
           c[] = 0;
         else if (c[] && c[] > cs[] - 1e-14)
           c[] = cs[];
-
+        
         if (contact_angle[] < pi - 1e-6) {
           if (cs[] > 0 && cs[] < 1) { 
-            if (c[] && c[] >= cs[]-INT_TOL)
-              ch[] = 1;
-            if (!extra[] && !gginter[])
-              ch[] = c[]/cs[];
             if (extra[] || gginter[])
               ch[] = ch[];
+            else if (c[] && c[] >= cs[]-INT_TOL)
+              ch[] = 1;
+            else if (!extra[] && !gginter[])
+              ch[] = c[]/cs[];
           }
           else if (cs[] == 1) 
             ch[] = c[];
-          else if (cs[] <= 0 && f.wetting.theta_s < 150) {
+          else if (cs[] <= 0) {
 
-              bool fill = false;
-              bool deep = true;
-              foreach_neighbor(1) {
-                  if (cs[] && c[]) {
+              bool oldch = false;
+              bool deep = true, inside = true;
+
+              foreach_neighbor() {
+                  if (cs[] && is_leaf(cell)) 
                       deep = false;
-                      if (!extra[]) {
-                          fill = true;
-                          break;
-                      }
+                  if ((extra[] || gginter[]) && is_leaf(cell)) {
+                      oldch = true;
+                      break;
                   }
+                  else if (cs[] > 0 && cs[] < 1 && c[] < VTOL) 
+                      inside = false;
               }
 
-              ch[] = deep? 0: fill? 1: ch[];
+              ch[] = oldch? ch[]: !deep && inside? 1: 0;
           }
           else
               ch[] = 0;
@@ -404,10 +430,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
             ch[] = c[];
       }
 
-      scalar alphaf[];
-      vector nf[];
-
-      reconstruction(ch, nf, alphaf);
+      reconstruction(ch, nfh, alphafh);
 
       set_contact_angle(ch, c, cs0, nfh, alphafh, ns, alphas); // find ch
     }
@@ -459,15 +482,16 @@ void vof_advection (scalar * interfaces, int i)
       scalar t, tc;
       for (t, tc in tracers, tcl) {
         if (t.inverse)
-	      tc[] = c[] < 0.5*cs[] && cs[]? t[]/(1. - c[]/cs[]) : 0.;
+	      tc[] = c[] < 0.5*cs[] && cs[]? t[]/(cs[] - c[]) : 0.;
 	    else
-	      tc[] = c[] > 0.5*cs[] && cs[] ? t[]/(c[]/cs[]) : 0.;
+	      tc[] = c[] > 0.5*cs[] && cs[] ? t[]/(c[]) : 0.;
       }
 #endif // !NO_1D_COMPRESSION
     }
 
     reconstruction_cs (cs, fs, ns, alphas);
-    reconstruction (ch, nfh, alphafh);
+    reconstruction_vof (c, nfh, alphafh);
+
     if (i == 0) { // is this necessary still?
         reconstruction (c, nf, alphaf);
         real_fluid (ch, c, nf, alphaf, ns, alphas);
@@ -475,19 +499,11 @@ void vof_advection (scalar * interfaces, int i)
 
     foreach() {
         c0[] = c[];
-        cc[] = (c[] > 0.5*cs[]);
+        cc[] = c[] > 0.5*cs[];
 
         foreach_dimension()
             divs.x[] = 0;
     }
-
-#if MOVING
-    foreach_face() {
-        fs_temp.x[] = fs.x[];
-        uf.x[] *= fs_temp.x[];
-    }
-    boundary({uf.x, uf.y, uf.z});
-#endif
 
     void (* sweep[dimension]) (scalar, scalar, scalar, scalar *, scalar, 
                                face vector, vector, scalar, vector, scalar, int);
@@ -499,12 +515,6 @@ void vof_advection (scalar * interfaces, int i)
         sweep[(i + d) % dimension] (c, ch, cc, tcl, cs, fs, ns, alphas, nfh, alphafh, last);
     }
     delete (tcl), free (tcl);
-
-#if MOVING
-    foreach_face()
-        uf.x[] /= (fs_temp.x[] + SEPS);
-    boundary({uf.x, uf.y, uf.z, c});
-#endif
   }
 }
 
