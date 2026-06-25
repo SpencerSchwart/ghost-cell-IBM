@@ -433,8 +433,7 @@ event acceleration (i++,last)
 {
   trash ({uf});
   foreach_face() {
-    if (fs.x[])
-      uf.x[] = fm.x[]*(face_value (u.x, 0) + dt*a.x[]);
+      uf.x[] = fs.x[]? fm.x[]*(face_value (u.x, 0) + dt*a.x[]): 0;
   }
 }
 

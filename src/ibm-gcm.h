@@ -1,6 +1,6 @@
 #if !AXI
 #undef dv
-#define dv()  (pow(Delta,dimension)*cm[])
+#define dv()  (pow(Delta,dimension))
 #endif // !AXI
 #define dv2() (pow(Delta,dimension)*cs[]*cm[])
 #define dv3() (pow(Delta,dimension)*fs[])

@@ -169,7 +169,7 @@ void normal_and_tangents (coord * n, coord * t1, coord * t2)
 #else // dimension == 3
 
     coord a = {0,0,1};
-    if ((!fabs(dot_product(*n, a))) < 0.9) {
+    if (fabs(dot_product(*n, a)) > 0.9) {
         a = (coord){1,0,0};
     }
     coord t1_tmp = cross_product(*n, a);
@@ -695,8 +695,10 @@ int rsolver_bisection (double* a, double amin, double amax, const void* data, do
     }
         
     if (itr == maxitr) {
+        FILE * fp = qstderr();
         fprintf(stderr, "WARNING: alpha  solver does not converge after"
                         " maximum iteration (%d), error = %g\n", maxitr, error);
+        fflush(fp);
     }
     *a = b;
     return itr;
@@ -720,8 +722,11 @@ int rsolver_brent (double* result, double a, double b, const void* data, double 
     }
 
     if (fa * fb >= 0) {
-        if (warning)
-            fprintf(stderr, "WARNING: range in Brent's solver does not contain root!\n");
+        if (warning) {
+            FILE * fp = qstderr();
+            fprintf(fp, "WARNING: range in Brent's solver does not contain root!\n");
+            fflush(fp);
+        }
         return -1;
     }
 

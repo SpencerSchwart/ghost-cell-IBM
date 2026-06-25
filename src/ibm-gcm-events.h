@@ -116,10 +116,10 @@ void update_gc_velocity()
 
     /**
     MPI boundaries MUST be updated before interpolation. */
-#if _MPI
-    mpi_boundary_update ((scalar *){u});
-    //boundary((scalar *){u});
-#endif
+//#if _MPI
+//    mpi_boundary_update ((scalar *){u});
+//#endif
+    boundary((scalar *){u});
 
     /**
     First count all ghost cells. */
