@@ -91,7 +91,7 @@ static double boundary_q1_x (Point neighbor, Point point, scalar q1, bool * data
 foreach_dimension()
 static double boundary_q2_x (Point neighbor, Point point, scalar q2, bool * data)
 {
-  return (1. - clamp(f[],0.,1.))*rho2*u.x[];
+  return (cs[] - clamp(f[],0.,1.))*rho2*u.x[];
 }
 
 /**
@@ -108,7 +108,7 @@ static void prolongation_q1_x (Point point, scalar q1) {
 foreach_dimension()
 static void prolongation_q2_x (Point point, scalar q2) {
   foreach_child()
-    q2[] = (1. - clamp(f[],0.,1.))*rho2*u.x[];
+    q2[] = (cs[] - clamp(f[],0.,1.))*rho2*u.x[];
 }
 #endif
 
@@ -150,10 +150,9 @@ event vof (i++) {
 
   foreach()
     foreach_dimension() {
-      double fc = clamp(f[],0,1);
-      //if (cs[]) fc /= cs[];
+      double fc = clamp(f[],0,cs[]);
       q1.x[] = fc*rho1*u.x[];
-      q2.x[] = (1. - fc)*rho2*u.x[];
+      q2.x[] = (cs[] - fc)*rho2*u.x[];
     }
 
   /**
@@ -181,7 +180,7 @@ event vof (i++) {
   the density */
 
   foreach()
-    foreach_dimension()
+    foreach_dimension() {
       u.x[] = gc[]? (q1.x[] + q2.x[])/(rho(f[]) + SEPS): u.x[];
 
   /**
