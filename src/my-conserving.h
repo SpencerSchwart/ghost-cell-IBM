@@ -180,7 +180,7 @@ event vof (i++) {
   the density */
 
   foreach()
-    foreach_dimension() {
+    foreach_dimension() 
       u.x[] = gc[]? (q1.x[] + q2.x[])/(rho(f[]) + SEPS): u.x[];
 
   /**
