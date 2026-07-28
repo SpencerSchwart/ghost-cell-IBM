@@ -23,10 +23,14 @@ User can define GCV themselves in the source file */
 #undef SEPS
 #define SEPS 1e-30
 
-scalar cs[];
-scalar cs0[];          // solid volume fraction field of previous timestep
-face vector fs[];
-face vector fs0[];
+scalar cs[], cs0[];
+face vector fs[], fs0[];
+
+scalar csp[];
+
+//(const) scalar csp[] = 1.;
+
+scalar * ibm_interfaces = {cs};
 
 // metric fields
 scalar gc[];        // ghost cells (gc = 0, ghost/solid cells; gc = 1, fluid cells)
@@ -60,12 +64,15 @@ typedef struct PointIBM {
 
 bid immersed;
 
+bid cut;
+
 attribute {
     vector mp;     // boundary intercepts (TODO: should name this better)
 
     struct ibm {
         coord (*normal)(coord);
         coord (*bi)(coord);
+        bool symmetric;
     } ibm;
 }
 
@@ -188,7 +195,7 @@ bool fluid_neighbor (Point point, scalar cs)
 {
     //foreach_neighbor(1)
     foreach_direct_neighbor()
-        if (cs[] > GCV)
+        if (cs[] > GCV && csp[] > GCV)
             return true;
     return false;
 }
@@ -258,7 +265,7 @@ cs > 0.5, and the volume fraction is less than or equal to 0.5.
 
 bool is_ghost_cell (Point point, scalar cs)
 {
-    return cs[] <= GCV && fluid_neighbor(point, cs) && match_level(point, cs);
+    return cs[] <= GCV && csp[] > GCV && fluid_neighbor(point, cs) && match_level(point, cs);
 }
 
 
@@ -284,11 +291,11 @@ centroid in the GLOBAL coordinate system.
 Note here n is the inward facing normal normalized so |n.x| + |n.y| + |n.z| = 1
 */
 
-double centroid_point (Point point, scalar cs, coord * midPoint, coord * n, double * alpha)
+double centroid_point (Point point, scalar s, face vector sf, coord * midPoint, coord * n, double * alpha)
 {
     coord cellCenter = {x, y, z};
-    *n = facet_normal (point, cs, fs);
-    *alpha = plane_alpha (cs[], *n);
+    *n = facet_normal (point, s, sf);
+    *alpha = plane_alpha (s[], *n);
     double area = plane_area_center (*n, *alpha, midPoint);
 
     foreach_dimension()
@@ -601,7 +608,7 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
 
             double si = dot_product(subtract_coord(mp_i, bi), t1)/Delta;
 
-            double wi = weighted? 1./(sq(distance_coord(mp_i, gc)/Delta) + 4): 1; // TODO: sq(dimension) instead of + 4?
+            double wi = weighted? 1./(sq(distance_coord(mp_i, gc)/Delta) + sq(dimension)): 1;
 
             Ss  += si*wi;       Sss  += si*si*wi;
             Snx += n_i.x*wi;    Ssnx += si*n_i.x*wi;
@@ -2332,11 +2339,8 @@ event metric (i = 0)
         assert (constant (cm) == 1.);
         cm = gc;
     }
-    foreach() {
-        gc[] = 1.;
-        cs[] = 1.;
-        cs0[] = 1.;
-    }
+    foreach() 
+        gc[] = cs[] = csp[] = 1;
 
 #if TREE
     // set prolongation and refining functions
@@ -2346,6 +2350,8 @@ event metric (i = 0)
     cs0.refine = cs.refine = ibm_fraction_refine;
     cs0.prolongation = cs.prolongation = fraction_refine;
 
+    csp.refine = csp.prolongation = fraction_refine;
+
     foreach_dimension() {
         gcf.x.prolongation = refine_metric_injection_x;
         fs.x.prolongation = ibm_face_fraction_refine_x;
@@ -2353,6 +2359,8 @@ event metric (i = 0)
     }
 #endif
     restriction ({cs, fs, gcf, gc});
+
+    csp.ibm.symmetric = true;
 
     boundary(all);
 }

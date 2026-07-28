@@ -1,86 +1,52 @@
 
 vector bis[];
 
-/*
-"vof" event executes at the beginning of the event loop (before advection) but
-should execute after the new volume fraction fields have been initalized.
+//scalar ibalphas[];
+//vector normals[];
+//vector midPoints[];
 
-Its main purpose is to update the metric fields to account for a moving interface.
-*/
+scalar ggid[];
 
-// TODO: this event is very sensitive to MPI and can cause crashes w/AMR
-
-void fill_interface_data();
+void update_metric ();
 
 event init(i = 0)
 {
-    boundary({cs});
-    fill_interface_data();
+    ggid.restriction = ghost_cell_id_restriction;
+    ggid.refine = ghost_cell_id_restriction;
+    update_metric ();
+
+    boundary(ibm_interfaces);
 }
 
-event update_metric (i++)
-{
-    // update metrics considering immersed boundary
+void fill_interface_data (scalar s, scalar alphas, vector ns, vector mps) {
     foreach() {
-        if (cs[] > GCV) // fluid cell
-            gc[] = 1;
-        else // ghost or solid cell
-            gc[] = 0;
-    }
-
-    set_dirty_stencil (cs);
-    foreach_face() {
-       if (cs[] > 0 || cs[-1] > 0 || is_ghost_cell (point, cs))
-            gcf.x[] = 1;
-       else
-            gcf.x[] = 0;
-    }
-
-#if AXI
-    cm_update (cm, gc);
-    fm_update (fm, gcf);
-    boundary ({fm, cm, gcf, gc});
-#else
-    boundary({gcf, gc});
-#endif
-}
-
-scalar ibalphas[];
-vector normals[];
-vector midPoints[];
-
-void fill_interface_data() {
-    foreach() {
-        coord midPoint, n;
-        if (cs[] > 0 && cs[] < 1) {
-            centroid_point (point, cs, &midPoint, &n, &ibalphas[]);
+        coord mp, n;
+        if (s[] > 0 && s[] < 1) {
+            centroid_point (point, s, fs, &mp, &n, &alphas[]);
             foreach_dimension() {
-                midPoints.x[] = midPoint.x;
-                normals.x[] = -n.x;
+                mps.x[] = mp.x;
+                ns.x[] = -n.x;
             }
-            ibalphas[] *= -1;
+            alphas[] *= -1;
         }
-        else if (cs[] == 1 && empty_neighbor (point, &midPoint, &n, cs)) {
+        else if (s[] == 1 && empty_neighbor (point, &mp, &n, s)) {
             foreach_dimension() {
-                midPoints.x[] = midPoint.x;
-                normals.x[] = -n.x;
+                mps.x[] = mp.x;
+                ns.x[] = -n.x;
             }
-            ibalphas[] = 0;
+            alphas[] = 0;
         }
         else {
             foreach_dimension() {
-                midPoints.x[] = 0;
-                normals.x[] = 0;
+                mps.x[] = 0;
+                ns.x[] = 0;
             }
-            ibalphas[] = 0;
+            alphas[] = 0;
         }
     }
 
-    boundary({midPoints, normals, ibalphas});
+    boundary({mps, ns, alphas});
 }
-
-scalar gid[], dg0[];
-scalar pid[];
 
 #if _MPI
 typedef struct {
@@ -92,7 +58,7 @@ typedef struct {
 #endif
 
 // TODO: doesn't work in openmp?
-coord interpolate_image_point (coord ip, coord nsg, int * rank = NULL) 
+coord interpolate_image_point (coord ip, coord nsg, vector mps, vector ns, scalar alphas, int * rank = NULL) 
 {
     coord uip = {nodata};
 #if _OPENMP
@@ -100,39 +66,33 @@ coord interpolate_image_point (coord ip, coord nsg, int * rank = NULL)
 #else
     foreach_image_point (ip.x, ip.y, ip.z, rank)
 #endif
-        uip = image_velocity (point, u, ip, nsg, midPoints, normals, ibalphas);
+        uip = image_velocity (point, u, ip, nsg, mps, ns, alphas);
 
     return uip;
 }
 
 scalar neg[];
 
-void update_gc_velocity()
+void update_gc_velocity(scalar cs, scalar alphas, vector ns, vector mps)
 {
-#if 1
-    foreach()
-      pid[] = pid();
-#endif
-
     /**
     MPI boundaries MUST be updated before interpolation. */
-//#if _MPI
-//    mpi_boundary_update ((scalar *){u});
-//#endif
     boundary((scalar *){u});
 
     /**
-    First count all ghost cells. */
+    First count all ghost cells. gid index's the ghost cells starting at 1, not
+    0. This is because for plane ghost cells, gid = 0. */
+    scalar gid[];
     int gcount = 0;
 
     Array * gcid  = array_new();
 
     foreach(serial, reduction(+:gcount)) {
-        gid[] = -1;
+        ggid[] = gid[] = -1;
         if (is_ghost_cell(point, cs)) {
-            gid[] = gcount;
-            array_append(gcid, &gcount, sizeof(int));
             gcount++;
+            ggid[] = gid[] = gcount;
+            array_append(gcid, &gcount, sizeof(int));
         }
     }
 
@@ -142,13 +102,11 @@ void update_gc_velocity()
     long nl  = gcid->len/sizeof(int);
 
     coord ips[nl];
-    coord uip[nl];
+    coord uips[nl];
     coord nsg[nl];
 
     foreach() {
-        dg0[] = 0;
-        neg[] = nodata;
-        if (gid[] > -1) {
+        if (gid[] > 0) {
             fragment interFrag;
             coord fc, gc = {x,y,z};
             PointIBM bioff;
@@ -157,32 +115,24 @@ void update_gc_velocity()
             if (cs.ibm.bi) 
                 bi = cs.ibm.bi(gc);
             else {
-                closest_interface (point, midPoints, cs, normals, ibalphas, &interFrag, &fc, &bioff, n);
-                coord nplic = {normals.x[bioff.i, bioff.j, bioff.k], 
-                               normals.y[bioff.i, bioff.j, bioff.k],
-                               normals.z[bioff.i, bioff.j, bioff.k]};
+                closest_interface (point, mps, cs, ns, alphas, &interFrag, &fc, &bioff, n);
+                coord nplic = {ns.x[bioff.i, bioff.j, bioff.k], 
+                               ns.y[bioff.i, bioff.j, bioff.k],
+                               ns.z[bioff.i, bioff.j, bioff.k]};
                 bi = boundary_int (point, nplic, nplic, interFrag.alpha, fc, cs);
-                n = interpolate_normal_lsq (point, bi, bioff, midPoints, normals);
+                n = interpolate_normal_lsq (point, bi, bioff, mps, ns);
+                //n = interpolate_normal (point, bi, bioff, mps, ns);
             }
-            #if 1
-            coord ne = cs.ibm.normal? cs.ibm.normal(gc): n;
-
-            double nerror = acos(clamp(dot_product(n, ne) / 
-                                (magnitude_coord(n) * magnitude_coord(ne)), -1, 1));
-            neg[] = nerror;
-            #endif
             if (cs.ibm.normal)
                n = cs.ibm.normal(gc);
 
             ip = image_point (bi, gc, n);
 
-            dg0[] = distance_coord(bi, gc)/Delta;
-
             foreach_dimension()
                 bis.x[] = bi.x;
 
-            nsg[(int)gid[]] = n;
-            ips[(int)gid[]] = ip;
+            nsg[(int)gid[]-1] = n;
+            ips[(int)gid[]-1] = ip;
 
         }
     }
@@ -200,22 +150,22 @@ void update_gc_velocity()
     for (int i = 0; i < nl; i++) {
 
         int rank = -1;
-        uip[i] = interpolate_image_point(ips[i], nsg[i], &rank);
+        uips[i] = interpolate_image_point(ips[i], nsg[i], mps, ns, alphas, &rank);
 
         if (rank < 0)   // image point is in boundary
             continue;
 #if _MPI
-        if (uip[i].x == nodata) {
+        if (uips[i].x == nodata) {
             assert (rank >= 0 && rank < npe());
             array_append(bips, &i, sizeof(int));
             array_append(bpid, &rank, sizeof(int));
         }
 #else
-        if (uip[i].x == nodata) {
+        if (uips[i].x == nodata) {
             fprintf(stderr, "ERROR: ips[%d]=(%g, %g) nsg[%d]=(%g, %g)\n",
                 i, ips[i].x, ips[i].y, i, nsg[i].x, nsg[i].y);
         }
-        assert(uip[i].x != nodata);
+        assert(uips[i].x != nodata);
 #endif
     }
 
@@ -337,7 +287,7 @@ void update_gc_velocity()
         coord n = {data.nx, data.ny, data.nz};
         
         int rank = -1;
-        coord uip = interpolate_image_point(ip, n, &rank);
+        coord uip = interpolate_image_point(ip, n, mps, ns, alphas, &rank);
 
         assert(rank >= 0);
 
@@ -368,7 +318,7 @@ void update_gc_velocity()
 
     for (int i = 0; i < send_total; i++) {
         MPIcoord data = uip_recv[i];
-        uip[data.id] = (coord){data.x, data.y, data.z};
+        uips[data.id] = (coord){data.x, data.y, data.z};
     }
 
     if (uip_send) free(uip_send);
@@ -389,15 +339,15 @@ void update_gc_velocity()
 #endif
 
     foreach() {
-        if (gid[] > -1) {
+        if (gid[] > 0) {
             coord bi = {0};
             foreach_dimension()
                 bi.x = bis.x[];
 
             coord gc = {x, y, z};
 
-            coord imageVelocity = uip[(int)gid[]];
-            coord n = nsg[(int)gid[]];
+            coord uip = uips[(int)gid[]-1];
+            coord n   = nsg[(int)gid[]-1];
 
             /**
             It is possible that the image point lies in a domain boundary or it
@@ -407,20 +357,24 @@ void update_gc_velocity()
             This *may* cause problems if the IP interpolation requires nodes
             outside the local 5x5 stencil, though it seems ok in testing. */
 
-            if (imageVelocity.x == nodata) {
+            if (uip.x == nodata) {
                 coord ip = image_point (bi, gc, n);
-                imageVelocity = image_velocity (point, u, ip, n, midPoints, normals, ibalphas); 
+                uip = image_velocity (point, u, ip, n, mps, ns, alphas); 
             }
 
             if (local_bc_coordinates) {
+
+                /**
+                Project the image point velocity to the local wall coordinate 
+                system. */
                 coord t1, t2;
                 normal_and_tangents (&n, &t1, &t2);
 
-                coord projVelocity = {dot_product(imageVelocity, n),
-                                      dot_product(imageVelocity, t1),
-                                      dot_product(imageVelocity, t2)};
+                coord uipp = {dot_product(uip, n),
+                              dot_product(uip, t1),
+                              dot_product(uip, t2)};
 
-                coord gcProjVelocity = {0,0,0};
+                coord ugc = {0,0,0};
 
                 foreach_dimension() {
                     bool bctype[2] = {false, false};
@@ -434,18 +388,18 @@ void update_gc_velocity()
                             delta = sqrt(delta)/(2*Delta);
                             vb /= Delta;
 
-                            gcProjVelocity.x = -projVelocity.x*(delta - vb)/(delta + vb);
+                            ugc.x = -uipp.x*(delta - vb)/(delta + vb);
                         }
                         else {
-                            gcProjVelocity.x = 2*vb - projVelocity.x;
+                            ugc.x = 2*vb - uipp.x;
                         }
                     }
                     else { // neumann
-                            gcProjVelocity.x = projVelocity.x;
+                            ugc.x = uipp.x;
                     }
                 }
 
-                double gcn = gcProjVelocity.x, gct1 = gcProjVelocity.y, gct2 = gcProjVelocity.z;
+                double gcn = ugc.x, gct1 = ugc.y, gct2 = ugc.z;
                 foreach_dimension()
                     u.x[] = gcn*n.x + gct1*t1.x + gct2*t2.x;
             }
@@ -454,10 +408,10 @@ void update_gc_velocity()
                     bool dirichlet = false;
                     double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
                     if (dirichlet) {
-                        u.x[] = 2*vb - imageVelocity.x;
+                        u.x[] = 2*vb - uip.x;
                     }
                     else {
-                        u.x[] = imageVelocity.x;
+                        u.x[] = uip.x;
                     }
                 }
             }
@@ -473,23 +427,27 @@ void update_gc_velocity()
 
 
 /**
-AMR can messup velocity inside the solid boundary, which can sometimes cause crashes.
-Here, we force all solid cells that are ghost cells to have a trivial solution. 
-This can probably be avoid by having a more robust refinement/coarsening treatment.
+AMR can messup velocity inside the solid boundary, which can sometimes cause 
+crashes. Here, we force all solid cells that are ghost cells to have a trivial 
+solution. This can probably be avoid by having a more robust refinement/coarsening
+treatment. 
 
-TODO: this can be more efficient by incorporating it in the ghost cell
-      identification loop, since is_ghost_cell is relatively expensive. */
-void cleanup_ibm()
+This function also resets the metric fields (gc and gcf) and the ghost cell ID
+field (gid). */
+
+void reset_ibm()
 {
-     foreach() {
-        if ((!cs[] && !is_ghost_cell(point, cs))) {
-            gid[] = -1;
+    foreach() {
+        if (((!cs[] || !csp[]) && !is_ghost_cell(point, cs))) {
+            ggid[] = -1;
             p[] = pf[] = 0;
             foreach_dimension()
                 u.x[] = 0;
         }
-        if (gid[] > -1 && !cs[])
+        if (ggid[] > -1 && (!cs[] || !csp[]))
             p[] = pf[] = 0;
+
+        ggid[] = -1;
     }
 }
 
@@ -518,15 +476,95 @@ calculate and set the ghost cell values.
 
 TODO: update_metric is called twice within a timeloop. Fix this!*/
 
+void update_metric ()
+{
+    // update metrics considering immersed boundary
+    foreach() {
+        if (cs[] > GCV && csp[] > GCV) // fluid cell
+            gc[] = 1;
+        else            // ghost or solid cell
+            gc[] = 0;
+    }
+
+    set_dirty_stencil (cs);
+    foreach_face() {
+       if ((cs[] > 0 && csp[] > 0) || (cs[-1] > 0 && csp[-1] > 0) || is_ghost_cell (point, cs))
+            gcf.x[] = 1;
+       else
+            gcf.x[] = 0;
+
+       if (!(csp[] && csp[-1]))
+         fs.x[] = 0;
+        
+    }
+
+#if AXI
+    cm_update (cm, gc);
+    fm_update (fm, gcf);
+    boundary ({fm, cm, gcf, gc});
+#else
+    boundary({gcf, gc});
+#endif
+}
+
+
+void update_symmetry(scalar s, scalar * fields)
+{
+    foreach() {
+        if (s[] == 0 && cs[]) {
+            bool is_ghost = false;
+            //coord ufc = {0,0,0};
+            coord fc = {0,0,0};
+            foreach_direct_neighbor() 
+                if (s[] == 1 && cs[]) {
+                    is_ghost = true;
+                    fc = (coord){x, y, z};
+                    break;
+                 }
+            
+            if (!is_ghost) {
+                ggid[] = -1;
+                continue;
+            }
+
+            ggid[] = 0;
+
+            PointIBM off = {sign2(fc.x - x), sign2(fc.y - y), sign2(fc.z - z)};
+
+            for (scalar s in fields) {
+                bool bctype[2] = {false, false};
+                double vb = s.boundary[cut] (point, point, s, bctype);
+                bool dirichlet = bctype[0];
+                if (dirichlet)
+                    s[] = 2.*vb - s[off.i,off.j,off.k];
+                else
+                    s[] = s[off.i,off.j,off.k];
+            }
+        }
+    }
+}
+
+event end_timestep(i++)
+  update_symmetry(csp, csp.depends);
+
 #if TREE
 event adapt(i++)
 {
-    cleanup_ibm();
+    /**
+    Reset the metric fields and anything that could've been messed up by AMR. */
+    reset_ibm();
 
-    event("update_metric");
+    update_metric();
 
-    fill_interface_data(); 
-    update_gc_velocity();
+    /**
+    Loop through each scalar field associated with an immersed boundary and
+    apply boundary conditions. */
+    vector ns[], mps[];
+    scalar alphas[];
+    fill_interface_data(cs, alphas, ns, mps); 
+    update_gc_velocity(cs, alphas, ns, mps);
+    
+    update_symmetry(csp, csp.depends);
 }
 #else
 event end_timestep(i++)

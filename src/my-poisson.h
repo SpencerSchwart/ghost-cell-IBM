@@ -312,7 +312,7 @@ static void relax (scalar * al, scalar * bl, int l, void * data)
 #elif IBM
     bool dirichlet = false;
     a.boundary[immersed](point, point, a, &dirichlet);
-    if (!d || (cs[] <= GCV && dirichlet))
+    if (!d || ((cs[] <= GCV || !gc[]) && dirichlet))
       c[] = 0., b[] = 0.;
     else
 #endif // EMBED
@@ -342,6 +342,10 @@ The equivalent residual function is obtained in a similar way in the
 case of a Cartesian grid, however the case of the tree mesh
 requires more careful consideration... */
 
+#if IBM
+void update_symmetry(scalar s, scalar * fields);
+#endif
+
 static double residual (scalar * al, scalar * bl, scalar * resl, void * data)
 {
   scalar a = al[0], b = bl[0], res = resl[0];
@@ -349,6 +353,11 @@ static double residual (scalar * al, scalar * bl, scalar * resl, void * data)
   (const) face vector alpha = p->alpha;
   (const) scalar lambda = p->lambda;
   double maxres = 0.;
+
+#if IBM
+  update_symmetry(csp, {a});
+#endif
+
 #if TREE
   /* conservative coarse/fine discretisation (2nd order) */
   face vector g[];
@@ -366,7 +375,7 @@ static double residual (scalar * al, scalar * bl, scalar * resl, void * data)
     }
 #endif // EMBED
 #if IBM
-    if (cs[] <= GCV) {
+    if (!gc[]) {
         bool dirichlet = false;
         a.boundary[immersed] (point, point, a, &dirichlet);
         if (dirichlet)
@@ -474,7 +483,7 @@ $$
 \nabla\cdot(\alpha\nabla p) = \frac{\nabla\cdot\mathbf{u}_f}{\Delta t}
 $$ */
 
-scalar divg[], divg1[];
+scalar divg1[];
 
 
 trace
@@ -488,6 +497,8 @@ mgstats project (face vector uf, scalar p,
   We allocate a local scalar field and compute the divergence of
   $\mathbf{u}_f$. The divergence is scaled by *dt* so that the
   pressure has the correct dimension. */
+
+  scalar divg[];
 
   trash({divg, divg1});
 

@@ -192,6 +192,10 @@ event defaults (i = 0)
   for (scalar s in {p, pf})
     s.embed_gradient = pressure_embed_gradient;
 #elif IBM
+  uf.x.refine = refine_face;
+  foreach_dimension()
+    uf.x.prolongation = refine_immersed_face_x;
+
   /**
   Its important to ensure that corasening cells near the immersed boundary do
   not consider values in cells with a trivial solution (0). This is especially
@@ -201,14 +205,6 @@ event defaults (i = 0)
     s.refine = s.prolongation = refine_ibm_linear;
     s.depends = list_add (s.depends, cs);
   }
-
-  /**
-  For some reason, refine_ibm_linear can cause large MPI simulations to blow-up
-  if it is used for the u's prolongation function. Therefore, we just use the
-  default one, which seems to work well. */
-
-  foreach_dimension()
-    u.x.prolongation = refine_bilinear;
 
 #endif
 #endif // TREE
@@ -454,7 +450,7 @@ void centered_gradient (scalar p, vector g)
   face vector gf[];
   foreach_face() {
 #if IBM
-    gf.x[] = fm.x[]*fs.x[]*a.x[] - fm.x[]*alpha.x[]*(p[] - p[-1])/Delta;
+    gf.x[] = fm.x[]*(fs.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta);
 #else
     gf.x[] = fm.x[]*a.x[] - alpha.x[]*(p[] - p[-1])/Delta;
 #endif
@@ -484,6 +480,7 @@ next timestep). Then compute the centered gradient field *g*. */
 event projection (i++,last)
 {
   mgp = project (uf, p, alpha, dt, mgp.nrelax);
+  update_symmetry(csp, {p});
   centered_gradient (p, g);
   
   /**
@@ -509,7 +506,7 @@ event adapt (i++,last) {
   #if EMBED
   fractions_cleanup (cs, fs);
   foreach_face()
-    if (uf.x[] && !fs.x[])
+    if (uf.x[] && !fs.x[] )
       uf.x[] = 0.;
   #elif IBM
   //fractions_cleanup (ibm, ibmf);

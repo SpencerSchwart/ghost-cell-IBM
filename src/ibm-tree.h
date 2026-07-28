@@ -208,6 +208,7 @@ attribute {
   void (* ibm_gradient) (Point, scalar, coord *);
 }
 
+#if 0
 static inline void restriction_ibm_linear (Point point, scalar s)
 {
   double sum = 0;
@@ -218,7 +219,62 @@ static inline void restriction_ibm_linear (Point point, scalar s)
   }
   s[] = sum/(count + SEPS);
 }
+#else
 
+#define fine_valid(s,i,j,k) ((fine(cs,i,j,k) > GCV && fine(csp,i,j,k) > GCV) || fine(s,i,j,k))
+
+static inline void restriction_ibm_linear (Point point, scalar s)
+{  
+  // 0 children
+  bool empty = true;
+  foreach_child()
+    if (s[]) {
+      empty = false;
+      break;
+    }
+  
+  if (empty) {
+    s[] = 0.;
+    return;
+  }
+    
+
+  #if 0
+  if (!cs[] && !s[]) {
+    s[] = 0.;
+    return;
+  }
+  #endif
+
+  /**
+  We first try to interpolate “diagonally”. If enough child cells are defined 
+  (i.e. have non-zero embedded fractions), we return the corresponding value.*/
+
+  double val = 0., nv = 0.;
+  for (int i = 0; i <= 1; i++)
+#if dimension > 2
+    for (int j = 0; j <= 1; j++)
+#endif
+      if (fine_valid(s,0,i,j) && fine_valid(s,1,!i,!j))
+        val += (fine(s,0,i,j) + fine(s,1,!i,!j))/2., nv++;
+
+  if (nv > 0.) {
+    s[] = val/nv;
+    return;
+  }
+
+  /**
+  Otherwise, we use the average of the child cells which are defined (there is
+  at least one). */
+
+  coord p = {0.,0.,0.};
+  foreach_child()
+    if (s[])
+      p.x += x, p.y += y, p.z += z, val += s[], nv++;
+  //assert (nv > 0.);
+  s[] = nv? val/nv: 0;
+}
+#endif
 
 /**
 ## Refinement/prolongation of cell-centered fields
@@ -245,15 +301,16 @@ four, three, or two nodes are fluid or ghost cells. Correspondingly, in 3D,
 trilinear, tetrahedral, and diagonal interpolation is used for 8, 4, and 2
 neighbors. */
 
-#define coarse_valid(s,i,j,k) (coarse(cs,i,j,k) > GCV || (coarse(cs,i,j,k) <= GCV && coarse(s,i,j,k)))
+#define coarse_valid(s,i,j,k) ((coarse(cs,i,j,k) > GCV && coarse(csp,i,j,k) > GCV) || coarse(s,i,j,k))
+
+extern scalar ggid;
 
 static inline void refine_ibm_linear (Point point, scalar s)
 {
   foreach_child() {
-    if (cs[] < GCV)
+    if ((cs[] < GCV || csp[] < GCV) && ggid[] <= -1)
       s[] = 0.;
     else {
-      assert (coarse(cs));
 #if dimension == 2
       if (coarse_valid(s,0,0,0) && coarse_valid(s,child.x,0,0) && 
           coarse_valid(s,0,child.y,0) && coarse_valid(s,child.x,child.y,0)) 
@@ -291,9 +348,9 @@ static inline void refine_ibm_linear (Point point, scalar s)
         // Pathological cases, use 1D gradients.
         s[] = coarse(s);
         foreach_dimension() {
-          if (coarse(cs,child.x) > GCV || (coarse(cs,child.x) <= GCV && coarse(s,child.x)))
+          if ((coarse(cs,child.x) > GCV && coarse(csp,child.x) > GCV) || coarse(s,child.x))
             s[] += (coarse(s,child.x) - coarse(s))/4.;
-          else if (coarse(cs,-child.x) > GCV || (coarse(cs,-child.x) <= GCV && coarse(s,-child.x)))
+          else if ((coarse(cs,-child.x) > GCV && coarse(csp,-child.x) > GCV) || coarse(s,-child.x))
             s[] -= (coarse(s,- child.x) - coarse(s))/4.;
         }
       }
@@ -306,7 +363,7 @@ foreach_dimension()
 static void refine_metric_injection_x (Point point, scalar s)
 {
     vector v = s.v;
-    double val = on_interface(cs)? 1.: cs[];
+    double val = cs[] > 0 && cs[] < 1 && csp[]? 1.: min(csp[], cs[]);
     foreach_child()
         v.x[] = val;
 }
@@ -335,7 +392,7 @@ static inline void restriction_face_metric (Point point, scalar s)
 
 static void fraction_refine_metric (Point point, scalar s)
 {
-  double cc = cs[];
+  double cc = min(cs[],csp[]);
 
   /**
   If the cell is empty or full, simple injection from the coarse cell
@@ -352,7 +409,8 @@ static void fraction_refine_metric (Point point, scalar s)
     boundary using VOF linear reconstruction and a normal estimated
     from the surface fractions. */
 
-    coord n = facet_normal (point, cs, fs);
+    //coord n = facet_normal (point, cs, fs);
+    coord n = mycs (point, csp);
     double alpha = plane_alpha (cc, n);
       
     foreach_child() {
@@ -360,7 +418,68 @@ static void fraction_refine_metric (Point point, scalar s)
       coord nc;
       foreach_dimension()
 	    nc.x = child.x*n.x;
-      s[] = rectangle_fraction (nc, alpha, a, b) > 0.5;
+      s[] = rectangle_fraction (nc, alpha, a, b) > GCV;
+    }
+  }
+}
+
+foreach_dimension()
+void refine_immersed_face_x (Point point, scalar s)
+{
+  vector v = s.v;
+  for (int i = 0; i <= 1; i++)
+    if (neighbor(2*i - 1).neighbors &&
+	(is_local(cell) || is_local(neighbor(2*i - 1)))) {
+      double g1 = fs.x[i] >= 1. && fs.x[i,+1] && fs.x[i,-1] ?
+	(v.x[i,+1]/fs.x[i,+1] - v.x[i,-1]/fs.x[i,-1])/8. : 0.;
+      double g2 = fs.x[i] >= 1. && fs.x[i,0,+1] && fs.x[i,0,-1] ?
+	(v.x[i,0,+1]/fs.x[i,0,+1] - v.x[i,0,-1]/fs.x[i,0,-1])/8. : 0.;
+      for (int j = 0; j <= 1; j++)
+	for (int k = 0; k <= 1; k++)
+	  fine(v.x,2*i,j,k) = fs.x[i] ?
+	    fine(fs.x,2*i,j,k)*(v.x[i]/fs.x[i] +
+				(2*j - 1)*g1 + (2*k - 1)*g2) : 0.;
+    }
+  if (is_local(cell)) {
+    double g1 = (fs.x[0,+1] + fs.x[1,+1]) && (fs.x[0,-1] + fs.x[1,-1]) ?
+      ((v.x[0,+1] + v.x[1,+1])/(fs.x[0,+1] + fs.x[1,+1]) -
+       (v.x[0,-1] + v.x[1,-1])/(fs.x[0,-1] + fs.x[1,-1]))/8. : 0.;
+    double g2 = (fs.x[1,0,+1] + fs.x[0,0,+1]) && (fs.x[1,0,-1] + fs.x[0,0,-1]) ?
+      ((v.x[0,0,+1] + v.x[1,0,+1])/(fs.x[1,0,+1] + fs.x[0,0,+1]) -
+       (v.x[0,0,-1] + v.x[1,0,-1])/(fs.x[1,0,-1] + fs.x[0,0,-1]))/8. : 0.;
+    for (int j = 0; j <= 1; j++)
+      for (int k = 0; k <= 1; k++)
+	fine(v.x,1,j,k) = fs.x[] + fs.x[1] ?
+	  fine(fs.x,1,j,k)*((v.x[] + v.x[1])/(fs.x[] + fs.x[1]) +
+			    (2*j - 1)*g1 + (2*k - 1)*g2) : 0.;
+  }
+}
+
+void ghost_cell_id_restriction (Point point, scalar s)
+{
+  double max = -1;
+  foreach_child()
+    if (s[] > max) 
+      max = s[]; 
+
+  s[] = max;
+}
+
+void ghost_cell_id_refine (Point point, scalar s)
+{
+  if (s[] < 0) {
+    foreach_child() {
+      s[] = -1;
+    }
+  }
+  else {
+    foreach_child() {
+      int check = -1;
+      foreach_dimension() {
+        if (coarse(cs,child.x) && coarse(csp,child.x))
+            check = 0;
+      }
+      s[] = check;
     }
   }
 }

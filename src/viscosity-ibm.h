@@ -442,12 +442,12 @@ mgstats viscosity (vector u, face vector mu, scalar rho, double dt,
     foreach_dimension()
       r.x[] = u.x[];
 
-      rho2[] = cs[]? rho[]*cm[]/cs[]: 0;
+      rho2[] = cs[] && csp[]? rho[]*cm[]/cs[]: 0;
   }
   /**
   We need $\mu$ and $\rho$ on all levels of the grid. */
 
-  restriction ({cs, mu, rho2, gc});
+  restriction ({cs, csp, mu, rho2, gc});
   struct Viscosity p = { mu, rho2, dt };
   return mg_solve ((scalar *){u}, (scalar *){r},
 		   residual_viscosity, relax_viscosity, &p, nrelax, res, minlevel=1,
