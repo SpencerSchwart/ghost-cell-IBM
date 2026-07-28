@@ -1,21 +1,17 @@
 
 vector bis[];
 
-//scalar ibalphas[];
-//vector normals[];
-//vector midPoints[];
-
 scalar ggid[];
 
-void update_metric ();
+void update_metric();
 
 event init(i = 0)
 {
     ggid.restriction = ghost_cell_id_restriction;
     ggid.refine = ghost_cell_id_restriction;
-    update_metric ();
+    update_metric();
 
-    boundary(ibm_interfaces);
+    boundary((scalar *){cs});
 }
 
 void fill_interface_data (scalar s, scalar alphas, vector ns, vector mps) {
@@ -71,7 +67,6 @@ coord interpolate_image_point (coord ip, coord nsg, vector mps, vector ns, scala
     return uip;
 }
 
-scalar neg[];
 
 void update_gc_velocity(scalar cs, scalar alphas, vector ns, vector mps)
 {
@@ -106,8 +101,11 @@ void update_gc_velocity(scalar cs, scalar alphas, vector ns, vector mps)
     coord nsg[nl];
 
     foreach() {
+        
+        foreach_dimension()
+            bis.x[] = 0;
+
         if (gid[] > 0) {
-            fragment interFrag;
             coord fc, gc = {x,y,z};
             PointIBM bioff;
 
@@ -115,11 +113,12 @@ void update_gc_velocity(scalar cs, scalar alphas, vector ns, vector mps)
             if (cs.ibm.bi) 
                 bi = cs.ibm.bi(gc);
             else {
-                closest_interface (point, mps, cs, ns, alphas, &interFrag, &fc, &bioff, n);
+                double talpha = 0;
+                closest_interface (point, mps, cs, ns, alphas, &talpha, &fc, &bioff, n);
                 coord nplic = {ns.x[bioff.i, bioff.j, bioff.k], 
                                ns.y[bioff.i, bioff.j, bioff.k],
                                ns.z[bioff.i, bioff.j, bioff.k]};
-                bi = boundary_int (point, nplic, nplic, interFrag.alpha, fc, cs);
+                bi = boundary_int (point, nplic, nplic, talpha, fc, cs);
                 n = interpolate_normal_lsq (point, bi, bioff, mps, ns);
                 //n = interpolate_normal (point, bi, bioff, mps, ns);
             }

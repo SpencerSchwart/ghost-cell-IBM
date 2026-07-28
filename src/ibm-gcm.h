@@ -2,68 +2,88 @@
 #undef dv
 #define dv()  (pow(Delta,dimension))
 #endif // !AXI
-#define dv2() (pow(Delta,dimension)*cs[]*cm[])
-#define dv3() (pow(Delta,dimension)*fs[])
 
 #include "fractions.h"
 #include "ibm-utils.h"
 #include "mls.h"
 
 #define BGHOSTS 2
-#define IBM 1
-#define LIMIT 1e100
-
-/**
-User can define GCV themselves in the source file */
-
-#ifndef GCV
-#define GCV 1e-4 // if fluid volume fraction > GCV, its a fluid cell
-#endif
-
 #undef SEPS
 #define SEPS 1e-30
+
+#define IBM 1
+
+/**
+The GCV variable is the minimum fluid volume before a cell is classified as a
+ghost cell. The standard GC-IBM corresponds to GCV = 0.5. In otherwords, if
+cs > GCV, then it is a fluid cell. Otherwise, it is a ghost or solid cell.
+
+For very small cells, cs can be << 1. Small cells can cause instability issues
+if the momentum equation is solved in them, which is done in the present IBM.
+Therefore, GCV is utilized as an emperical cutoff. 1e-4 or 1e-3 seems to work well.
+
+User can also define GCV themselves in the source file */
+
+#ifndef GCV
+#define GCV 1e-4 
+#endif
+
+
+/**
+# Volume fraction fields
+
+Scalar for storing the solid geomery and corresponding face vector fields. If the
+immersed boundary is moving, cs0 is used to store the position of the solid
+interface at the previous timestep. 
+
+cs is the fluid volume fraction, i.e.
+cs = 1 is a pure fluid cell,
+cs = 0 is a pure solid cell,
+0 < cs < 1 is an interfacial/cut cell. */
 
 scalar cs[], cs0[];
 face vector fs[], fs0[];
 
+/**
+The IBM can be used as a symmetric plane to reduce the size of the simulation 
+domain. The notation for csp is similiar to cs:
+
+csp = 1 is a fluid cell
+csp = 0 is a solid cell. 
+
+The symmetric plane must be defined so that it perfectly coincides with the cell
+faces in the domain. When using AMR, the coordinate of the plane must be a
+multiple of the largest cell size. */
+
 scalar csp[];
 
-//(const) scalar csp[] = 1.;
+/**
+# Metric fields
 
-scalar * ibm_interfaces = {cs};
+Cells with gc = 1 are fluid cells, where the governing equations are solved.
+Cells with gc = 0 are ghost or solids cells, whose values are either trivial or
+determined using interpolation. */
 
-// metric fields
-scalar gc[];        // ghost cells (gc = 0, ghost/solid cells; gc = 1, fluid cells)
-face vector gcf[];  // ghost cells faces (gc = 0, ghost/solid cells; gc = 1, fluid cells)
+scalar gc[];
+face vector gcf[];
 
 double (* metric_ibm_factor) (Point, coord) = NULL; // for axi
 
 /**
 when true, immersed BCs will respect the n and t (and r) notation, otherwise,
-they will be decayed to n ≡ x, t ≡ y, and r ≡ z */
+they will be decayed to n ≡ x, t ≡ y, and r ≡ z. */
 
 bool local_bc_coordinates = true; 
-
-typedef struct fragment {
-    coord n;
-    double alpha;
-    double c;  // solid volume fraction field (cs)
-} fragment;
-
-
-void fill_fragment (double c, coord n, double alpha, fragment * frag)
-{
-    frag->c = c;
-    frag->n = n;
-    frag->alpha = alpha;
-}
 
 typedef struct PointIBM {
     int i, j, k;
 } PointIBM;
 
-bid immersed;
+/**
+We define the names that are used to set boundary conditions on the immersed
+and symmetric cut plane, corresponding to cs and csp, respectively. */
 
+bid immersed;
 bid cut;
 
 attribute {
@@ -72,9 +92,13 @@ attribute {
     struct ibm {
         coord (*normal)(coord);
         coord (*bi)(coord);
-        bool symmetric;
     } ibm;
 }
+
+/**
+The bondary condition macros are overridden to allow compatability with the IBM.
+The macros make use of ibm_area_center to retrieve the boundary intercept from
+ghost cells. */
 
 static inline
 double ibm_area_center (Point point, scalar s, double* x1, double* y1, double* z1)
@@ -143,42 +167,43 @@ double contact_angle (double expr, Point point = point,
 }
 #endif
 
-/*
-This function takes returns true if the given point has a direct neighbor that
-has no liquid volume fraction, i.e. cs == 0, and fills pc and n with the midpoint
-and corresponding normal, respectively.
+/**
+This function returns true if the given point has a direct neighbor (N, S, E, W)
+that has no liquid volume fraction, i.e. cs == 0, and fills pc and n with the
+midpoint and corresponding normal, respectively. 
 
-TODO: should only check neighbors sharing a face, N, S, E, or W.
-*/
+This is only used if the immersed boundary perfectly coincides with a cell face. */
 
 bool empty_neighbor (Point point, coord * pc, coord * n, scalar cs)
 {
-    coord pc_temp = {x, y, z}, cellCenter = {x, y, z};
+    coord pc_temp = {x, y, z}, cc = {x, y, z};
     double cs_temp = cs[];
     double max_d = 1e6;
     int neighbor = 0;
 
-    foreach_neighbor(1) {
-        double distance2Cell = distance3D(x - cellCenter.x, y - cellCenter.y, z - cellCenter.z);
-        if (cs[] == 0 && cs_temp == 1 && distance2Cell < max_d) {
-            pc_temp.x = (cellCenter.x + x) / 2.;
-            pc_temp.y = (cellCenter.y + y) / 2.;
-            pc_temp.z = (cellCenter.z + z) / 2.;
+    foreach_direct_neighbor() {
+        double distance = distance3D(x - cc.x, y - cc.y, z - cc.z);
+        if (cs[] == 0 && cs_temp == 1 && distance < max_d) {
+            pc_temp.x = 0.5*(cc.x + x);
+            pc_temp.y = 0.5*(cc.y + y);
+            pc_temp.z = 0.5*(cc.z + z);
 
-            max_d = distance3D(x - cellCenter.x, y - cellCenter.y, z - cellCenter.z);
+            max_d = distance3D(x - cc.x, y - cc.y, z - cc.z);
 
             neighbor = 1;
             *pc = pc_temp;
         }
     }
    
-    // Calculate the normal. n can only be {1,0}, {-1,0}, {0,1}, or {0,-1}.
-    // should probably not compare floating point values like this.
-    coord n_temp = {pc_temp.x != cellCenter.x, 
-                    pc_temp.y != cellCenter.y,
-                    pc_temp.z != cellCenter.z};
+    /**
+    Calculate the normal. n can only be {1,0}, {-1,0}, {0,1}, or {0,-1}.
+    Should probably not compare floating point values like this. */
+
+    coord n_temp = {pc_temp.x != cc.x, 
+                    pc_temp.y != cc.y,
+                    pc_temp.z != cc.z};
     foreach_dimension() {
-        n_temp.x *= sign2(pc_temp.x - cellCenter.x);
+        n_temp.x *= sign2(pc_temp.x - cc.x);
     }
 
     *n = n_temp;
@@ -188,8 +213,8 @@ bool empty_neighbor (Point point, coord * pc, coord * n, scalar cs)
 
 
 /**
-Checks to see if the given point has at least 1 fluid neighbor touching one of
-it's faces. If so, returns true. */
+Checks to see if the given point has at least 1 (direct) fluid neighbor touching
+one of it's faces. If so, returns true. */
 
 bool fluid_neighbor (Point point, scalar cs)
 {
@@ -212,7 +237,8 @@ functions to obtain the values if they are not leaf cells.
 Considering the above, we add additional checks in the ghost cell definition,
 taken care of by this function.
 
-TODO: probably only need one function, not both fluid_neighbor() and match_level(). */
+TODO: probably only need one function, not both fluid_neighbor() and 
+      match_level(). */
 
 bool match_level (Point point, scalar cs)
 {
@@ -258,10 +284,9 @@ bool match_level (Point point, scalar cs)
 }
 
 
-/*
+/**
 is_ghost_cell returns true if the given cell shares a face with a fluid cell,
-cs > 0.5, and the volume fraction is less than or equal to 0.5.
-*/
+if cs <= GCV, and if the neighboring fluid cell is valid when using AMR. */
 
 bool is_ghost_cell (Point point, scalar cs)
 {
@@ -269,64 +294,44 @@ bool is_ghost_cell (Point point, scalar cs)
 }
 
 
-#if dimension == 2
-bool is_deep_ghost_cell (Point point)
-{
-    bool inside = true;
-    foreach_direct_neighbor() {
-        if (cm[] > 0) {
-            inside = false;
-            break;
-        }
-    }
-    return inside;
-}
-#endif
-
-/*
+/**
 centroid_point returns the area of the interfrace fragment in a give cell. It
-takes in the volume fraction field cs and fills midPoint with the interfacial 
-centroid in the GLOBAL coordinate system.
+takes in the volume fraction field cs and fills mp with the interfacial 
+centroid in the *global* coordinate system.
 
-Note here n is the inward facing normal normalized so |n.x| + |n.y| + |n.z| = 1
-*/
+Note here n is the inward facing normal normalized so |n.x| + |n.y| + |n.z| = 1 */
 
-double centroid_point (Point point, scalar s, face vector sf, coord * midPoint, coord * n, double * alpha)
+double centroid_point (Point point, scalar s, face vector sf, coord * mp, coord * n, double * alpha)
 {
     coord cellCenter = {x, y, z};
     *n = facet_normal (point, s, sf);
     *alpha = plane_alpha (s[], *n);
-    double area = plane_area_center (*n, *alpha, midPoint);
+    double area = plane_area_center (*n, *alpha, mp);
 
     foreach_dimension()
-        midPoint->x = cellCenter.x + midPoint->x*Delta;
+        mp->x = cellCenter.x + mp->x*Delta;
     return area;
 }
 
 
-/*
+/**
 The function below fills frag with the normal vector n, alpha, and the volume fraction of the
 cell that is closest to the ghost cell. It also returns the coordinates of the fragment's midpoint 
 and fills fluidCell with the cell center coordinates of the closest fluid cell.
 
-It now also fills "bioff" with the indices of the closest interface w.r.t the ghost cell's stencil.
+It also fills "bioff" with the indices of the closest interface w.r.t the ghost cell's stencil.
 
 Note: we make a crude approximation that the closest interfacial point from the surrounding
 cells to the ghost cell is which ever interfacial mid point/centroid is closest. In practice, it has worked
-adequately, but this can be improved.
-
-TODO: Clean up and streamline function.
-*/
+adequately, but this can be improved. */
 
 coord closest_interface (Point point, vector midPoints, scalar cs, vector normals, scalar alphas,
-                         fragment * frag, coord * fluidCell, PointIBM * bioff, coord nu)
+                         double * talpha, coord * fluidCell, PointIBM * bioff, coord nu)
 {
-    fragment temp_frag;
     coord temp_midPoint, temp_fluidCell = {0,0}, cc = {x, y, z};
     coord n;
     PointIBM ptemp = {0,0,0};
 
-    double min_distance = 1e6;
     bool found = false;
     double offmin = 1e6;
     foreach_neighbor() {
@@ -360,12 +365,15 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
                 temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
                 temp_fluidCell = (coord){x, y, z};
 
-                fill_fragment (cs[], n, alpha, &temp_frag);
+                *talpha = alpha;
                 ptemp = (PointIBM){(int)((x - cc.x)/Delta), (int)((y - cc.y)/Delta), (int)((z - cc.z)/Delta)};
             }
         }
     }
+
     if (!found) {
+      double min_distance = 1e6;
+
       foreach_neighbor() {
         double dx = midPoints.x[] - cc.x;
         double dy = midPoints.y[] - cc.y;
@@ -382,7 +390,7 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
 
             temp_fluidCell = (coord){x, y, z};
 
-            fill_fragment (cs[], n, alpha, &temp_frag);
+            *talpha = alpha;
 
             min_distance = distance3D(dx, dy, dz);
             ptemp = (PointIBM){(int)((x - cc.x)/Delta), (int)((y - cc.y)/Delta), (int)((z - cc.z)/Delta)};
@@ -391,7 +399,6 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
     }
 
     *fluidCell = temp_fluidCell;
-    *frag = temp_frag;
     *bioff = ptemp;
 
     return temp_midPoint;
@@ -2359,8 +2366,6 @@ event metric (i = 0)
     }
 #endif
     restriction ({cs, fs, gcf, gc});
-
-    csp.ibm.symmetric = true;
 
     boundary(all);
 }
