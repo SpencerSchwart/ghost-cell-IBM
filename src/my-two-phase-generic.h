@@ -102,6 +102,7 @@ event properties (i++)
             if (count)
               ff /= (double)count;
         }
+
         alphav.x[] = fs.x[]/rho(ff);
         if (mu1 || mu2) {
           face vector muv = mu;
@@ -136,7 +137,7 @@ event properties (i++)
   
   foreach() {
 #if IBM
-    rhov[] = cs[]? cs[]*rho(sf[]/(cs[])): 0;
+    rhov[] = cs[]? gc[]*cs[]*rho(sf[]/(cs[])): 0;
 #elif EMBED
     rhov[] = cs[]? cm[]*rho(sf[]/(cs[])): 0;
 #else // !IBM

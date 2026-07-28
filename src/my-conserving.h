@@ -180,8 +180,11 @@ event vof (i++) {
   the density */
 
   foreach()
-    foreach_dimension() 
-      u.x[] = gc[]? (q1.x[] + q2.x[])/(rho(f[]) + SEPS): u.x[];
+    foreach_dimension() {
+      double ft = clamp(f[],0,cs[]);
+      double rhot = rho1*ft + (cs[] - ft)*rho2;
+      u.x[] = gc[] && cs[]? (q1.x[] + q2.x[])/(rhot + SEPS): u.x[];
+    }
 
   /**
   We set the list of interfaces to NULL so that the default *vof()*

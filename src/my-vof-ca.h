@@ -157,6 +157,8 @@ void move_solid_x(scalar cs, face vector fs);
 void move_solid_y(scalar cs, face vector fs);
 void move_solid_z(scalar cs, face vector fs);
 
+scalar evertex[];
+
 foreach_dimension()
 static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0, 
                      face vector fs0, vector ns, scalar alphas, vector nfh, scalar alphafh, int last)
@@ -201,8 +203,32 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
 
     if (un == 0)
         cf = 0;
-    else if (cs0[i] >= 1.) 
-        cf = (c[i] <= 0 || c[i] >= 1)? c[i] : rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
+    else if (cs0[i] >= 1.) {
+        if (c[i] <= 0 || c[i] >= 1)
+            cf = c[i];
+        else {
+            if (evertex[i] == 1) {
+
+                coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
+                if (empty_coord(tempns))
+                    cf = rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
+
+                double alphacr = alphafh[i];
+                if (c.wetting.theta_s < 180) { // only use nc when the surface is wettable
+                    normalize2(&tempns);
+                    normalize2(&tempnf);
+                    coord nc = normal_contact (tempns, tempnf, contact_angle[i]);
+                    normalize_sum(&nc);
+                    tempnf = nc;
+                    alphacr = plane_alpha(c[i], tempnf);
+                }
+
+                cf = rectangle_fraction (tempnf, alphacr, lhs, rhs);
+            }
+            else 
+                cf = rectangle_fraction (tempnf, alphafh[i], lhs, rhs);
+        }
+    }
     else if (cs0[i] > 0. && cs0[i] < 1.) {
         coord tempns = {-s*ns.x[i], ns.y[i], ns.z[i]};
 
@@ -213,6 +239,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
         if (!advVolume)
             assert (c[i] <= 0);
         if (c[i] <= 0.)
+    
             cf = 0.;
         else if (c[i] >= cs0[i]-VTOL) // interfacial cell is full
             cf = 1;
@@ -266,7 +293,7 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
     for (t,gf,tflux in tracers,gfl,tfluxl) {
       double cf1 = cf, ci = cs[i]? c[i]: 0;
       if (t.inverse)
-    	cf1 = cs[i] - cf1, ci = cs[i] - ci;
+    	cf1 = 1. - cf1, ci = cs[i] - c[i];
       if (ci > 1e-10) {
 	    double ff = t[i]/ci + s*min(1., 1. - s*un)*gf[i]*Delta/2.;
 #if IBM
@@ -503,6 +530,27 @@ void vof_advection (scalar * interfaces, int i)
 
         foreach_dimension()
             divs.x[] = 0;
+
+        if (cs[] >= 1) {
+            evertex[] = vertex_interfacial(point, cs);
+            coord ns_avg = {0,0,0};
+            int count = 0;
+            foreach_near_neighbor() {
+              if (cs[] > 0 && cs[] < 1) {
+                count++;
+                foreach_dimension()
+                  ns_avg.x += ns.x[];
+              }
+            }
+            if (count) {
+                foreach_dimension()
+                   ns.x[] = ns_avg.x/(double)count;
+            }
+            else
+                evertex[] = 0;
+        }
+        else
+            evertex[] = 0;
     }
 
     void (* sweep[dimension]) (scalar, scalar, scalar, scalar *, scalar, 

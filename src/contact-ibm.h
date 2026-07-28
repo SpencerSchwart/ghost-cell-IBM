@@ -167,18 +167,17 @@ void reconstruction_contact (scalar c, const scalar cr, vector n, scalar alpha,
             if (cs[] == 1) {
                 coord ns_avg = {0,0,0};
                 int count = 0;
-                foreach_direct_neighbor() {
-                  if (on_interface(cs)) {
+                foreach_near_neighbor() {
+                  if (cs[] > 0 && cs[] < 1) {
                     count++;
                     foreach_dimension()
                       ns_avg.x += ns.x[];
                   }
                 }
-                if (count) {
+                if (count) 
                   foreach_dimension()
                     ns_avg.x /= (double)count;
-                  
-                }
+                
                 ns0 = ns_avg;
                 foreach_dimension()
                     ns.x[] = ns0.x;
@@ -191,7 +190,7 @@ void reconstruction_contact (scalar c, const scalar cr, vector n, scalar alpha,
             }
 
             coord nf = {n.x[], n.y[], n.z[]};
-            if (!nf.x && !nf.y && !nf.z) {
+            if ((!nf.x && !nf.y && !nf.z) || (!ns0.x && !ns0.y && !ns0.z)) {
                 extra[] = 0;
                 continue;
             }
@@ -205,17 +204,22 @@ void reconstruction_contact (scalar c, const scalar cr, vector n, scalar alpha,
             foreach_dimension()
                 n.x[] = nc.x;
 
-            alpha[] = immersed_alpha(c[], cs[], nc, alpha[], ns0, alphas0, cr[]);
+            if (cs[] < 1.) {
 
-            normalize_sum(&nf);
-            double alphaf = immersed_alpha(cr[], cs[], nf, alpha[], ns0, alphas0, cr[]);
+                alpha[] = immersed_alpha(c[], cs[], nc, alpha[], ns0, alphas0, cr[]);
 
-            c[] = max(plane_volume(nf, alphaf), cr[]);
+                normalize_sum(&nf);
+                double alphaf = immersed_alpha(cr[], cs[], nf, alpha[], ns0, alphas0, cr[]);
 
-            if (c[] >= 1) {
-                fprintf(stderr, "WARNING: extrapolation cell (%g, %g) got c = %g\n", x, y, c[]);
-                extra[] = 0;
+                c[] = max(plane_volume(nf, alphaf), cr[]);
+
+                if (c[] >= 1) {
+                    fprintf(stderr, "WARNING: extrapolation cell (%g, %g) got c = %g\n", x, y, c[]);
+                    extra[] = 0;
+                }
             }
+            else if (cs[] == 1) 
+                alpha[] = plane_alpha(cr[], nc);
         }
     }
 

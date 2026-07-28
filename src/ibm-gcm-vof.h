@@ -1604,14 +1604,40 @@ static inline bool full_interfacial (Point point, scalar c)
 check to see if the given cell has a vertex that perfectly coincides with the solid boundary. */
 static inline bool vertex_interfacial (Point point, scalar c)
 {
+#if 0
   if (c[] >= 1.) {
-    foreach_near_neighbor()
+    foreach_near_neighbor() {
         if (!cs[])
             return true;
   }
   else if (c[] > 0 && c[] < 1)
     return true;
   return false;
+#else
+    if (c[] >= 1.) {
+        bool no_empty = true;
+        foreach_direct_neighbor() {
+            if (cs[] < 1)
+                no_empty = false;
+
+            foreach_dimension()
+                if ((!fs.x[] && cs[-1] && cs[] && !is_boundary(neighbor(0,0,0))) || 
+                    (!fs.x[1] && cs[1] && cs[] && !is_boundary(neighbor(1,0,0))))
+                    return true;
+        }
+
+        if(no_empty)
+            return false;
+
+        foreach_near_neighbor() {
+            if (!cs[])
+                return true;
+         }
+    }
+    else if (c[] > 0 && c[] < 1)
+        return true;
+    return false;
+#endif
 }
 
 /** 
