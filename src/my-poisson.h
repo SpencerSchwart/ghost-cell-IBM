@@ -483,8 +483,7 @@ $$
 \nabla\cdot(\alpha\nabla p) = \frac{\nabla\cdot\mathbf{u}_f}{\Delta t}
 $$ */
 
-scalar divg1[];
-
+extern vector u;
 
 trace
 mgstats project (face vector uf, scalar p,
@@ -500,48 +499,23 @@ mgstats project (face vector uf, scalar p,
 
   scalar divg[];
 
-  trash({divg, divg1});
-
   foreach() {
     divg[] = 0.;
 #if IBM
-    
-#if 0
-    if (!cs[]) continue;
-
-    foreach_dimension() {
-        if (borders_ghost_x(point, cs) || (cs[] > 0 && cs[] < 1)) {
-            divg[] += virtual_merge_x (point, cs, fs, uf);
-        }
-        divg[] += fs.x[1]*uf.x[1] - fs.x[]*uf.x[];
-    }
-
-    divg[] /= dt*Delta;
-
-#else
     if (on_interface(cs)) {
       coord midPoint, n;
       double area = ibm_geometry (point, &midPoint, &n);
 
-      if (local_bc_coordinates) {
-        // x ≡ n (normal direction). The tangent directions don't contribute to divergence calculation
-        bool dirichlet = false;
-        double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
-        divg[] -= vb * area;
-      }
-      else { // !local_bc_coordinates, i.e. use n ≡ x, t ≡ y, and r ≡ z.
-        foreach_dimension() {
-            bool dirichlet = false;
-            double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
-            divg[] -= vb * n.x * area;
-        }
-      }
+      /**
+      x ≡ n (normal direction). The tangent directions don't contribute to 
+      divergence calculation. */
+      bool dirichlet = false;
+      double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
+      divg[] -= vb * area;
     }
     foreach_dimension() {
       divg[] += fs.x[1]*uf.x[1] - fs.x[]*uf.x[];
     }
-#endif
-
 #else
     foreach_dimension()
       divg[] += uf.x[1] - uf.x[];
@@ -577,27 +551,6 @@ mgstats project (face vector uf, scalar p,
     uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
 #endif
   }
-
-#if 0
-  foreach() {
-    divg1[] = 0;
-
-    if (on_interface(cs)) {
-      coord midPoint, n;
-      double area = ibm_geometry (point, &midPoint, &n);
-      foreach_dimension() {
-          bool dirichlet = false;
-          double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
-          divg1[] -= vb * n.x * area;
-          //divg1[] -= uibm_x(mpx,mpy,mpz) * n.x * area;
-      }
-    }
-
-    foreach_dimension()
-      divg1[] += fs.x[1]*uf.x[1] - fs.x[]*uf.x[];
-    divg1[] /= Delta;
-  }
-#endif
 
   return mgp;
 }

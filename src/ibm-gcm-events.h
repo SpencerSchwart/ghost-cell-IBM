@@ -62,7 +62,7 @@ coord interpolate_image_point (coord ip, coord nsg, vector mps, vector ns, scala
 #else
     foreach_image_point (ip.x, ip.y, ip.z, rank)
 #endif
-        uip = image_velocity (point, u, ip, nsg, mps, ns, alphas);
+        uip = interpolate_vector_ibm (point, u, ip, nsg, mps, ns, alphas);
 
     return uip;
 }
@@ -358,67 +358,51 @@ void update_gc_velocity(scalar cs, scalar alphas, vector ns, vector mps)
 
             if (uip.x == nodata) {
                 coord ip = image_point (bi, gc, n);
-                uip = image_velocity (point, u, ip, n, mps, ns, alphas); 
+                uip = interpolate_vector_ibm (point, u, ip, n, mps, ns, alphas);
             }
 
-            if (local_bc_coordinates) {
+            /**
+            Project the image point velocity to the local wall coordinate 
+            system. */
+            coord t1, t2;
+            normal_and_tangents (&n, &t1, &t2);
 
-                /**
-                Project the image point velocity to the local wall coordinate 
-                system. */
-                coord t1, t2;
-                normal_and_tangents (&n, &t1, &t2);
+            coord uipp = {dot_product(uip, n),
+                          dot_product(uip, t1),
+                          dot_product(uip, t2)};
 
-                coord uipp = {dot_product(uip, n),
-                              dot_product(uip, t1),
-                              dot_product(uip, t2)};
+            coord ugc = {0,0,0};
 
-                coord ugc = {0,0,0};
+            foreach_dimension() {
+                bool bctype[2] = {false, false};
+                double vb = u.x.boundary[immersed] (point, point, u.x, bctype);
+                bool dirichlet = bctype[0], navier = bctype[1];
+                if (dirichlet) {
+                    if (navier) {
+                        double delta = 0;
+                        foreach_dimension()
+                            delta += sq(2*(gc.x - bi.x));
+                        delta = sqrt(delta)/(2*Delta);
+                        vb /= Delta;
 
-                foreach_dimension() {
-                    bool bctype[2] = {false, false};
-                    double vb = u.x.boundary[immersed] (point, point, u.x, bctype);
-                    bool dirichlet = bctype[0], navier = bctype[1];
-                    if (dirichlet) {
-                        if (navier) {
-                            double delta = 0;
-                            foreach_dimension()
-                                delta += sq(2*(gc.x - bi.x));
-                            delta = sqrt(delta)/(2*Delta);
-                            vb /= Delta;
-
-                            ugc.x = -uipp.x*(delta - vb)/(delta + vb);
-                        }
-                        else {
-                            ugc.x = 2*vb - uipp.x;
-                        }
-                    }
-                    else { // neumann
-                            ugc.x = uipp.x;
-                    }
-                }
-
-                double gcn = ugc.x, gct1 = ugc.y, gct2 = ugc.z;
-                foreach_dimension()
-                    u.x[] = gcn*n.x + gct1*t1.x + gct2*t2.x;
-            }
-            else { // !local_bc_coordinates, i.e. use n ≡ x, t ≡ y, and r ≡ z.
-                foreach_dimension() {
-                    bool dirichlet = false;
-                    double vb = u.x.boundary[immersed] (point, point, u.x, &dirichlet);
-                    if (dirichlet) {
-                        u.x[] = 2*vb - uip.x;
+                        ugc.x = -uipp.x*(delta - vb)/(delta + vb);
                     }
                     else {
-                        u.x[] = uip.x;
+                        ugc.x = 2*vb - uipp.x;
                     }
                 }
+                else { // neumann
+                        ugc.x = uipp.x;
+                }
             }
+
+            double gcn = ugc.x, gct1 = ugc.y, gct2 = ugc.z;
+            foreach_dimension()
+                u.x[] = gcn*n.x + gct1*t1.x + gct2*t2.x;
        }
        else if (cs[] == 0) {
-           foreach_dimension() {
+           foreach_dimension() 
                u.x[] = 0.;
-           }
        }
     }
     boundary((scalar *){u, bis});

@@ -244,14 +244,89 @@ int copy_coord (coord p, double* ax, double* ay, double* az)
     return 1;
 }
 
-/*
+
+/**
+This function extrapolates a scalar field p to a specified point given its coordinates,
+normal vector n, and volume fraction field s.
+
+TODO: cleaner 3D implementation. */
+
+double extrapolate_scalar (Point point, scalar s, coord interpolatePoint, coord n, scalar p)
+{
+#if dimension == 2
+    double weight[5][5] = {0};
+    double weightSum = 0.;
+    for (int i = -2; i <= 2; i++) {
+        for (int j = -2; j <= 2; j++) {
+            if (s[i,j] > 0.5) {
+
+                coord cellCenter = {x + Delta*i,y + Delta*j}, d;
+                foreach_dimension()
+                    d.x = interpolatePoint.x - cellCenter.x;
+
+                double distanceMag = distance (d.x, d.y);
+                double normalProjection = (n.x * d.x) + (n.y * d.y);
+
+                weight[i][j] = sq(distanceMag) * fabs(normalProjection);
+
+                weightSum += weight[i][j];
+            }
+            else
+                weight[i][j] = 0.;
+        }
+    }
+
+    double interpolatedScalar = 0;
+
+    for (int i = -2; i <= 2; i++) {
+        for (int j = -2; j <= 2; j++) {
+            interpolatedScalar += (weight[i][j]/(weightSum + SEPS)) * p[i,j];
+        }
+    }
+#else
+    double weight[5][5][5] = {0};
+    double weightSum = 0.;
+    for (int i = -2; i <= 2; i++) {
+        for (int j = -2; j <= 2; j++) {
+            for (int k = -2; k <= 2; k++) {
+                if (s[i,j,k] > 0.5) {
+
+                    coord cellCenter = {x + Delta*i, y + Delta*j, z + Delta*k}, d;
+                    foreach_dimension()
+                        d.x = interpolatePoint.x - cellCenter.x;
+
+                    double distanceMag = distance3D (d.x, d.y, d.z);
+                    double normalProjection = (n.x * d.x) + (n.y * d.y) + (n.z * d.z);
+
+                    weight[i+2][j+2][k+2] = sq(distanceMag) * fabs(normalProjection);
+
+                    weightSum += weight[i+2][j+2][k+2];
+                }
+                else
+                   weight[i+2][j+2][k+2] = 0.;
+            }
+        }
+    }
+
+    double interpolatedScalar = 0;
+
+    for (int i = -2; i <= 2; i++) {
+        for (int j = -2; j <= 2; j++) {
+            for (int k = -2; k <= 2; k++) {
+                interpolatedScalar += (weight[i+2][j+2][k+2]/(weightSum + SEPS)) * p[i,j,k];
+            }
+        }
+    }
+#endif
+    return interpolatedScalar;
+}
+
+
+/**
 gauss_elim performs *in place* transformation to the provided augmented matrix 
 (meaning it is changed w/o making a copy) and fills coeff with the solved linear system.
 
-***Courtesy of ChatGPT***
-
-TODO: Extend to handle higher-order interpolation schemes, i.e. larger matrices.
-*/
+***Courtesy of ChatGPT*** */
 
 //void gauss_elim(int m, int n, double matrix[m][n], double sol[m])
 int gauss_elim(int m, int n, double matrix[m][n], double sol[m])

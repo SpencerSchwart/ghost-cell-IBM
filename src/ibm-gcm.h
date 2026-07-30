@@ -69,12 +69,6 @@ face vector gcf[];
 
 double (* metric_ibm_factor) (Point, coord) = NULL; // for axi
 
-/**
-when true, immersed BCs will respect the n and t (and r) notation, otherwise,
-they will be decayed to n ≡ x, t ≡ y, and r ≡ z. */
-
-bool local_bc_coordinates = true; 
-
 typedef struct PointIBM {
     int i, j, k;
 } PointIBM;
@@ -218,7 +212,6 @@ one of it's faces. If so, returns true. */
 
 bool fluid_neighbor (Point point, scalar cs)
 {
-    //foreach_neighbor(1)
     foreach_direct_neighbor()
         if (cs[] > GCV && csp[] > GCV)
             return true;
@@ -315,18 +308,12 @@ double centroid_point (Point point, scalar s, face vector sf, coord * mp, coord 
 
 
 /**
-The function below fills frag with the normal vector n, alpha, and the volume fraction of the
-cell that is closest to the ghost cell. It also returns the coordinates of the fragment's midpoint 
-and fills fluidCell with the cell center coordinates of the closest fluid cell.
+closest_interface identifies the cell which contains the closest point to the 
+interface from a ghost cell. It fills talpha, tfc, and bioff with the fragment's
+intercept, cell-center coordinates, and offset indices, resp. */
 
-It also fills "bioff" with the indices of the closest interface w.r.t the ghost cell's stencil.
-
-Note: we make a crude approximation that the closest interfacial point from the surrounding
-cells to the ghost cell is which ever interfacial mid point/centroid is closest. In practice, it has worked
-adequately, but this can be improved. */
-
-coord closest_interface (Point point, vector midPoints, scalar cs, vector normals, scalar alphas,
-                         double * talpha, coord * fluidCell, PointIBM * bioff, coord nu)
+coord closest_interface (Point point, vector mps, scalar cs, vector normals, scalar alphas,
+                         double * talpha, coord * tfc, PointIBM * bioff, coord nu)
 {
     coord temp_midPoint, temp_fluidCell = {0,0}, cc = {x, y, z};
     coord n;
@@ -334,35 +321,50 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
 
     bool found = false;
     double offmin = 1e6;
+
     foreach_neighbor() {
         if (cs[] > 0 && cs[] < 1) {
+
+            /**
+            The user can pass in a known nu. This is allowed when recursively
+            searching for the closest point, though it is not used anymore. */
+
             n = !empty_coord(nu)? nu: (coord){normals.x[], normals.y[], normals.z[]};
+            assert(!empty_coord(n));
 
             coord nplic = (coord){normals.x[], normals.y[], normals.z[]};
-
             double alpha = alphas[];
 
-            assert(!empty_coord(n));
+            /**
+            Calculate the closest point to the current interface fragment. This
+            is equivalent to finding the boundary intercept (BI) for a ghost cell. */
 
             coord poff = {(cc.x - x)/Delta, (cc.y - y)/Delta, (cc.z - z)/Delta}, bi = {0,0,0};
             double t = (alpha - dot_product(poff, nplic)) / (dot_product(n, nplic));
             foreach_dimension()
                 bi.x = poff.x + t*n.x;
 
-            coord boundaryIntGlobal = {0, 0, 0}, fluidCell = {x, y, z};
+            coord big = {0, 0, 0}, fc = {x, y, z}; // fluid cell
 
+            /**
+            Put the boundary intercept in global coordinates. */
             foreach_dimension()
-                boundaryIntGlobal.x = fluidCell.x + (bi.x*Delta);
+                big.x = fc.x + (bi.x*Delta);
 
+            /**
+            Make sure the boundary intercept lies within the cell. */
             if (fabs(bi.x) > 0.5 || fabs(bi.y) > 0.5 || fabs(bi.z) > 0.5)
                 continue;
 
+            /**
+            We minimize the distance from the BI to the (ghost cell) cell center. */
+
             found = true;
-            double offmin_temp = distance_coord(boundaryIntGlobal, cc)/Delta;
+            double offmin_temp = distance_coord(big, cc)/Delta;
 
             if (offmin_temp < offmin) {
                 offmin = offmin_temp;
-                temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+                temp_midPoint = (coord) {mps.x[], mps.y[], mps.z[]};
                 temp_fluidCell = (coord){x, y, z};
 
                 *talpha = alpha;
@@ -371,22 +373,25 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
         }
     }
 
+    /**
+    If no boundary intercept is found, then the closest point to the interface is
+    found using interfacial mid points.*/
     if (!found) {
       double min_distance = 1e6;
 
       foreach_neighbor() {
-        double dx = midPoints.x[] - cc.x;
-        double dy = midPoints.y[] - cc.y;
-        double dz = midPoints.z[] - cc.z;
+        double dx = mps.x[] - cc.x;
+        double dy = mps.y[] - cc.y;
+        double dz = mps.z[] - cc.z;
 
         n = !empty_coord(nu)? nu: (coord){normals.x[], normals.y[], normals.z[]};
        
         double alpha = alphas[];
 
-        if ((midPoints.x[] || midPoints.y[] || midPoints.z[]) && 
+        if ((mps.x[] || mps.y[] || mps.z[]) && 
              distance3D(dx, dy, dz) < min_distance) {
 
-            temp_midPoint = (coord) {midPoints.x[], midPoints.y[], midPoints.z[]};
+            temp_midPoint = (coord) {mps.x[], mps.y[], mps.z[]};
 
             temp_fluidCell = (coord){x, y, z};
 
@@ -398,16 +403,23 @@ coord closest_interface (Point point, vector midPoints, scalar cs, vector normal
       }
     }
 
-    *fluidCell = temp_fluidCell;
+    *tfc = temp_fluidCell;
     *bioff = ptemp;
 
     return temp_midPoint;
 }
 
 
+/**
+# Normal interpolation
+
+The normal vector at the boundary intercept mut be interpolated when it is not
+readily available through analytical expressions. This function uses simple
+linear interpolation to do so, though it is limited to 2D and is no longer used.
+It is kept for documentation. */
+
 coord interpolate_normal (Point point, coord bi, PointIBM bioff, vector mps, vector ns)
 {
-#if 1
 #if dimension == 2
     coord n1 = {ns.x[bioff.i, bioff.j, bioff.k], 
                 ns.y[bioff.i, bioff.j, bioff.k],
@@ -447,17 +459,10 @@ coord interpolate_normal (Point point, coord bi, PointIBM bioff, vector mps, vec
         n2 = n2t;
     }
 
-    //fprintf(stderr, "(%g, %g) bi=(%g, %g) fc=(%g, %g) mp1=(%g, %g) mp2=(%g, %g) n1=(%g, %g) n2=(%g, %g)\n",
-    //    x, y, bi.x, bi.y, fc.x, fc.y, mp1.x, mp1.y, mp2.x, mp2.y, n1.x, n1.y, n2.x, n2.y);
-
     coord n = {0};
-    if (empty_coord(n2) || equals_coord(n1, n2)) {
-        //fprintf(stderr, "WARNING, no neighbor with normal GC = (%g, %g) BI = (%g, %g) FC = (%g, %g) %d %d\n",
-        //    x, y, bi.x, bi.y, fc.x, fc.y, empty_coord(n2), equals_coord(n1, n2));
+    if (empty_coord(n2) || equals_coord(n1, n2)) 
         n = n1;
-    }
      else {
-     #if 1
 
         normalize(&n1);
         normalize(&n2);
@@ -469,9 +474,6 @@ coord interpolate_normal (Point point, coord bi, PointIBM bioff, vector mps, vec
         double sb = dot_product(bi, t1);
 
         bool check = (sb > s1 && sb < s2) || (sb > s2 && sb < s1) || (sb == s1) || (sb == s2);
-        if (!check)
-            fprintf(stderr, "(%g, %g) bi=(%g, %g) mp1=(%g, %g) mp2=(%g, %g) t1=(%g, %g) s1=%g sb=%g s2=%g\n",
-                x, y, bi.x, bi.y, mp1.x, mp1.y, mp1.x, mp1.y, t1.x, t1.y, s1, sb, s2);
         assert(check);
 
         double m = (sb - s1) / (s2 - s1 + SEPS);
@@ -479,25 +481,7 @@ coord interpolate_normal (Point point, coord bi, PointIBM bioff, vector mps, vec
         foreach_dimension()
             n.x = n1.x + m*(n2.x - n1.x);
 
-         #if 0
-         foreach_dimension() {
-             double m = (n1.x - n2.x) / (mp1.x - mp2.x + SEPS);
-             n.x = m*(bi.x - mp1.x) + n1.x;
-         }
-         #endif
-     #else
-
-        double angle1 = fabs(atan((mp1.y - bi.y)/(mp1.x - bi.x + SEPS)));
-        double angle2 = fabs(atan((mp2.y - bi.y)/(mp2.x - bi.x + SEPS)));
-
-        foreach_dimension() {
-            n.x = (n1.x/(angle1+SEPS) + n2.x/(angle2+SEPS))*(angle1 + angle2);
-        }
-
         normalize_sum(&n); 
-       //fprintf(stderr, "| angle1=%g angle2=%g n=(%g, %g)\n", angle1, angle2, n.x, n.y);
-        
-     #endif
      }
 
      normalize_sum(&n);
@@ -513,55 +497,11 @@ coord interpolate_normal (Point point, coord bi, PointIBM bioff, vector mps, vec
     return n1;
 
 #endif // dimension == 3
-#else
-    coord n0 = {ns.x[bioff.i, bioff.j, bioff.k], 
-                ns.y[bioff.i, bioff.j, bioff.k],
-                ns.z[bioff.i, bioff.j, bioff.k]};
-
-    coord mp0 = {mps.x[bioff.i, bioff.j, bioff.k], 
-                 mps.y[bioff.i, bioff.j, bioff.k],
-                 mps.z[bioff.i, bioff.j, bioff.k]};
-
-    normalize(&n0);
-
-    double wt = 0;
-    double dtheta = 0;
-    foreach_neighbor() {
-        if (cs[] > 0 && cs[] < 1) {
-            coord ni = (coord){ns.x[], ns.y[], ns.z[]};
-            normalize(&ni);
-
-            if (dot_product(n0, ni) < 0.)
-              foreach_dimension()
-                ni.x *= -1.;
-
-            coord mpi = (coord){mps.x[], mps.y[], mps.z[]};
-                double wi = 1./(sq(distance_coord(mpi, bi)) + sq(Delta));
-
-                if (dot_product(n0, ni) < 0.)
-                  foreach_dimension()
-                    ni.x *= -1.;
-
-                dtheta += wi*atan2(n0.x*ni.y - n0.y*ni.x, n0.x*ni.x + n0.y*ni.y);
-
-                wt += wi;
-        }
-    }
-
-    dtheta /= wt + SEPS;
-
-    coord n;
-    n.x = n0.x*cos(dtheta) - n0.y*sin(dtheta);
-    n.y = n0.x*sin(dtheta) + n0.y*cos(dtheta);
-    
-    normalize_sum(&n);
-    return n;
-
-#endif
 }
 
+
 /**
-This function calculates the normal at a given pount (bi) using weighted
+This function calculates the normal at a given pount (BI) using weighted
 (or non-weighted) Least Squares (LSQ). 
 
 Note, calculating s and r by doing $mp - bi$ makes s = r = 0 at the boundary 
@@ -571,12 +511,12 @@ n(s,r) = a + b*s + c*r
 
 where s and r are the cartesian coordinates projected onto the tangent vectors 
 t1 and t2, resp.
+
 TODO: weight n by surface area of fragment. Larger surface area = less noise in n. */
 
-coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
-                              vector mps, vector ns)
+coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff, vector mps,
+                             vector ns)
 {
-
     bool quad = false;
     bool weighted = true;
 
@@ -604,6 +544,8 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
 
     foreach_neighbor() {
 
+        /**
+        Exclude small interface fragments that make the interpolation noisy. */
         if (cs[] > 0 && cs[] < 1 - 1e-4) {
 
             coord mp_i = {mps.x[], mps.y[], mps.z[]};
@@ -615,6 +557,10 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
 
             double si = dot_product(subtract_coord(mp_i, bi), t1)/Delta;
 
+            /**
+            Weighted LSQ is used only if the function parameter weighted = true. 
+            The weights are inversely proportional to the distance from the
+            interfacial mid point and the ghost cell. */
             double wi = weighted? 1./(sq(distance_coord(mp_i, gc)/Delta) + sq(dimension)): 1;
 
             Ss  += si*wi;       Sss  += si*si*wi;
@@ -672,7 +618,8 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
 #if dimension == 2
         double det = Kwi*Sss - Ss*Ss;
 
-        // Tangent projection nearly collapses (rare); fall back to anchor
+        /**
+        Tangent projection nearly collapses, fall back to anchor. */
         if (fabs(det) < 1e-10) {
             fprintf(stderr, "WARNING linear |det| = |%g| < 1e-10\n", det);
             n = n_anchor;
@@ -711,21 +658,30 @@ coord interpolate_normal_lsq(Point point, coord bi, PointIBM bioff,
     return n;
 }
 
-/*
-The function below returns the boundary intercept coordinate given a fragment,
-fluid cell coordinates, and volume fraction field (cs).
-*/
+
+/**
+# Boundary intercept calculation
+
+The function below returns the boundary intercept coordinate given a normal
+vector, intercept, fluid cell center coordinates, and the volume fraction
+field. 
+
+Two normal vectors can be fined: ngc, the normal at the boundary intercept used
+for ghost cells, and nplic, the normal of the PLIC reconstructed interface. One
+can use this to find the boundary intercept on the PLIC interface using the 
+analytical normal vector. */
 
 coord boundary_int (Point point, coord ngc, coord nplic, double alpha, coord fc, scalar cs)
 {
     coord poff = {(x - fc.x)/Delta, (y - fc.y)/Delta, (z - fc.z)/Delta}, bi = {0,0,0};
     double t = (alpha - dot_product(poff, nplic)) / (dot_product(ngc, nplic) + SEPS);
     foreach_dimension() {
-        bi.x = poff.x + t*ngc.x; // calculate BI
+        bi.x = poff.x + t*ngc.x;
         bi.x = fc.x + bi.x*Delta;
     }
     return bi;
 }
+
 
 coord direction_vector (coord p0, coord p1)
 {
@@ -733,10 +689,11 @@ coord direction_vector (coord p0, coord p1)
 }
 
 
-/*
-image_point takes in the coordinates of the boundary intercept and ghost cell and 
-returns the coordinates of the image point.
-*/
+/**
+# Image point calculation
+
+image_point takes in the coordinates of the boundary intercept and ghost cell and
+returns the coordinates of the image point. */
 
 coord image_point (coord bi, coord gc, coord n = {0})
 {
@@ -756,9 +713,10 @@ coord image_point (coord bi, coord gc, coord n = {0})
      return ip;
 }
 
-/*
-Similarly to image_point, fresh_image_point calculates the imagepoint for "fresh cells"
-*/
+
+/**
+Similarly to image_point, fresh_image_point calculates the imagepoint for 
+"fresh cells". This is only used for moving boundaries. */
 
 coord fresh_image_point (coord boundaryInt, coord freshCell)
 {
@@ -772,18 +730,20 @@ coord fresh_image_point (coord boundaryInt, coord freshCell)
 }
 
 
-/*
+/**
+# Interpolation at the image point
+
 borders_boundary checks to see if a cell is adjacent to a domain boundary. 
 Returns true if it has one or more neighbors that are inside the boundary.
 
 Optionally, the user can provide two integer pointers (useri and userj) to be
-filled with the indexs of the boundary neighbor.
-*/
+filled with the indexs of the boundary neighbor. */
 
 bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL, int * userk = NULL)
 {
 #if TREE
-    // Look at directly adjacent neighbors (4 in 2D)
+    /**
+    Look at directly adjacent neighbors (4 in 2D). */
     for (int d = 0; d < dimension; d++) {
 	    for (int kk = -1; kk <= 1; kk += 2) {
             int _i = 0, _j = 0, _k = 0;
@@ -793,7 +753,8 @@ bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL, int 
                 _j = kk; 
             else if (d == 2)
                 _k = kk;
-            // check to see if neighboring cell is inside boundary
+            /**
+            check to see if neighboring cell is inside boundary. */
             if (neighbor(-_i,-_j,-_k).pid < 0) {
 
                 if (useri) *useri = -_i;
@@ -811,15 +772,17 @@ bool borders_boundary (Point point, int * useri = NULL, int * userj = NULL, int 
 
 
 #if _MPI
-/*
+/**
 borders_boundary checks to see if a cell is adjacent to a MPI boundary. 
-Returns true if it has one or more neighbors that are inside the boundary.
-*/
+Returns true if it has one or more neighbors that are inside the boundary. 
+
+TODO: this can probably be simplified using foreach_direct_neighbor(). */
 
 bool borders_mpi_boundary (Point point)
 {
 #if TREE 
-    // Look at directly adjacent neighbors (4 in 2D, 6 in 3D)
+    /**
+    Look at directly adjacent neighbors (4 in 2D, 6 in 3D). */
     for (int d = 0; d < dimension; d++) {
 	    for (int kk = -1; kk <= 1; kk += 2) {
             int i = 0, j = 0, k = 0;
@@ -829,7 +792,9 @@ bool borders_mpi_boundary (Point point)
                 j = kk; 
             else if (d == 2)
                 k = kk;
-            // check to see if neighboring cell is outside the current MPI rank/processor
+            /**
+            check to see if neighboring cell is outside the current MPI 
+            rank/processor. */
             if (neighbor(-i,-j,-k).pid != pid())
                 return true;
             (void) k;
@@ -841,94 +806,15 @@ bool borders_mpi_boundary (Point point)
 #endif
 
 
-/*
-This function extrapolates a scalar field p to a specified point given its coordinates,
-normal vector n, and volume fraction field s.
-
-TODO: cleaner 3D implementation.
-*/
-
-double extrapolate_scalar (Point point, scalar s, coord interpolatePoint, coord n, scalar p)
-{
-#if dimension == 2
-    double weight[5][5] = {0};
-    double weightSum = 0.;
-    for (int i = -2; i <= 2; i++) {
-        for (int j = -2; j <= 2; j++) {
-            if (s[i,j] > 0.5) {
-
-                coord cellCenter = {x + Delta*i,y + Delta*j}, d;
-                foreach_dimension()
-                    d.x = interpolatePoint.x - cellCenter.x;
-
-                double distanceMag = distance (d.x, d.y);
-                double normalProjection = (n.x * d.x) + (n.y * d.y);
-
-                weight[i][j] = sq(distanceMag) * fabs(normalProjection);
-
-                weightSum += weight[i][j];
-            }
-            else
-                weight[i][j] = 0.;
-        }
-    }
-
-    double interpolatedScalar = 0;
-
-    for (int i = -2; i <= 2; i++) {
-        for (int j = -2; j <= 2; j++) {
-            interpolatedScalar += (weight[i][j]/(weightSum + SEPS)) * p[i,j];
-        }
-    }
-#else
-    double weight[5][5][5] = {0};
-    double weightSum = 0.;
-    for (int i = -2; i <= 2; i++) {
-        for (int j = -2; j <= 2; j++) {
-            for (int k = -2; k <= 2; k++) {
-                if (s[i,j,k] > 0.5) {
-
-                    coord cellCenter = {x + Delta*i, y + Delta*j, z + Delta*k}, d;
-                    foreach_dimension()
-                        d.x = interpolatePoint.x - cellCenter.x;
-
-                    double distanceMag = distance3D (d.x, d.y, d.z);
-                    double normalProjection = (n.x * d.x) + (n.y * d.y) + (n.z * d.z);
-
-                    weight[i+2][j+2][k+2] = sq(distanceMag) * fabs(normalProjection);
-
-                    weightSum += weight[i+2][j+2][k+2];
-                }
-                else
-                   weight[i+2][j+2][k+2] = 0.;
-            }
-        }
-    }
-
-    double interpolatedScalar = 0;
-
-    for (int i = -2; i <= 2; i++) {
-        for (int j = -2; j <= 2; j++) {
-            for (int k = -2; k <= 2; k++) {
-                interpolatedScalar += (weight[i+2][j+2][k+2]/(weightSum + SEPS)) * p[i,j,k];
-            }
-        }
-    }
-#endif
-    return interpolatedScalar;
-}
-
-
-/*
+/**
 image_offsets fills integers xOffset and yOffset with the index of the cell containing
 the given image point w.r.t the ghost cell's stencil.
 
 e.g., if an image point is 2 cells to the left of it's respective ghost cell, then
-xOffset = -2 and yOffset = 0.
+xOffset = -2 and yOffset = 0. */
 
-*/
-
-int image_offsets (Point point, coord imagePoint, int *xOffset, int *yOffset, int *zOffset = NULL)
+int image_offsets (Point point, coord imagePoint, int *xOffset, int *yOffset, 
+                   int *zOffset = NULL)
 {
     coord ghostCell = {x,y,z};
     int offset_x = 0, offset_y = 0, offset_z = 0;
@@ -936,10 +822,8 @@ int image_offsets (Point point, coord imagePoint, int *xOffset, int *yOffset, in
         double d = fabs(imagePoint.x - ghostCell.x) / Delta;
         int dsign = sign (imagePoint.x - ghostCell.x);
         if (d >= 1.5) {
-            if (d >= 2) {
-              //fprintf(stderr, "WARNING: image point lays outside stencil! d = %g > 2\n", d);
+            if (d >= 2) 
               offset_x = 3 * dsign;
-            }
             else
               offset_x = 2 * dsign;
         }
@@ -962,6 +846,7 @@ int image_offsets (Point point, coord imagePoint, int *xOffset, int *yOffset, in
 /**
 This function fills pints with the coordinates of the bounding nodes used for
 interpolation and pnodes with their respective indices within the stencil. */
+
 void get_interpolation_points (Point point, const int m, coord pints[m], 
                                PointIBM pnodes[m], PointIBM poff, PointIBM pnode)
 {
@@ -994,299 +879,17 @@ void get_interpolation_points (Point point, const int m, coord pints[m],
 #define rows (1 << dimension)
 #define cols (rows + 1)
 
-// takes in a row
-// TODO: does the projected velocity hold true when using another ghost cell's interface coordinate system?
-// e.g., when the left cell is a ghost cell, do we project u according to that cells n,t1,and t2? or keep it
-// with the "home/center" ghost cell.
 
-extern vector u;
+/**
+This function fills rmatrix with the row used in the interpolation system
+corrseponding to a entry in the augmented Vandermonde matrix.
 
-void fluid_only (Point point, const int n, double rmatrix[n],
+It considers boundary conditions when a bounding node is a ghost cell to close
+the system. */
+
+void fluid_only (Point point, scalar s, const int n, double rmatrix[n],
                   PointIBM poff, PointIBM pnode, PointIBM pbound, 
-                  char dir, coord * pcell, coord velocity, coord ipoint,
-                  vector midPoints, vector normals, scalar alphas)
-{
-    // TODO: this uses the base ghost cells B.C, when it should use
-    //       the one that the interpolation point is inside of! use a foreach_point?
-
-    double val = 0;
-    if      (dir == 'n') val = velocity.x;
-    else if (dir == 't') val = velocity.y;
-    else if (dir == 'r') val = velocity.z;
-
-    int xx = poff.i + pnode.i, yy = poff.j + pnode.j, zz = poff.k + pnode.k;
-    int type = 0;
-
-    // a. Check to see if point is in a ghost cell, if so, move it to the interface
-    //    and recalculate the node's value considering the immersed boundary condition.
-
-#if 1
-    //if (cs[xx,yy,zz] <= 0.5 && cs[xx,yy,zz] > 0.) { // messes up convergence with new IBM
-    if (cs[xx,yy,zz] <= GCV && cs[xx,yy,zz] > 0.) {
-        *pcell = (coord){midPoints.x[xx,yy,zz], midPoints.y[xx,yy,zz], midPoints.z[xx,yy,zz]};
-
-        // move point more if cell is inside domain boundary
-        if (xx == pbound.i) pcell->x += pbound.i*Delta;
-        if (yy == pbound.j) pcell->y += pbound.j*Delta;
-        if (zz == pbound.k) pcell->z += pbound.k*Delta;
-
-        // b. check the bc type and get its value
-        bool bctype[2] = {false, false};
-        double bc = 0;
-
-        if      (dir == 'n') bc = u.x.boundary[immersed] (point, point, u.x, bctype);
-        else if (dir == 't') bc = u.y.boundary[immersed] (point, point, u.y, bctype);
-#if dimension == 3
-        else if (dir == 'r') bc = u.z.boundary[immersed] (point, point, u.z, bctype);
-#endif
-        bool dirichlet = bctype[0], navierslip = bctype[1];
-
-        if (dirichlet && !navierslip) {
-            //fprintf(stderr, "|| (%g, %g) (%d, %d) %g\n", x, y, xx, yy, bc);
-            val = bc;
-            type = 0;
-        }
-        else if (dirichlet && navierslip) {
-            val = bc; // assumes stationary wall
-            type = 2;
-        }
-        else { // neumann
-            val = bc;
-            type = 1;
-        }
-    }
-#endif
-
-    if (type == 0) { // normal or dirichlet
-#if dimension == 2
-        
-        memcpy(rmatrix, (double[]){pcell->x*pcell->y, pcell->x, pcell->y, 1, val}, cols*sizeof(double));
-#else // dimension == 3
-        memcpy(rmatrix, (double[]){pcell->x*pcell->y*pcell->z,
-                                   pcell->x*pcell->y, pcell->x*pcell->z, pcell->y*pcell->z,
-                                   pcell->x, pcell->y, pcell->z, 1, val}, cols*sizeof(double));
-#endif // dimension == 2
-    }
-    else if (type == 1) { // neumann
-        coord n = {normals.x[xx,yy,zz], normals.y[xx,yy,zz], normals.z[xx,yy,zz]};
-        normalize(&n);
-#if dimension == 2
-        memcpy(rmatrix, (double[]){n.x*pcell->y + n.y*pcell->x, n.x, n.y, 0, val}, cols*sizeof(double));
-#else // dimension == 3
-        memcpy(rmatrix, (double[]){n.x*pcell->y*pcell->z + n.y*pcell->x*pcell->z + n.z*pcell->x*pcell->z,
-                                   n.x*pcell->y + n.y*pcell->x,
-                                   n.x*pcell->z + n.z*pcell->x,
-                                   n.y*pcell->z + n.z*pcell->y,
-                                   n.x, n.y, n.z, 0, val}, cols*sizeof(double));
-#endif // dimension == 2
-    }
-    else if (type == 2) { // navier-slip
-        coord n = {normals.x[xx,yy,zz], normals.y[xx,yy,zz], normals.z[xx,yy,zz]};
-        double mag = distance3D(n.x, n.y, n.z) + SEPS;
-        normalize(&n);
-        double alpha = alphas[xx,yy,zz];
-
-        coord gc = {x + xx*Delta, y + yy*Delta, z + zz*Delta}, bi; // ghost cell, boundary intercept
-        foreach_dimension()
-            bi.x = alpha/mag * n.x;
-
-        foreach_dimension()
-            pcell->x = gc.x + bi.x*Delta;
-
-        coord d = direction_vector(gc, *pcell);
-        double dmag = distance3D(d.x, d.y, d.z); // distance from ghost cell to boundary intercept
-        double term = (1 - dmag/(val + SEPS));
-        double usolid = 0.0*dmag/(val + SEPS);  // navier b.c only works for stationary solids right now
-#if dimension == 2
-        memcpy(rmatrix, (double[]){gc.x*gc.y - (pcell->x*pcell->y)*term,
-                                   gc.x - pcell->x*term,
-                                   gc.y - pcell->y*term,
-                                   1 - term, usolid}, cols*sizeof(double));
-#else // dimension == 3
-        memcpy(rmatrix, (double[]){gc.x*gc.y*gc.z - pcell->x*pcell->y*pcell->z*term,
-                                   gc.x*gc.y - pcell->x*pcell->y*term,
-                                   gc.x*gc.z - pcell->x*pcell->z*term,
-                                   gc.y*gc.z - pcell->y*pcell->z*term,
-                                   gc.x - pcell->x*term,
-                                   gc.y - pcell->y*term,
-                                   gc.z - pcell->z*term,
-                                   1 - term, usolid}, cols*sizeof(double));
-#endif // dimension == 2
-    }
-
-    (void) zz; // to prevent unused variable warning
-}
-
-
-void get_interpolation_matrix (Point point, int m, int n, double matrix[m][n], char dir,
-                               coord velo[m], PointIBM poff, PointIBM pnode, PointIBM pbound, 
-                               coord ipoint, vector midPoints, vector normals, scalar alphas)
-{
-    // 4.a Calculate (global) coordinates and relative indices of interpolation cells
-    coord pints[rows];
-    PointIBM pnodes[rows];
-    get_interpolation_points(point, m, pints, pnodes, poff, pnode);
-
-    // 4.b Assemble matrix row by row
-    for (int row = 0; row < m; ++row) {
-
-        // If a cell for interpolating is a ghost cell, move the point to the
-        // interface and change the velocity to the correct boundary condition
-        fluid_only(point, n, matrix[row], poff, pnodes[row], pbound, dir, 
-                    &pints[row], velo[row], ipoint, midPoints, normals, alphas);
-    }
-}
-
-coord image_velocity (Point point, vector u, coord imagePoint, coord n, 
-                      vector midPoints, vector normals, scalar alphas)
-{
-    // 1. Calculate offsets 
-    int boffx = 0, boffy = 0, boffz = 0; // boundary offsets
-    borders_boundary (point, &boffx, &boffy, &boffz);
-    
-    int xOffset = 0, yOffset = 0, zOffset = 0;
-    image_offsets (point, imagePoint, &xOffset, &yOffset, &zOffset);
-    
-    //assert (abs(xOffset) <= 2 && abs(yOffset) <= 2 && abs(zOffset) <= 2);
-    xOffset = clamp(xOffset, -2, 2), yOffset = clamp(yOffset, -2, 2), zOffset = clamp(zOffset, -2, 2);
-
-    coord imageCell = {x + Delta*xOffset, y + Delta*yOffset, z + Delta*zOffset};
-    
-    int i = sign(imagePoint.x - imageCell.x);
-    int j = sign(imagePoint.y - imageCell.y);
-    int k = sign(imagePoint.z - imageCell.z);
-
-    int xx = xOffset, yy = yOffset, zz = zOffset;
-
-    // 2. Grab velocity from cells used for interpolation 
-    //TODO: condense this and maybe move to separate function
-    coord velocity[rows];
-    velocity[0].x = u.x[xx,yy,zz];
-    velocity[1].x = u.x[xx+i,yy,zz];
-    velocity[2].x = u.x[xx+i,yy+j,zz];
-    velocity[3].x = u.x[xx,yy+j,zz];
-
-    velocity[0].y = u.y[xx,yy,zz];
-    velocity[1].y = u.y[xx+i,yy,zz];
-    velocity[2].y = u.y[xx+i,yy+j,zz];
-    velocity[3].y = u.y[xx,yy+j,zz];
-
-#if dimension == 3
-    velocity[4].x = u.x[xx,yy,zz+k];
-    velocity[5].x = u.x[xx+i,yy,zz+k];
-    velocity[6].x = u.x[xx+i,yy+j,zz+k];
-    velocity[7].x = u.x[xx,yy+j,zz+k];
-
-    velocity[4].y = u.y[xx,yy,zz+k];
-    velocity[5].y = u.y[xx+i,yy,zz+k];
-    velocity[6].y = u.y[xx+i,yy+j,zz+k];
-    velocity[7].y = u.y[xx,yy+j,zz+k];
-
-    velocity[0].z = u.z[xx,yy,zz];
-    velocity[1].z = u.z[xx+i,yy,zz];
-    velocity[2].z = u.z[xx+i,yy+j,zz];
-    velocity[3].z = u.z[xx,yy+j,zz];
-    velocity[4].z = u.z[xx,yy,zz+k];
-    velocity[5].z = u.z[xx+i,yy,zz+k];
-    velocity[6].z = u.z[xx+i,yy+j,zz+k];
-    velocity[7].z = u.z[xx,yy+j,zz+k];
-#endif
-
-    // 3. Project velocity to normal and tangent(s) direction
-    coord t1, t2;
-    normal_and_tangents (&n, &t1, &t2);
-
-    for (int i = 0; i < rows; ++i) {
-        coord projvelo = {dot_product(velocity[i], n),
-                          dot_product(velocity[i], t1),
-                          dot_product(velocity[i], t2)};
-        velocity[i] = (coord){projvelo.x, projvelo.y, projvelo.z};
-    }
-
-    // 4. Assemble interpolation matrices
-    double veloMatrix_x[rows][cols];
-    get_interpolation_matrix(point, rows, cols, veloMatrix_x, 'n', velocity, 
-                            (PointIBM){xx,yy,zz}, (PointIBM){i,j,k}, 
-                            (PointIBM){boffx,boffy,boffz}, imagePoint, 
-                             midPoints, normals, alphas);
-
-    double veloMatrix_y[rows][cols];
-    get_interpolation_matrix(point, rows, cols, veloMatrix_y, 't', velocity,
-                            (PointIBM){xx,yy,zz}, (PointIBM){i,j,k}, 
-                            (PointIBM){boffx,boffy,boffz}, imagePoint, 
-                             midPoints, normals, alphas);
-
-    double coeff_x[rows], coeff_y[rows];
-
-#if dimension == 3
-    double veloMatrix_z[rows][cols];
-    get_interpolation_matrix(point, rows, cols, veloMatrix_z, 'r', velocity,
-                            (PointIBM){xx,yy,zz}, (PointIBM){i,j,k}, 
-                            (PointIBM){boffx,boffy,boffz}, imagePoint, 
-                             midPoints, normals, alphas);
-    double coeff_z[rows];
-#endif
-
-    // 5. Solve the system of linear equations to get the interpolating coefficients
-    foreach_dimension()
-        gauss_elim (rows, cols, veloMatrix_x, coeff_x);
-
-    // 6. Calculate the image velocity
-    coord imageVelo = {0,0,0};
-#if dimension == 2
-    imageVelo.x = coeff_x[0] * imagePoint.x * imagePoint.y +
-                  coeff_x[1] * imagePoint.x +
-                  coeff_x[2] * imagePoint.y +
-                  coeff_x[3];
- 
-    imageVelo.y = coeff_y[0] * imagePoint.x * imagePoint.y +
-                  coeff_y[1] * imagePoint.x +
-                  coeff_y[2] * imagePoint.y +
-                  coeff_y[3];
-#else
-    imageVelo.x = coeff_x[0] * imagePoint.x * imagePoint.y * imagePoint.z +
-                  coeff_x[1] * imagePoint.x * imagePoint.y +
-                  coeff_x[2] * imagePoint.x * imagePoint.z +
-                  coeff_x[3] * imagePoint.y * imagePoint.z +
-                  coeff_x[4] * imagePoint.x +
-                  coeff_x[5] * imagePoint.y +
-                  coeff_x[6] * imagePoint.z +
-                  coeff_x[7];
-
-    imageVelo.y = coeff_y[0] * imagePoint.x * imagePoint.y * imagePoint.z +
-                  coeff_y[1] * imagePoint.x * imagePoint.y +
-                  coeff_y[2] * imagePoint.x * imagePoint.z +
-                  coeff_y[3] * imagePoint.y * imagePoint.z +
-                  coeff_y[4] * imagePoint.x +
-                  coeff_y[5] * imagePoint.y +
-                  coeff_y[6] * imagePoint.z +
-                  coeff_y[7];
-
-    imageVelo.z = coeff_z[0] * imagePoint.x * imagePoint.y * imagePoint.z +
-                  coeff_z[1] * imagePoint.x * imagePoint.y +
-                  coeff_z[2] * imagePoint.x * imagePoint.z +
-                  coeff_z[3] * imagePoint.y * imagePoint.z +
-                  coeff_z[4] * imagePoint.x +
-                  coeff_z[5] * imagePoint.y +
-                  coeff_z[6] * imagePoint.z +
-                  coeff_z[7];
-#endif
-
-    // 7. Project the velocity back to the cartesian coordinate system
-    // TODO: is this necessary if we project it back when calculating the gc value?
-    double iux = imageVelo.x, iuy = imageVelo.y, iuz = imageVelo.z;
-    foreach_dimension() 
-        imageVelo.x = iux*n.x + iuy*t1.x + iuz*t2.x;
-    
-    (void) zz; (void) k;
-
-    return imageVelo;
-}
-
-
-void fluid_only2 (Point point, scalar s, const int n, double rmatrix[n],
-                  PointIBM poff, PointIBM pnode, PointIBM pbound, 
-                  char dir, coord * pcell, double sval, coord ipoint,
+                  coord * pcell, double sval, coord ipoint,
                   vector mps, vector ns, scalar alphas)
 {
     double val = sval;
@@ -1294,15 +897,22 @@ void fluid_only2 (Point point, scalar s, const int n, double rmatrix[n],
     int xx = poff.i + pnode.i, yy = poff.j + pnode.j, zz = poff.k + pnode.k;
     int type = 0;
 
+    /**
+    If a node is a ghost cell, then the cell's entry in the linear system is
+    changed based on the wall's boundary condition. */
+
     if (cs[xx,yy,zz] <= GCV && cs[xx,yy,zz] > 0.) {
         *pcell = (coord){mps.x[xx,yy,zz], mps.y[xx,yy,zz], mps.z[xx,yy,zz]};
 
-        // move point more if cell is inside domain boundary
+        /**
+        Move point more if cell is inside domain boundary. */
+
         if (xx == pbound.i) pcell->x += pbound.i*Delta;
         if (yy == pbound.j) pcell->y += pbound.j*Delta;
         if (zz == pbound.k) pcell->z += pbound.k*Delta;
 
-        // b. check the bc type and get its value
+        /**
+        Check the boundary condition. */
         bool bctype[2] = {false, false};
         double bc = s.boundary[immersed] (point, point, s, bctype);
 
@@ -1321,6 +931,10 @@ void fluid_only2 (Point point, scalar s, const int n, double rmatrix[n],
             type = 1;
         }
     }
+
+    /**
+    The row in the linear system is now constructed based on the coordinates and
+    boundary condition (if the node is a ghost cell). */
 
     if (type == 0) { // normal or dirichlet
 #if dimension == 2
@@ -1384,85 +998,65 @@ void fluid_only2 (Point point, scalar s, const int n, double rmatrix[n],
 }
 
 
-void get_interpolation_matrix2 (Point point, int m, int n, double matrix[m][n], char dir,
-                                double snodes[m], scalar s, PointIBM poff, PointIBM pnode, PointIBM pbound,
-                                coord ipoint, vector midPoints, vector normals, scalar alphas)
+/**
+This function constructs the augmented Vandermonde matrix, using the fluid_only
+function to construct each row. */
+void get_interpolation_matrix (Point point, int m, int n, double matrix[m][n],
+                               double snodes[m], scalar s, PointIBM poff, 
+                               PointIBM pnode, PointIBM pbound, coord ip, 
+                               vector mps, vector ns, scalar alphas)
 {
-    // 4.a Calculate (global) coordinates and relative indices of interpolation cells
+    /**
+    Calculate (global) coordinates and relative indices of interpolation cells. */
     coord pints[rows];
     PointIBM pnodes[rows];
     get_interpolation_points(point, m, pints, pnodes, poff, pnode);
 
-    // 4.b Assemble matrix row by row
+    /**
+    Assemble matrix row by row. */
     for (int row = 0; row < m; ++row) {
 
-        // If a cell for interpolating is a ghost cell, move the point to the
-        // interface and change the velocity to the correct boundary condition
-        fluid_only2(point, s, n, matrix[row], poff, pnodes[row], pbound, dir, 
-                    &pints[row], snodes[row], ipoint, midPoints, normals, alphas);
+        /**
+        If a cell for interpolating is a ghost cell, move the point to the
+        interface and change the velocity to the correct boundary condition. */
+        fluid_only(point, s, n, matrix[row], poff, pnodes[row], pbound, 
+                   &pints[row], snodes[row], ip, mps, ns, alphas);
     }
 }
 
-
+/**
+Fill nodes with the bounding values of s to be used in the interpolation system.*/
+void fill_nodal_array (Point point, scalar s, double nodes[rows], 
+                       PointIBM off, PointIBM d)
+{
+    nodes[0] = s[off.i,       off.j,       off.k];
+    nodes[1] = s[off.i + d.i, off.j,       off.k];
+    nodes[2] = s[off.i + d.i, off.j + d.j, off.k];
+    nodes[3] = s[off.i,       off.j + d.j, off.k];
+#if dimension == 3
+    nodes[4] = s[off.i,       off.j,       off.k + d.k];
+    nodes[5] = s[off.i + d.i, off.j,       off.k + d.k];
+    nodes[6] = s[off.i + d.i, off.j + d.j, off.k + d.k];
+    nodes[7] = s[off.i,       off.j + d.j, off.k + d.k];
+#endif
+}
 
 /**
-This function interpolates a scalar filed s to a point ip using bilinear or 
-trilinear interpolation. */
-double interpolate_image_point_scalar (Point point, scalar s, coord ip, coord n, 
-                                       vector mps, vector ns, scalar alphas)
+This function constructs and solves the interpolation matrix and returns the
+value of s at the image point, ip.*/
+double solve_interpolation_ibm (Point point, scalar s, double nodes[rows],
+                                PointIBM off, PointIBM d, PointIBM boff,
+                                vector mps, vector ns, scalar alphas,
+                                coord ip)
 {
-    /**
-    If the ghost cell is near a boundary, we slightly adjust the interpolation
-    scheme. 
-    TODO: is this still necessary? */
-
-    int boffx = 0, boffy = 0, boffz = 0; // boundary offsets
-    borders_boundary (point, &boffx, &boffy, &boffz);
-
-    /**
-    We calculate the coordinates of the cell of which image point lies in and 
-    the location of it within the stencil of the current point, the later
-    stored in the three offset variables below. */
-
-    int xx = 0, yy = 0, zz = 0; 
-    image_offsets (point, ip, &xx, &yy, &zz);
-    
-    assert (abs(xx) <= 2 && abs(zz) <= 2 && abs(zz) <= 2);
-
-    coord ic = {x + Delta*xx, y + Delta*yy, z + Delta*zz};
-    
-    /**
-    Calculate indices for interpoalting stencil. */
-
-    int i = sign(ip.x - ic.x);
-    int j = sign(ip.y - ic.y);
-    int k = sign(ip.z - ic.z);
-
-    /**
-    Grab the values of s at the nodes defining the interpolation stencil. There
-    are 4 and 8 in 2D and 3D, respectively. */
-
-    double snodes[rows];
-    snodes[0] = s[xx,yy,zz];
-    snodes[1] = s[xx+i,yy,zz];
-    snodes[2] = s[xx+i,yy+j,zz];
-    snodes[3] = s[xx,yy+j,zz];
-#if dimension == 3
-    snodes[4] = s[xx,yy,zz+k];
-    snodes[5] = s[xx+i,yy,zz+k];
-    snodes[6] = s[xx+i,yy+j,zz+k];
-    snodes[7] = s[xx,yy+j,zz+k];
-#endif
-
     /**
     Fill the interpolation matrix to be inverted. Here, the matrix is an
     agumented matrix of the Vandermonde matrix and the vector containg the values
     of s at the bounding nodes, which is snodes in this case. */
 
     double matrix[rows][cols];
-    get_interpolation_matrix2(point, rows, cols, matrix, 'n', snodes, s, 
-                             (PointIBM){xx,yy,zz}, (PointIBM){i,j,k}, 
-                             (PointIBM){boffx,boffy,boffz}, ip, mps, ns, alphas);
+    get_interpolation_matrix(point, rows, cols, matrix, nodes, s, 
+                             off, d, boff, ip, mps, ns, alphas);
 
     /**
     Solve the linear system to get the coefficients */
@@ -1492,38 +1086,141 @@ double interpolate_image_point_scalar (Point point, scalar s, coord ip, coord n,
 }
 
 
+/**
+## Interpolation of a scalar field
+
+This function handles the interpolation of a scalar field s and a given point
+ip using bilinear (2D) or trilinear (3D) interpolation. */
+
+double interpolate_scalar_ibm (Point point, scalar s, coord ip,
+                              vector mps, vector ns, scalar alphas)
+{
+    /**
+    If the ghost cell is near a boundary, we slightly adjust the interpolation
+    scheme. */
+
+    int boffx = 0, boffy = 0, boffz = 0; // boundary offsets
+    borders_boundary (point, &boffx, &boffy, &boffz);
+    PointIBM boff = {boffx, boffy, boffz};
+
+    /**
+    We calculate the coordinates of the cell of which image point lies in and 
+    the location of it within the stencil of the current point, the later
+    stored in the three offset variables below. */
+
+    int xx = 0, yy = 0, zz = 0; 
+    image_offsets (point, ip, &xx, &yy, &zz);
+     PointIBM off = {xx, yy, zz};   
+
+    assert (abs(xx) <= 2 && abs(zz) <= 2 && abs(zz) <= 2);
+
+    coord ic = {x + Delta*xx, y + Delta*yy, z + Delta*zz};
+    
+    /**
+    Calculate indices for interpolating stencil. */
+    PointIBM d = {sign(ip.x - ic.x), sign(ip.y - ic.y), sign(ip.z - ic.z)};
+
+    /**
+    Fill the array storying the bounding points. */
+    double nodes[rows];
+    fill_nodal_array(point, s, nodes, off, d);
+
+    /**
+    Construct and solve the linear system to interpolate s at the image point. */
+    return solve_interpolation_ibm (point, s, nodes, off, d, boff, mps, ns, alphas, ip);
+}
+
+/**
+## Interpolation of a vector field
+
+This function handles the interpolation of a vector field u and a given point
+ip using bilinear (2D) or trilinear (3D) interpolation. */
+
+coord interpolate_vector_ibm (Point point, vector u, coord ip, coord n, 
+                              vector mps, vector ns, scalar alphas)
+{
+    /**
+    If the ghost cell is near a boundary, we slightly adjust the interpolation
+    scheme. */
+
+    int boffx = 0, boffy = 0, boffz = 0; // boundary offsets
+    borders_boundary (point, &boffx, &boffy, &boffz);
+    PointIBM boff = {boffx, boffy, boffz};
+
+    /**
+    We calculate the coordinates of the cell of which image point lies in and 
+    the location of it within the stencil of the current point, the later
+    stored in the three offset variables below. */
+
+    int xx = 0, yy = 0, zz = 0; 
+    image_offsets (point, ip, &xx, &yy, &zz);
+     PointIBM off = {xx, yy, zz};   
+
+    assert (abs(xx) <= 2 && abs(zz) <= 2 && abs(zz) <= 2);
+
+    coord ic = {x + Delta*xx, y + Delta*yy, z + Delta*zz};
+    
+    /**
+    Calculate indices for interpolating stencil. */
+    PointIBM d = {sign(ip.x - ic.x), sign(ip.y - ic.y), sign(ip.z - ic.z)};
+
+    /**
+    Fill the arrays storying the bounding points. */
+    double nodes_x[rows];
+    fill_nodal_array(point, u.x, nodes_x, off, d);
+
+    double nodes_y[rows];
+    fill_nodal_array(point, u.y, nodes_y, off, d);
+
+#if dimension == 3
+    double nodes_z[rows];
+    fill_nodal_array(point, u.z, nodes_z, off, d);
+#endif
+
+    /**
+    Project the vectors to the local wall coordinate system: x->n, y->t, z->r. */
+    coord t1, t2;
+    normal_and_tangents (&n, &t1, &t2);
+
+    for (int i = 0; i < rows; ++i) {
+        coord ui = {0};
+        foreach_dimension()
+            ui.x = nodes_x[i];
+        coord uiproj = {dot_product(ui, n),
+                        dot_product(ui, t1),
+                        dot_product(ui, t2)};
+        foreach_dimension()
+            nodes_x[i] = uiproj.x;
+    }
+
+    /**
+    Construct and solve the linear system to interpolate s at the image point. */   
+    coord uip = {0}; 
+    uip.x = solve_interpolation_ibm(point, u.x, nodes_x, off, d, boff, mps, ns, alphas, ip);
+    uip.y = solve_interpolation_ibm(point, u.y, nodes_y, off, d, boff, mps, ns, alphas, ip);   
+#if dimension == 3 
+    uip.z = solve_interpolation_ibm(point, u.z, nodes_z, off, d, boff, mps, ns, alphas, ip);   
+#endif
+
+    /**
+    Project the interpolated vector value back to cartesian coordinates. */
+    double gcn = uip.x, gct1 = uip.y, gct2 = uip.z;
+    foreach_dimension()
+        uip.x = gcn*n.x + gct1*t1.x + gct2*t2.x;
+
+    return uip;
+}
+
 #undef rows
 #undef cols
 
-/*
-This macro is for refining a scalar field s and its face vector field sf to make
-sure its interface is at the specified max level. The user specifies a level set 
-function in *expr* and also the maximum number of iterations.
 
-max_i = 100 to 1000 seems to be enough.
+/**
+# Support functions
 
-Note, the user should call the solid function again after using this macro to
-initialize it on the newly refined field.
-*/
-
-#define initial_refine(s, sf, expr, maxLevel, minLevel, max_i)    \
-    astats ss;                                                    \
-    int ic = 0;                                                   \
-    do {                                                          \
-        ic++;                                                     \
-        solid (s, sf, expr);                                      \
-        ss = adapt_wavelet ({s, sf}, (double[]) {1.e-30, 1.e-30}, \
-                maxlevel = maxLevel, minlevel = minLevel);        \
-    } while ((ss.nf || ss.nc) && ic < max_i);                     \
-    refine (s[] > 0 && s[] < 1 && level < maxLevel);
-
-
-
-/*
-Again, this function is taken from embed.h. It removes any cell with inconsistent 
-volume/surface fractions.
-*/
-
+This function is adapted from embed.h. It removes any cell with inconsistent 
+volume/surface fractions. Additionally, it removes an cell with a fluid volume
+fractions less than smin. */
 
 struct Cleanup {
   scalar c;
@@ -1550,8 +1247,9 @@ int fractions_cleanup (scalar c, face vector s,
     Face fractions of empty cells must be zero. */
    
     foreach_face() {
-      if (s.x[] && ((!c[] || !c[-1]) || s.x[] < smin || ((c[] > 0 && c[] < smin && level == depth()) || (c[-1] > 0 && c[-1] < smin && level == depth())))) {
-        //fprintf(stderr, "small cell detected (%g, %g) s.x=%g\n", x, y, s.x[]);
+      if (s.x[] && ((!c[] || !c[-1]) || s.x[] < smin || 
+                   ((c[] > 0 && c[] < smin && level == depth()) || 
+                   (c[-1] > 0 && c[-1] < smin && level == depth())))) {
         s.x[] = 0.;
       }
     }
@@ -1596,31 +1294,23 @@ int fractions_cleanup (scalar c, face vector s,
 }
 
 
-/*
+/**
 ibm_geometry is taken from embed's embed_geometry. Given a point containing a
 interface fragment, the function returns the area of the fragment and fills p and
 n with the coordinates of the interfacial mid point and normal vector, respectively.
-
-Optionally, the user can provide a pointer 'alpha' to be filled with the fragments
-alpha value.
 
 Note, n is normalized differently from the MYC's way. Using the interface_normal
 function from fractions.h, |n.x| + |n.y| = 1. Here, n is normalized using the vectors
 magnitude, i.e. sqrt( sq(n.x) + sq(n.y) ) = 1.
 
 Note area must be multiplied by the cell length (or area in 3D) to get in terms of
-phyiscal "units". Also, the midpoint, p, is in the cell's local coordinate system.
-*/
+phyiscal "units". Also, the midpoint, p, is in the cell's local coordinate system. */
 
 static inline
-//double ibm_geometry (Point point, coord * p, coord * n, double * alphau = NULL)
 double ibm_geometry (Point point, coord * p, coord * n)
 {
     *n = facet_normal (point, cs, fs);
     double alpha = plane_alpha (cs[], *n);
-
-    //if (alphau != NULL)
-    //    *alphau = alpha;
 
     double area = plane_area_center (*n, alpha, p);
     foreach_dimension()
@@ -1645,171 +1335,7 @@ double ibm0_geometry (Point point, coord * p, coord * n, scalar cs1, face vector
 }
 
 
-void normalize_norm (coord n, coord * newn)
-{
-    double norm = fabs(n.y) + fabs(n.x) + fabs(n.z);
-    coord nNorm = {n.x/norm, n.y/norm, n.z/norm};
-    *newn = nNorm;
-}
-
-
-/*
-borders_ghost_x checks to see if a given cell shares an x face with a ghost
-cell. If it does, the function returns the ghost cell's index w.r.t the given stencil.
-
-The function is automatically changed to handle the y direction (top and bottom faces)
-via the foreach_dimension() operator.
-*/
-
-foreach_dimension()
-int borders_ghost_x (Point point, scalar cs)
-{
-    for (int i = -1; i <= 1; i += 2) {
-        if (cs[i] < GCV && cs[i] > 0) {
-            return i;
-        }
-    }
-    return 0;
-}
-
-
-/*
-Typically, the default functions that calculates n reguires that the "point" 
-be the cell in which we determine n. This function allows us to calculate
-a neighbor's normal vector by accessing it's 5x5 stencil.
-
-Note, since this uses face fractions, we can only calculate n for neighboring cells
-within its 3x3 stencil.
-
-TODO: verify normalization order is correct (use normalize() after traditional normalzation?)
-TODO: 3D implementation
-*/
-
-coord offset_normal (Point point, face vector sf, int xoffset, int yoffset)
-{
-    assert (abs(xoffset) <= 1 && abs(yoffset) <= 1); // to avoid out-of-bounds access
-                                                     // from 5x5 stencil
-    double nx = sf.x[xoffset,yoffset] - sf.x[xoffset + 1,yoffset];
-    double ny = sf.y[xoffset,yoffset] - sf.y[xoffset,yoffset + 1];
-
-    double mag = distance (nx, ny);
-
-    coord n;
-    if (mag == 0) {
-        foreach_dimension() {
-            n.x = 1./dimension;
-        }
-    }
-    else {
-        n.x = nx / mag; n.y = ny / mag;
-    }
-    return n;
-}
-
-
-/*
-ghost_fluxes returns the fluxes of a ghost cell (small cut-cell) that is to
-be redistributed or virtually merged with non-ghost cell neighbors.
-
-Note: THIS IS CURRENTLY NOT USED
-
-TODO: clean up and streamline code
-TODO: 3D implementation
-TODO: what if ghost cell has two fluid cell neighbors in one direction
-      (left and right or top and bottom)?
-*/
-
-#if 0
-coord ghost_fluxes (Point point, scalar cs, face vector fs, face vector uf)
-{
-    int xindex = is_mostly_solid (cs, 0)? 0: borders_ghost_x (point, cs);
-    int yindex = is_mostly_solid (cs, 0)? 0: borders_ghost_y (point, cs);
-#if 1
-    fprintf (stderr, "### New Cell ###\n");
-    fprintf (stderr, "|| xindex=%d yindex=%d\n", xindex, yindex);
-#endif
-    assert (abs(xindex) <= 1 && abs(yindex) <= 1);
-    coord n = offset_normal (point, fs, xindex, yindex);
-   
-    double leftWeight = 0, rightWeight = 0, bottomWeight = 0, topWeight = 0;
-
-    // sum of x contributions
-    int leftIndex = xindex - 1, rightIndex = xindex + 1;
-    if (cs[leftIndex,yindex] > 0.5) {
-        leftWeight = sq(n.x) * fs.x[xindex,yindex];
-    }
-    else if (cs[rightIndex,yindex] > 0.5) { // should be else if? or separate if?
-        rightWeight = sq(n.x) * fs.x[rightIndex,yindex];
-    }
-
-    // sum of y contributions
-    int bottomIndex = yindex - 1, topIndex = yindex + 1;
-    if (cs[xindex,bottomIndex] > 0.5) {
-        bottomWeight = sq(n.y) * fs.y[xindex,yindex];
-    }
-    else if (cs[xindex,topIndex] > 0.5) { // should be else if? or separate if?
-        topWeight = sq(n.y) * fs.y[xindex,topIndex];
-    }
-
-    // calculate flux of entire ghost cell
-    coord nOutward, midPoint;
-    double area = ibm_geometry (point, &midPoint, &nOutward);
-
-    bool bctype[2] = {false, false};
-    double vb = u.x.boundary[immersed] (point, point, u.x, bctype); // normal velocity BC
-
-    double veloFlux = -uf.x[xindex,yindex] * fs.x[xindex,yindex] +
-                       uf.x[rightIndex,yindex] * fs.x[rightIndex,yindex] +
-                      -uf.y[xindex,yindex] * fs.y[xindex,yindex] +
-                       uf.y[xindex,topIndex] * fs.y[xindex,topIndex] -
-                       vb * area;
-    // veloFlux /= Delta;
-
-    double weightSum = leftWeight + rightWeight + bottomWeight + topWeight + SEPS;
-
-    double xFlux = veloFlux * ((leftWeight + rightWeight) / weightSum);
-    double yFlux = veloFlux * ((topWeight + bottomWeight) / weightSum);
-    coord fluxes = {xFlux, yFlux};
-
-    if (cs[] <= 0.5) {
-        foreach_dimension() {
-            fluxes.x *= -1;
-        }
-    }
-    else {
-        fluxes.x *= abs(xindex);
-        fluxes.y *= abs(yindex);
-    }
-#if 1
-    fprintf (stderr, "(%g %g) n.x=%g n.y=%g ws=%g f.x=%g f.y=%g vb=%g veloFlux=%g\n",
-                       x, y, n.x, n.y, weightSum, fluxes.x, fluxes.y, vb, veloFlux);
-#endif
-    return fluxes;
-}
-
-foreach_dimension()
-double virtual_merge_x (Point point, scalar cs, face vector fs, face vector uf)
-{
-    if (cs[] <= 0) {
-        return 0;
-    }
-    int index = borders_ghost_x(point, cs);
-
-    // nothing special to be done for cells that don't border ghost cells
-    if (!index && (cs[] > 0.5 || cs[] <= 0)) {
-    //if (!index) {
-        return 0;
-    }
-
-    coord mergedFlux = ghost_fluxes (point, cs, fs, uf);
-    
-    return mergedFlux.x;
-}
-#endif
-
-
-
-/*
+/**
 The next few functions are taken from embed to calculate interfacial force.
 */
 
@@ -1933,10 +1459,9 @@ double ibm_vorticity (Point point, vector u, coord p, coord n)
 }
 
 
-/*
+/**
 ibm_force calculates the pressure force, Fp, and viscous force, Fmu, acting on the
-immersed boundary.
-*/
+immersed boundary. */
 
 void ibm_force (scalar p, vector u, face vector mu, coord * Fp, coord * Fmu)
 {
@@ -1996,10 +1521,10 @@ void ibm_force (scalar p, vector u, face vector mu, coord * Fp, coord * Fmu)
 }
 
 
-/*
+/**
 This function fills cf with the skin friction coefficient for each interfacial cell.
-// TODO: this assume no-slip condition; make it work for all B.C!
-*/
+
+TODO: this assume no-slip condition; make it work for all B.C! */
 
 double skin_friction (vector u, face vector mu, scalar cf)
 {
@@ -2041,42 +1566,9 @@ double skin_friction (vector u, face vector mu, scalar cf)
     return cftotal;
 }
 
-/*
-bilinear_ibm is another function taken from embed. If the parent cell is completely
-inside the solid boundary, then simple injection is performed (i.e., the value of 
-the child is set to that of the parent).
 
-This is used in the multigrid solver, and is found to significantly improve 
-convergence of the pressure solver.
-*/
-
-#if 0 && MULTIGRID
-static inline double bilinear_ibm (Point point, scalar s)
-{
-    if (!coarse(cs) || !coarse(cs,child.x)) {
-        return coarse(s);
-    }
-    #if dimension >= 2
-    if (!coarse(cs,0,child.y) || !coarse(cs,child.x,child.y)) {
-        return coarse(s);
-    }
-    #endif
-    #if dimension >= 3
-    if (!coarse(cs,0,0,child.z) || !coarse(cs,child.x,0,child.z) ||
-        !coarse(cs,0,child.y,child.z) ||
-        !coarse(cs,child.x,child.y,child.z)) {
-        return coarse(s);  
-    }
-    #endif
- 
-    return bilinear (point, s);
-}
-
-#define bilinear(point, s) bilinear_ibm(point, s)
-#endif // MULTIGRID
-
-
-
+/**
+This function is used in the BCG advection scheme in my-bcg.h. */
 static void gradients_ibm (scalar * f, vector * g)
 {
   assert (list_len(f) == vectors_len(g));
@@ -2085,252 +1577,50 @@ static void gradients_ibm (scalar * f, vector * g)
     for (s,v in f,g) {
       if (s.gradient)
 	foreach_dimension() {
-#if IBM
-      //if (!fs.x[] || !fs.x[1])
       if (!gc[])
         v.x[] = 0.;
       else
-#endif
 	    v.x[] = s.gradient (s[-1], s[], s[1])/Delta;
 	}
       else // centered
-	foreach_dimension() {
-#if IBM
-      //if (!fs.x[] || !fs.x[1])
-      if (!gc[])
-        v.x[] = 0.;
-      else
-#endif
-	    v.x[] = (s[1] - s[-1])/(2.*Delta);
-	}
+	    foreach_dimension() {
+          if (!gc[])
+            v.x[] = 0.;
+          else
+	        v.x[] = (s[1] - s[-1])/(2.*Delta);
+	    }
     }
   }
 }
 
 
-foreach_dimension()
-double ibm_flux_x (Point point, scalar s, face vector mu, double * val)
-{
-    *val = 0.;
-    if (cs[] >= 1. || cs[] <= 0.)
-        return 0.;
+/**
+# Face centered interpolation 
 
-
-    coord n = facet_normal (point, cs, fs), mp;
-    double alpha = plane_alpha (cs[], n);
-    double area = plane_area_center (n, alpha, &mp);
-    if (metric_ibm_factor)
-        area *= metric_ibm_factor (point, mp);
-
-    normalize (&n);
-    foreach_dimension()
-        n.x *= -1;
-
-    double mpx, mpy, mpz;
-    local_to_global(point, mp, &mpx, &mpy, &mpz);
-
-    bool dirichlet = false;
-    double bc = s.boundary[immersed] (point, point, s, &dirichlet);
-    
-    double coef = 0.;
-    double grad = dirichlet_gradient (point, s, cs, n, mp, bc, &coef);
-    double mua = 0., fa = 0.;
-    foreach_dimension() {
-        mua += mu.x[] + mu.x[1];
-        fa += fs.x[] + fs.x[1];
-    }
-
-    *val = - mua/(fa + SEPS)*grad*area/Delta;
-    return - mua/(fa + SEPS)*coef*area/Delta;
-}
-
-
-double ibm_flux (Point point, scalar s, face vector mu, double * val)
-{
-    coord n = facet_normal (point, cs, fs), mp;
-    double alpha = plane_alpha (cs[], n);
-    double area = plane_area_center (n, alpha, &mp);
-    if (metric_ibm_factor)
-        area *= metric_ibm_factor (point, mp);
-
-    normalize (&n);
-    foreach_dimension()
-        n.x *= -1;
-
-    double mpx, mpy, mpz;
-    local_to_global(point, mp, &mpx, &mpy, &mpz);
-
-    bool dirichlet = false;
-    double bc = s.boundary[immersed] (point, point, s, &dirichlet);
-    
-    double coef = 0.;
-    double grad = dirichlet_gradient (point, s, cs, n, mp, bc, &coef);
-    double mua = 0., fa = 0.;
-    foreach_dimension() {
-        mua += mu.x[] + mu.x[1];
-        fa += fs.x[] + fs.x[1];
-    }
-
-    *val = - mua/(fa + SEPS)*grad*area/Delta;
-    return - mua/(fa + SEPS)*coef*area/Delta;
-}
-
-
-#if 1 // testing some different interpolation functions like embed
-      // Not second order accurate with IBM!!!
-//#define ibm_avg(a,i,j,k)							\
-//  ((a[i,j,k]*(1.5 + cs[i,j,k]) + a[i-1,j,k]*(1.5 + cs[i-1,j,k]))/	\
-//   (cs[i,j,k] + cs[i-1,j,k] + 3.))
+The face_value macro is overridden to account for the immersed boundary. It is
+only used when calculating the face velocity field uf. */
 
 #define ibm_avg(a,i,j,k)							\
   ((a[i,j,k]*(0.1 + cs[i,j,k]) + a[i-1,j,k]*(0.1 + cs[i-1,j,k]))/	\
    (cs[i,j,k] + cs[i-1,j,k] + 0.2))
 
-
-#if dimension == 2
-
-#define face_condition(fs, cs)						\
-  (fs.x[i,j] > 0.5 && fs.y[i,j + (j < 0)] && fs.y[i-1,j + (j < 0)] &&	\
-   cs[i,j] && cs[i-1,j])
-
-foreach_dimension()
-static inline double ibm_face_gradient_x (Point point, scalar a, int i)
-{
-  int j = sign(fs.x[i,1] - fs.x[i,-1]);
-  assert (cs[i] && cs[i-1]);
-  if (face_condition (fs, cs))
-    return ((1. + fs.x[i])*(a[i] - a[i-1]) +
-	    (1. - fs.x[i])*(a[i,j] - a[i-1,j]))/(2.*Delta);
-  return (a[i] - a[i-1])/Delta;
-}
-
-foreach_dimension()
-static inline double ibm_face_value_x (Point point, scalar a, int i)
-{
-  int j = sign(fs.x[i,1] - fs.x[i,-1]);
-  return face_condition (fs, cs) ?
-    ((1. + fs.x[i])*ibm_avg(a,i,0,0) + (1. - fs.x[i])*ibm_avg(a,i,j,0))/2. :
-    ibm_avg(a,i,0,0);
-}
-
-#else // dimension == 3
-
-foreach_dimension()
-static inline coord embed_face_barycentre_z (Point point, int i)
-{
-  // Young's normal calculation
-  coord n1 = {0};
-  double nn = 0.;
-  scalar f = fs.z;
-  foreach_dimension(2) {
-    n1.x = (f[-1,-1,i] + 2.*f[-1,0,i] + f[-1,1,i] -
-	    f[+1,-1,i] - 2.*f[+1,0,i] - f[+1,1,i]);
-    nn += fabs(n1.x);
-  }
-  if (!nn)
-    return (coord){0.,0.,0.};
-  foreach_dimension(2)
-    n1.x /= nn;
-  // Position `p` of the face barycentre
-  coord n, p1, p;
-  ((double *)&n)[0] = n1.x, ((double *)&n)[1] = n1.y;
-  double alpha = line_alpha (f[0,0,i], n);
-  line_center (n, alpha, f[0,0,i], &p1);
-  p.x = ((double *)&p1)[0], p.y = ((double *)&p1)[1], p.z = 0.;
-  return p;
-}
-
-#define face_condition(fs, cs)						\
-  (fs.x[i,j,k] > 0.5 && (fs.x[i,j,0] > 0.5 || fs.x[i,0,k] > 0.5) &&	\
-   fs.y[i,j + (j < 0),0] && fs.y[i-1,j + (j < 0),0] &&			\
-   fs.y[i,j + (j < 0),k] && fs.y[i-1,j + (j < 0),k] &&			\
-   fs.z[i,0,k + (k < 0)] && fs.z[i-1,0,k + (k < 0)] &&			\
-   fs.z[i,j,k + (k < 0)] && fs.z[i-1,j,k + (k < 0)] &&			\
-   cs[i-1,j,0] && cs[i-1,0,k] && cs[i-1,j,k] &&				\
-   cs[i,j,0] && cs[i,0,k] && cs[i,j,k])
-
-foreach_dimension()
-static inline double ibm_face_gradient_x (Point point, scalar a, int i)
-{
-  assert (cs[i] && cs[i-1]);
-  coord p = embed_face_barycentre_x (point, i);
-  // Bilinear interpolation of the gradient (see Fig. 1 of Schwartz et al., 2006)
-  int j = sign(p.y), k = sign(p.z);
-  if (face_condition(fs, cs)) {
-    p.y = fabs(p.y), p.z = fabs(p.z);
-    return (((a[i,0,0] - a[i-1,0,0])*(1. - p.y) +
-	     (a[i,j,0] - a[i-1,j,0])*p.y)*(1. - p.z) + 
-	    ((a[i,0,k] - a[i-1,0,k])*(1. - p.y) +
-	     (a[i,j,k] - a[i-1,j,k])*p.y)*p.z)/Delta;
-  }
-  return (a[i] - a[i-1])/Delta;
-}
-
-foreach_dimension()
-static inline double ibm_face_value_x (Point point, scalar a, int i)
-{
-  coord p = embed_face_barycentre_x (point, i);
-  // Bilinear interpolation
-  int j = sign(p.y), k = sign(p.z);
-  if (face_condition(fs, cs)) {
-    p.y = fabs(p.y), p.z = fabs(p.z);
-    return ((ibm_avg(a,i,0,0)*(1. - p.y) + ibm_avg(a,i,j,0)*p.y)*(1. - p.z) + 
-	    (ibm_avg(a,i,0,k)*(1. - p.y) + ibm_avg(a,i,j,k)*p.y)*p.z);
-  }
-  return ibm_avg(a,i,0,0);
-}
-#endif // dimension == 3
-
-attribute {
-    bool third;
-}
-
-#if 0
-#undef face_gradient_x
-#define face_gradient_x(a,i)					\
-  (a.third && fs.x[i] < 1. && fs.x[i] > 0. ?			\
-   ibm_face_gradient_x (point, a, i) :			\
-   (a[i] - a[i-1])/Delta)
-
-#undef face_gradient_y
-#define face_gradient_y(a,i)					\
-  (a.third && fs.y[0,i] < 1. && fs.y[0,i] > 0. ?		\
-   ibm_face_gradient_y (point, a, i) :			\
-   (a[0,i] - a[0,i-1])/Delta)
-
-#undef face_gradient_z
-#define face_gradient_z(a,i)					\
-  (a.third && fs.z[0,0,i] < 1. && fs.z[0,0,i] > 0. ?		\
-   embed_face_gradient_z (point, a, i) :			\
-   (a[0,0,i] - a[0,0,i-1])/Delta)
-#undef center_gradient
-#define center_gradient(a) (fs.x[] && fs.x[1] ? (a[1] - a[-1])/(2.*Delta) : \
-			    fs.x[1] ? (a[1] - a[])/Delta :		    \
-			    fs.x[]  ? (a[] - a[-1])/Delta : 0.)
-
-#endif
 #undef face_value
 #define face_value(a,i)							\
-  (a.third && fs.x[i] < 1. && fs.x[i] > 0. ?				\
-   ibm_face_value_x (point, a, i) :					\
+  (fs.x[i] < 1. && fs.x[i] > 0. ?				\
+   0.5*(a[i] + a[i-1]):                         \
    ibm_avg(a,i,0,0))
-#endif
 
+/**
+# Metric event
 
-/*
 The metric event is used to set the metric fields, fm and cm, to the gcf and
-gc field, respectively. It is also used to specifiy the prolongation and
-refinement operations for each field (the functions of which are defined in ibm-tree.h.
+gc fields, respectively. It is also used to specifiy the prolongation and
+refinement operations for each field, which are defined in ibm-tree.h. */
 
-The definition for gcf and gc are as follows:
-
-gc = 0 if ghost or solid cell and 1 if fluid cell.
-gcf = 0 if it borders two solid cells and 1 if it borders two fluid cells
-           or 1 fluid cell and 1 solid/ghost cell.
-*/
 #if TREE
 #include "ibm-tree.h"
 #endif
+
 event metric (i = 0)
 {
     if (is_constant (fm.x)) {
@@ -2350,7 +1640,9 @@ event metric (i = 0)
         gc[] = cs[] = csp[] = 1;
 
 #if TREE
-    // set prolongation and refining functions
+    /**
+    Set prolongation and refining functions. */
+
     gc.refine = fraction_refine_metric;
     gc.prolongation = fraction_refine_metric;
 
@@ -2369,3 +1661,4 @@ event metric (i = 0)
 
     boundary(all);
 }
+
