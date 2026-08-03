@@ -74,24 +74,30 @@ astats adapt_wavelet_ibm (scalar * slist,       // list of scalars
 	        *b++ = s[];
 	    s.prolongation (point, s);
 	    b = sc;
-	    foreach_child()
-	      foreach_blockf(s) {
-	        double e = (cs[] && csp[]) || ggid[] >= 0? fabs(*b - s[]): 0;
-		if (e > emax && level < maxlevel) {
-		  cell.flags &= ~too_fine;
-		  cell.flags |= too_coarse;
-		}
-		else if ((e <= emax/1.5 || level > maxlevel) &&
-			 !(cell.flags & (too_coarse|just_fine))) {
-		  if (level >= minlevel) 
-		    cell.flags |= too_fine;
-		}
-		else if (!(cell.flags & too_coarse)) {
-		  cell.flags &= ~too_fine;
-		  cell.flags |= just_fine;
-		}
-		s[] = *b++;
-	      }
+	    foreach_child() {
+          foreach_blockf(s) {
+            double e = 0;
+            if (s.v.x.i >= 0) // scalar is component of a vector
+              e = ((cs[] && csp[]) || ggid[] >= 0)? fabs(*b - s[]): 0;
+            else
+              e = fabs(*b - s[]);
+
+            if (e > emax && level < maxlevel) {
+              cell.flags &= ~too_fine;
+              cell.flags |= too_coarse;
+            }
+            else if ((e <= emax/1.5 || level > maxlevel) &&
+              !(cell.flags & (too_coarse|just_fine))) {
+              if (level >= minlevel) 
+                cell.flags |= too_fine;
+            }
+            else if (!(cell.flags & too_coarse)) {
+              cell.flags &= ~too_fine;
+              cell.flags |= just_fine;
+            }
+            s[] = *b++;
+          }
+        }
 	  }
 	  foreach_child() {
 	    cell.flags &= ~just_fine;
