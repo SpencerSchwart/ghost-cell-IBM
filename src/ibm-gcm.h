@@ -1156,7 +1156,10 @@ coord interpolate_vector_ibm (Point point, vector u, coord ip, coord n,
     image_offsets (point, ip, &xx, &yy, &zz);
      PointIBM off = {xx, yy, zz};   
 
-    assert (abs(xx) <= 2 && abs(zz) <= 2 && abs(zz) <= 2);
+    // assert (abs(xx) <= 2 && abs(zz) <= 2 && abs(zz) <= 2);
+    xx = clamp(xx, -2, 2);
+    yy = clamp(yy, -2, 2);
+    zz = clamp(zz, -2, 2);
 
     coord ic = {x + Delta*xx, y + Delta*yy, z + Delta*zz};
     
@@ -1657,7 +1660,7 @@ event metric (i = 0)
         gcf.x.restriction = restriction_face_metric; // is this really necessary?
     }
 #endif
-    restriction ({cs, fs, gcf, gc});
+    restriction ({cs, csp, fs, gcf, gc});
 
     boundary(all);
 }

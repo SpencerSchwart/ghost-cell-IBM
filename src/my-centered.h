@@ -33,7 +33,6 @@ for viscosity. */
 #if EMBED
 #include "viscosity-embed.h"
 #elif IBM
-//#include "my-viscosity-gcm.h"
 #include "viscosity-ibm.h"
 #else
 #include "viscosity.h"
@@ -300,8 +299,7 @@ void prediction()
   if (u.x.gradient)
     foreach()
       foreach_dimension() {
-#if EMBED || IBM
-    //if (!fs.x[] && !fs.x[1]) // should use ibmf or fm?
+#if IBM
     if (!gc[])
 	    du.x[] = 0.;
 	else
@@ -311,8 +309,7 @@ void prediction()
   else
     foreach()
       foreach_dimension() {
-#if EMBED || IBM
-    //if (!fs.x[] && !fs.x[1])
+#if IBM
     if (!gc[])
 	    du.x[] = 0.;
 	else
@@ -509,7 +506,9 @@ event adapt (i++,last) {
     if (uf.x[] && !fs.x[] )
       uf.x[] = 0.;
   #elif IBM
-  //fractions_cleanup (ibm, ibmf);
+  /**
+  We do not use fractions_cleanup for IBM here. The user is expected to define
+  it in the source file's adapt event. */
   foreach_face()
     if ((!fm.x[] || !fs.x[]) && uf.x[])
       uf.x[] = 0.;

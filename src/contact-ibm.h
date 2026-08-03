@@ -1,13 +1,22 @@
 #define CA 1
 
 #include "ibm-gcm-vof.h"
-
 #include "mls.h"
+
+/**
+Stores the contact angle in each cell. We use a field instead of a single variable
+in case the contact line is dynamic or is spatially dependent. */
 
 scalar contact_angle[];
 
+/**
+The cells used to extrapolate the liquid interface are identified using the
+binary indicator fields below. extra0 stores the contact line cells from the
+previous time step, used only in the dynamic contact angle section of the
+code. */
+
+scalar extra[]; 
 scalar extra0[];
-scalar extra[];
 
 extern scalar f;
 extern scalar ch;
@@ -102,6 +111,8 @@ static inline coord normal_contact (coord ns, coord nf, double angle)
 }
 
 
+/**
+# Static contact angle BC */
 
 /** 
  */
@@ -278,12 +289,7 @@ void set_contact_angle (scalar c, const scalar cr0, const scalar cs,
             // 3.a. Calculate weights
             foreach_neighbor() {
                 if (extra[] == 1 && is_leaf(cell)) {
-                    // why cr0? to mitigate problems for a very slow moving contact line and
-                    // a new cell only gets a little bit of f (due to the low velocity/flux)
                     double cellWeight = cs[] == 1? cr0[] * (1 - cr0[]): cs[] * (1. - cs[]) * cr0[] * (cs[] - cr0[]);
-
-                    //double dc = sqrt(sq(ghostCell.x - x) + sq(ghostCell.y - y) + sq(ghostCell.z - z))/Delta;
-                    //cellWeight /= pow(dc,2);
 
                     totalWeight += cellWeight;
 
@@ -358,7 +364,9 @@ void set_contact_angle (scalar c, const scalar cr0, const scalar cs,
 }
 
 
-
+/**
+# Dynamic contact angle BC
+*/
 
 static inline double cox_ca_expression (double x)
 {
@@ -421,7 +429,7 @@ double shikh_ca_model (double theta, double ca, int s)
 
 /**
 Initialize the field storing the contact angles with the static contact angle first.*/
-event defaults (i = 0)
+event init (i = 0)
 {
     foreach()
         contact_angle[] = f.wetting.theta_s*pi/180.;
@@ -435,33 +443,6 @@ event defaults (i = 0)
         f.cox_model.ls = 1e-9;
         f.cox_model.lm = 10e-6;
     }
-}
-
-/**
-Basic 4-Point spreading funciton from Peskin.*/
-double phi_func (double x, double h) 
-{
-    double r = x / h;
-    double phi;
-
-    if (fabs(r) <= 1)
-      phi = (1./8.) * (3 - (2 * fabs(r)) + sqrt (1 + (4 * fabs(r)) - (4 * sq(r))));
-    else if (fabs(r) > 1 && fabs(r) <= 2)
-      phi = (1./8.) * (5 - (2 * fabs(r)) - sqrt (-7 + (12 * fabs(r)) - ( 4 * sq(r))));
-    else
-      phi = 0;
-    return phi;
-}
-
-/**
-delta_interpolation calculates the weight of a point (cpoint) with respect to a point (ipoint)
-of which we want to interpolate to. This uses the dirac delta interpolation method.*/
-double delta_interpolation (coord cpoint, coord ipoint, double dv, double delta)
-{
-    double dphi = 1.;
-    foreach_dimension()
-        dphi *= phi_func(cpoint.x - ipoint.x, delta);
-    return dphi/dv;
 }
 
 
@@ -547,30 +528,6 @@ int is_contact_cell (double c, double s, coord nf, coord ns, double alphas, doub
     return points;
 }
 
-/**
-Checks to see if a cell contains the contact point using the imposed contact angled boundary condition */
-int is_contact_cell_bc (Point point, scalar c, scalar cs, face vector fs, coord * pint = NULL)
-{
-    // calculate desired interface (normal, then intercept/alpha)
-    coord ns = facet_normal (point, cs, fs);
-    double alphas = plane_alpha(cs[], ns);
-
-    coord nf = interface_normal (point, c);
-
-    normalize2(&ns);
-    coord nc = normal_contact (ns, nf, contact_angle[]);
-    normalize_sum(&ns); normalize_sum(&nc);
-
-    double alphac = immersed_alpha(c[], cs[], nc, 0, ns, alphas, c[]);
-
-    coord p;
-    int points = interface_intersect(nc, alphac, ns, alphas, pint = &p);
-    
-    if (pint)
-        *pint = p;
-
-    return points;
-}
 
 /**
 Calculates the midpoint of a three-phase cell by only considering the liquid line segment outside
@@ -609,7 +566,6 @@ void update_contact_angle (scalar c, scalar c0, scalar cs, vector ns,
 
     foreach() {
         check[] = 0;
-        //if (cs[] > 0 && cs[] < 1 && c[] > 0 && c[] < cs[] - INT_TOL  ) { // three-phase cell
         //if (cs[] > 0 && cs[] < 1 && c[] > 0 && c[] < cs[] - INT_TOL  ) { // three-phase cell
         //if (inter[] && contact_angle[] && (full_interfacial(point, cs) || vertex_interfacial(point, cs))) {
         if (extra[]) {

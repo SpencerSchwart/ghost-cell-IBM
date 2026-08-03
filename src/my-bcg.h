@@ -42,6 +42,9 @@ void tracer_fluxes (scalar f,
     conditions (when using narrow '1 ghost cell' stencils)). */
 
 #if IBM
+    /**
+    un is multiplied by gcf to ensure faces completely covered by solid have
+    zero velocity and therby flux. This may not be necessary anymore...*/
     double un = gcf.x[]*dt*uf.x[]/(fm.x[]*Delta + SEPS), s = sign(un);
 #else
     double un = dt*uf.x[]/(fm.x[]*Delta + SEPS), s = sign(un);

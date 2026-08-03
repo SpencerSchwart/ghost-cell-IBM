@@ -47,8 +47,6 @@ This generic strategy is implemented in the standard Poisson
 solver. We also define a data structure for the main parameters of the
 viscous problem. */
 
-extern scalar gidd, gid;
-
 #include "my-poisson.h"
 
 struct Viscosity {
@@ -229,35 +227,6 @@ static void relax_viscosity (scalar * a, scalar * b, int l, void * data)
       double den = lambda.x*sq(Delta) + dt/(rho[]+SEPS)*mus;
 
       w.x[] = val*(r.x[]*sq(Delta) + dt/(rho[]+SEPS)*(sstress))/(den + SEPS);
-
-#if 0
-      w.x[] = val*(r.x[]*sq(Delta) + dt/(rho[]+SEPS)*(2.*mu.x[1]*u.x[1] + 2.*mu.x[]*u.x[-1]
-#if dimension > 1
-					   + mu.y[0,1]*(u.x[0,1] +
-							(u.y[1,0] + ua.y[1,1])/4. -
-							(u.y[-1,0] + ua.y[-1,1])/4.)
-					   - mu.y[]*(- u.x[0,-1] +
-						     (ua.y[1,-1] + u.y[1,0])/4. -
-						     (ua.y[-1,-1] + u.y[-1,0])/4.)
-#endif
-#if dimension > 2
-					   + mu.z[0,0,1]*(u.x[0,0,1] +
-							  (u.z[1,0,0] + ua.z[1,0,1])/4. -
-							  (u.z[-1,0,0] + ua.z[-1,0,1])/4.)
-					   - mu.z[]*(- u.x[0,0,-1] +
-						     (ua.z[1,0,-1] + u.z[1,0,0])/4. -
-						     (ua.z[-1,0,-1] + u.z[-1,0,0])/4.)
-#endif
-					   ))/
-      (SEPS + lambda.x*sq(Delta) + dt/(rho[]+SEPS)*(2.*mu.x[1] + 2.*mu.x[]
-#if dimension > 1
-				      + mu.y[0,1] + mu.y[]
-#endif
-#if dimension > 2
-				      + mu.z[0,0,1] + mu.z[]
-#endif
-				      ));
-#endif
     }
   }
 
@@ -355,11 +324,6 @@ static double residual_viscosity (scalar * a, scalar * b, scalar * resl,
       double dwdx = (wrb - wlb)/2.;
       
       taux.z[] = mu.z[]*(dudz + dwdx)/Delta;
-#if 0
-      taux.z[] = mu.z[]*(u.x[] - u.x[0,0,-1] + 
-                        (u.z[1,0,-1] + u.z[1,0,0])/4. -
-                        (u.z[-1,0,-1] + u.z[-1,0,0])/4.)/Delta;
-#endif
     }
     #endif
 

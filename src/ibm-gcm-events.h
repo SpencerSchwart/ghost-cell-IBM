@@ -68,7 +68,7 @@ coord interpolate_image_point (coord ip, coord nsg, vector mps, vector ns, scala
 }
 
 
-void update_gc_velocity(scalar cs, scalar alphas, vector ns, vector mps)
+void update_gc_velocity (scalar cs, scalar alphas, vector ns, vector mps)
 {
     /**
     MPI boundaries MUST be updated before interpolation. */
@@ -120,7 +120,6 @@ void update_gc_velocity(scalar cs, scalar alphas, vector ns, vector mps)
                                ns.z[bioff.i, bioff.j, bioff.k]};
                 bi = boundary_int (point, nplic, nplic, talpha, fc, cs);
                 n = interpolate_normal_lsq (point, bi, bioff, mps, ns);
-                //n = interpolate_normal (point, bi, bioff, mps, ns);
             }
             if (cs.ibm.normal)
                n = cs.ibm.normal(gc);

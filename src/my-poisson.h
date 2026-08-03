@@ -545,8 +545,7 @@ mgstats project (face vector uf, scalar p,
 
   foreach_face() {
 #if IBM
-    double metric = !fs.x[]? 0: alpha2.x[]/fs.x[];
-    uf.x[] -= dt*metric*face_gradient_x (p, 0);
+    uf.x[] -= fs.x[]? dt*alpha2.x[]*face_gradient_x (p, 0)/fs.x[]: 0;
 #else
     uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
 #endif

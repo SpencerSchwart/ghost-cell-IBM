@@ -181,7 +181,8 @@ double axi_factor (Point point, coord p) {
 void cm_update (scalar cm, scalar gc)
 {
   foreach() {
-    cm[] = y*(cs[] > 0);
+    cm[] = y*gc[];
+    //cm[] = y*(cs[] > 0);
   }
   cm[top] = dirichlet(y*cs[]);
   cm[bottom] = dirichlet(y*cs[]);
