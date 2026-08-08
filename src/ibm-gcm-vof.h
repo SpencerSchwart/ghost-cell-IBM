@@ -1456,10 +1456,10 @@ double redistribute_volume (face vector uf, scalar c, scalar cs)
             continue;
 
         if (c[i] < 0) { // over-emptied cell
-            cerr.x[] = c[i];
+            cerr.x[] = cm[i]*c[i];
         }
         else if (c[i] > cs[i]) { // over-filled cell
-            cerr.x[] = c[i] - cs[i];
+            cerr.x[] = cm[i]*(c[i] - cs[i]);
         }
     }
 
@@ -1472,10 +1472,10 @@ double redistribute_volume (face vector uf, scalar c, scalar cs)
             continue;
 
         if (c[0,i] < 0) { // over-emptied cell
-            cerr.y[] = c[0,i];
+            cerr.y[] = cm[0,i]*c[0,i];
         }
         else if (c[0,i] > cs[0,i]) { // over-filled cell
-            cerr.y[] = c[0,i] - cs[0,i];
+            cerr.y[] = cm[0,i]*(c[0,i] - cs[0,i]);
         }
     }
 
@@ -1489,10 +1489,10 @@ double redistribute_volume (face vector uf, scalar c, scalar cs)
             continue;
 
         if (c[0,0,i] < 0) { // over-emptied cell
-            cerr.z[] = c[0,0,i];
+            cerr.z[] = cm[0,0,i]*c[0,0,i];
         }
         else if (c[0,0,i] > cs[0,0,i]) { // over-filled cell
-            cerr.z[] = c[0,0,i] - cs[0,0,i];
+            cerr.z[] = cm[0,0,i]*(c[0,0,i] - cs[0,0,i]);
         }
     }
 #endif
@@ -1522,20 +1522,20 @@ double redistribute_volume (face vector uf, scalar c, scalar cs)
     emptied ones) are considered able to accept the redistributed flux. */
     double v1 = 0;
     foreach(reduction(+:v1)) {
-        if (cs[] && !w[]) {
+        if (cs[] && cm[] && !w[]) {
             double vsum = 0;
             foreach_dimension() {
                 if (cerr.x[])  vsum += w[-1]*cerr.x[];
                 if (cerr.x[1]) vsum += w[1]*cerr.x[1];
             }
-            //vsum /= dv();
+            vsum /= cm[];
 
             /**
             There is a chance that the receiving cell becomes over-full/empty
             themselves. For now, we just clamp it, though this can be improved. */
             c[] = clamp(c[] + vsum, 0, cs[]);
         }
-        v1 += c[]*dv();
+        v1 += c[]*dv()*cm[];
     }
 
     boundary({c});
