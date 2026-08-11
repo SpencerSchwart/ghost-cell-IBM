@@ -201,7 +201,15 @@ void reconstruction_contact (scalar c, const scalar cr, vector n, scalar alpha,
             }
 
             coord nf = {n.x[], n.y[], n.z[]};
-            if ((!nf.x && !nf.y && !nf.z) || (!ns0.x && !ns0.y && !ns0.z)) {
+            if (empty_coord(nf)) {
+                nf = interface_normal(point, cr);
+                if (empty_coord(nf)) {
+                    extra[] = 0;
+                    continue;
+                }
+            }
+
+            if (empty_coord(ns0)) {
                 extra[] = 0;
                 continue;
             }
