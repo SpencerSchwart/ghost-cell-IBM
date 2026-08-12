@@ -669,9 +669,12 @@ macro fraction_ibm (scalar f, double func)
 {
   {
     vertex scalar phi[];
+    face vector sf[];
+
     foreach_vertex()
       phi[] = func;
-    fractions_ibm (phi, f);
+
+    fractions_ibm (phi, f, sf);
   }
 }
 
