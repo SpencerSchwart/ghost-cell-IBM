@@ -373,6 +373,32 @@ void set_contact_angle (scalar c, const scalar cr0, const scalar cs,
 
 
 /**
+Checks to see if a cell contains the contact point using the imposed contact angled boundary condition */
+int is_contact_cell_bc (Point point, scalar c, scalar cs, face vector fs, coord * pint = NULL)
+{
+    // calculate desired interface (normal, then intercept/alpha)
+    coord ns = facet_normal (point, cs, fs);
+    double alphas = plane_alpha(cs[], ns);
+
+    coord nf = interface_normal (point, c);
+
+    normalize2(&ns);
+    coord nc = normal_contact (ns, nf, contact_angle[]);
+    normalize_sum(&ns); normalize_sum(&nc);
+
+    double alphac = immersed_alpha(c[], cs[], nc, 0, ns, alphas, c[]);
+
+    coord p;
+    int points = interface_intersect(nc, alphac, ns, alphas, pint = &p);
+
+    if (pint)
+        *pint = p;
+
+    return points;
+}
+
+
+/**
 # Dynamic contact angle BC
 */
 
