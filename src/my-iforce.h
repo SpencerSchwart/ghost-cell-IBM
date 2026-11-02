@@ -110,6 +110,7 @@ event acceleration (i++)
 	  0.;
 
     double val1 = f[]/(cs[] + SEPS), val2 = f[-1]/(cs[-1] + SEPS);
+    //double val1 = f[], val2 = f[-1];
 
 #if IBM || EMBED
     #if CA

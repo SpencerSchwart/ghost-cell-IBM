@@ -37,6 +37,8 @@ averages (i.e. harmonic). */
 # define mu(f)  (clamp(f,0.,1.)*(mu1 - mu2) + mu2)
 #endif
 
+#define rho_ibm(f,cs) (f*rho1 + (cs - f)*rho2)
+
 /**
 We have the option of using some "smearing" of the density/viscosity
 jump. */

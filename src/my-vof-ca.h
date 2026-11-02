@@ -282,8 +282,11 @@ static void sweep_x (scalar c, scalar ch, scalar cc, scalar * tcl, scalar cs0,
     scalar t, gf, tflux;
     for (t,gf,tflux in tracers,gfl,tfluxl) {
       double cf1 = cf, ci = cs[i]? c[i]: 0;
-      if (t.inverse)
-    	cf1 = 1. - cf1, ci = cs[i] - c[i];
+      if (t.inverse) {
+    	cf1 = 1. - cf1;
+        //ci = cs[i] - c[i];
+        ci = 1 - c[i];
+      }
       if (ci > 1e-10) {
 	    double ff = t[i]/ci + s*min(1., 1. - s*un)*gf[i]*Delta/2.;
 #if IBM
@@ -485,7 +488,7 @@ void vof_advection (scalar * interfaces, int i)
       scalar t, tc;
       for (t, tc in tracers, tcl) {
         if (t.inverse)
-	      tc[] = c[] < 0.5*cs[] && cs[]? t[]/(cs[] - c[]) : 0.;
+	      tc[] = c[] < 0.5*cs[] && cs[]? t[]/(1 - c[]) : 0.;
 	    else
 	      tc[] = c[] > 0.5*cs[] && cs[] ? t[]/(c[]) : 0.;
       }

@@ -9,7 +9,9 @@ scalar T[];
 scalar * ibm_tracers = {T};
 
 attribute {
-    face vector diffusion;
+    face vector diffusion; // thermal conducitivty (κ)
+    scalar density;        // density * specific heat capacity at constant pressure
+                           // ρ * c_p
 }
 
 event tracer_advection (i++)
@@ -34,9 +36,7 @@ void update_ghost_values()
 {
     /**
     MPI boundaries MUST be updated before interpolation. */
-#if _MPI
-    mpi_boundary_update (ibm_tracers);
-#endif
+    boundary(ibm_tracers);
 
     /**
     First count all ghost cells. */
@@ -158,11 +158,12 @@ void update_ghost_values()
 
 event tracer_diffusion (i++)
 {
-    diffusion(T, dt, T.diffusion);
+    diffusion(T, dt, D = T.diffusion, theta = T.density);
 
     fill_interface_data(); 
     update_ghost_values();
 }
+
 
 double nusselt_number(scalar T, scalar nu)
 {

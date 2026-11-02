@@ -15,7 +15,7 @@ static void momentum_refine (Point point, scalar u) {
   refine_bilinear (point, u);
   double rhou = 0.;
   foreach_child()
-    rhou += cm[]*rho(f[])*u[];
+    rhou += cm[]*rho_ibm(f[], cs[])*u[];
   double du = u[] - rhou/((1 << dimension)*(cm[] + SEPS)*rho(f[]));
   foreach_child()
     u[] += du;
@@ -25,8 +25,8 @@ static void momentum_restriction (Point point, scalar u)
 {
   double rhou = 0.;
   foreach_child()
-    rhou += cm[]*rho(f[])*u[];
-  u[] = rhou/((1 << dimension)*(cm[] + SEPS)*rho(f[]));
+    rhou += cm[]*rho_ibm(f[], cs[])*u[];
+  u[] = rhou/((1 << dimension)*(cm[] + SEPS)*rho_ibm(f[], cs[]));
 }
 #endif // TREE
 
@@ -52,7 +52,6 @@ event defaults (i = 0)
     all[i] = all[i-1], i--;
   all[i] = f;
    
-   #if 1
   /**
   We then set the refinement and restriction functions for the
   components of the velocity field. The boundary conditions on
@@ -68,7 +67,6 @@ event defaults (i = 0)
     u.x.depends = list_add (u.x.depends, f);
   }
   #endif
-#endif
 }
 /**
 We need to overload the stability event so that the CFL is taken into
@@ -85,13 +83,13 @@ using the functions below. */
 foreach_dimension()
 static double boundary_q1_x (Point neighbor, Point point, scalar q1, bool * data)
 {
-  return clamp(f[],0.,1.)*rho1*u.x[];
+  return clamp(f[],0.,cs[])*rho1*u.x[];
 }
 
 foreach_dimension()
 static double boundary_q2_x (Point neighbor, Point point, scalar q2, bool * data)
 {
-  return (cs[] - clamp(f[],0.,1.))*rho2*u.x[];
+  return (cs[] - clamp(f[],0.,cs[]))*rho2*u.x[];
 }
 
 /**
@@ -102,13 +100,13 @@ this definition. */
 foreach_dimension()
 static void prolongation_q1_x (Point point, scalar q1) {
   foreach_child()
-    q1[] = clamp(f[],0.,1.)*rho1*u.x[];
+    q1[] = clamp(f[],0.,cs[])*rho1*u.x[];
 }
 
 foreach_dimension()
 static void prolongation_q2_x (Point point, scalar q2) {
   foreach_child()
-    q2[] = (cs[] - clamp(f[],0.,1.))*rho2*u.x[];
+    q2[] = (cs[] - clamp(f[],0.,cs[]))*rho2*u.x[];
 }
 #endif
 
